@@ -32,6 +32,24 @@
 
 ## TASK-017: GIS core tables
 - **What shipped**: Built the fundamental GIS tables (gis_layers, gis_layer_fields, gis_layer_styles, gis_features) and the audit tracking table (audit.gis_feature_versions). Created complex PL/pgSQL triggers (	rg_enforce_geometry_type, 	rg_validate_attributes, 	rg_write_feature_version) to handle validation and automatic history capture at the database level.
-- **Decisions made**: Deferring complex regex and max-length checking to the application layer to keep 	rg_validate_attributes performant; the trigger only strictly enforces the equired field constraint and presence check. Switched from Ramsey\Uuid to PostgreSQL's native gen_random_uuid() for test data creation.
+- **Decisions made**: Deferring complex regex and max-length checking to the application layer to keep 	rg_validate_attributes performant; the trigger only strictly enforces the 
+equired field constraint and presence check. Switched from Ramsey\Uuid to PostgreSQL's native gen_random_uuid() for test data creation.
 - **Failed approaches**: Attempted to use Ramsey\Uuid\Uuid in tests before installing the composer package; mitigated by switching to native DB UUID generation.
 - **Follow-up items**: Move to TASK-018 (Survey tables).
+
+## TASK-018: Survey tables
+- **What shipped**: Created the database schema for the entire survey subsystem: survey_plans, survey_control_points, 	echnical_descriptions, 	ie_points, 	echnical_description_courses, 	ie_lines, and the parcel_courses view. Also added the computation engine schema: parcel_computations, parcel_vertices, and coordinate_transformations.
+- **Decisions made**: 	echnical_descriptions.parcel_id and parcel_computations.parcel_id were created as UUID columns, but the foreign key constraints to pp.parcels have been explicitly deferred to TASK-019 (since pp.parcels does not exist yet). The parcel_courses view was created successfully because it joins 	echnical_descriptions, avoiding direct reference to the parcels table.
+- **Follow-up items**: Add the deferred parcel_id foreign key constraints to 	echnical_descriptions and parcel_computations when building pp.parcels in TASK-019.
+
+## TASK-020: Document and workflow tables
+- **What shipped**: Created support subsystem tables covering pp.documents, pp.workflow_*, pp.basemap_providers, pp.import_jobs, pp.export_jobs, pp.notifications, pp.edit_locks, and pp.system_settings. Also implemented the PostgreSQL range-partitioned table for udit.audit_logs.
+- **Decisions made**: udit.audit_logs is created with native partition syntax rather than using the Phinx abstraction, as Phinx does not natively support Postgres partitions. Also handled integration tests to verify partition routing and table constraints.
+- **Follow-up items**: Future cron workers will need to be configured to create upcoming partitions for audit.audit_logs continuously.
+
+## TASK-027: Password hashing and policy
+
+- **What shipped**: `backend/src/Auth/Hasher.php` (Argon2id hash/verify/verifyAndRehash/needsRehash) and `backend/src/Auth/PasswordPolicy.php` (static validate + isValid with length, complexity, username-containment, and breach-list rules).
+- **Decisions made**: Kept hashing and policy as pure, framework-free value objects in `App\Auth`, matching the architecture rule that Auth domain code stays independent of Slim/PHP-DI. Argon2id cost parameters (memory=64MiB, time=4, threads=1) are baked into Hasher as a private const for now; policy thresholds (min 12 / max 128, breach list of 10 common passwords) are hardcoded constants.
+- **Failed approaches**: N/A — tests were authored against the intended API before implementation and passed first run on the Docker stack.
+- **Follow-up items**: TASK-028 (login, tokens, refresh rotation) is next. Open extension: make password policy configurable from `Config` (min/max length, breach-list source) and introduce a `BreachListChecker` interface with a pluggable backend (file/API/HIBP k-Anonymity) — FR-002 says "complexity configurable" and "breach-list check where available"; today it's a hardcoded stub.

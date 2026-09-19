@@ -35,11 +35,13 @@
 | 15 | TASK-015 | PSGC reference data load | 014 | DONE | |
 | 16 | TASK-016 | Identity and access tables | 013 | DONE | |
 | 17 | TASK-017 | GIS core tables | 016 | DONE | |
-| 18 | TASK-018 | Survey tables | 017 | TODO | |
-| 19 | TASK-019 | Parcel, lineage, title tables | 018 | TODO | |
-| 20 | TASK-020 | Document and workflow tables | 019 | TODO | |
-| 21 | TASK-021 | Database seeders | 020 | TODO | |
+| 18 | TASK-018 | Survey tables | 017 | DONE | |
+| 19 | TASK-019 | Parcel, lineage, title tables | 018 | DONE | |
+| 20 | TASK-020 | Document and workflow tables | 019 | DONE | |
+| 21 | TASK-021 | Database seeders | 020 | DONE | |
 | 22 | TASK-022 | Migration testing and rollback | 021 | TODO | closes M2 |
+| 27 | TASK-027 | Password hashing and policy | 016 | DONE | Argon2id Hasher + PasswordPolicy; 27 tests/36 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56). Verified via `docker compose exec php-fpm vendor/bin/phpunit tests/Unit/HasherTest.php tests/Unit/PasswordPolicyTest.php`. Config-driven policy knobs and a pluggable breach-list checker are flagged for future extension (FR-002 says "complexity configurable"; today min/max length and breach list are hardcoded). |
+| 28 | TASK-028 | Login, tokens, refresh rotation, reuse detection | 027 | TODO | |
 
 Nothing below TASK-022 is queued yet. The queue is extended one milestone at a time so it reflects reality rather than intention; the full ordered plan is in `todo.md`.
 

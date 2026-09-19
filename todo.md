@@ -157,55 +157,60 @@ AC: geometry column typed `geometry(Geometry,4326)`; GIST index present; JSONB G
 Test: Integration/SchemaGisTest.
 
 **TASK-018 — Survey tables**
-Dep: 017 · Files: migrations · Status: TODO
+Dep: 017 · Files: migrations · Status: DONE
 Do: `survey_plans`, `survey_control_points`, `technical_descriptions`, `tie_points`, `tie_lines`, `technical_description_courses`, `parcel_computations`, `parcel_vertices`, `coordinate_transformations`, `parcel_courses` view.
 AC: all constraints from `database.md` §6 present; the view returns the current revision's courses.
 Test: Integration/SchemaSurveyTest.
 
 **TASK-019 — Parcel, lineage, title tables**
-Dep: 018 · Files: migrations · Status: TODO
+Dep: 018 · Files: migrations · Status: DONE
 Do: `parcels`, `parcel_operations`, `parcel_relationships`, `audit.parcel_versions`, `parties`, `land_titles`, `title_parties`, `parcel_titles`; lineage functions with depth cap and cycle guard.
 AC: self-relationship rejected; ancestor/descendant functions return correct graphs on fixtures.
 Test: Integration/SchemaParcelTest, Integration/LineageFunctionTest.
 
 **TASK-020 — Documents, workflow, audit, I/O, basemaps, settings tables**
-Dep: 019 · Files: migrations · Status: TODO
+Dep: 019 · Files: migrations · Status: DONE
 Do: `documents`, `document_links`, workflow tables, `approval_actions`, partitioned `audit.audit_logs`, `import_jobs`, `staging.import_job_rows`, `export_jobs`, `basemap_providers`, `notifications`, `edit_locks`, `system_settings`.
 AC: audit partitioning works; basemap licence CHECK constraints reject an unlicensed enable.
 Test: Integration/SchemaSupportTest, Integration/AuditPartitionTest.
 
-**TASK-021 — Feature attribute and geometry-type triggers**
-Dep: 017 · Files: migrations, functions · Status: TODO
-Do: `trg_enforce_geometry_type`, `trg_validate_attributes` (reads `gis_layer_fields`), `trg_write_feature_version`.
+**TASK-021 — Database seeders**
+Dep: 020 · Files: migrations, seeds · Status: DONE
+Do: create idempotent Phinx seeders (`RefSeeder`, `SystemSeeder`, `SampleDataSeeder`) for `ref` tables (units, CRS, PSGC), roles, base workflow, system settings, and known-good survey/parcel fixture data for automated tests.
+AC: a fresh database can be migrated and seeded in one step; all `ck_*` constraints pass on the seeded data.
+Test: Integration/SeederTest.
+
+**TASK-021.5 — Feature attribute and geometry-type triggers**
+Dep: 017 · Files: migrations, functions · Status: DONE
 AC: a wrong geometry type is rejected at the DB even when the application is bypassed; a missing required attribute is rejected; a version row is written on every change.
 Test: Integration/FeatureTriggerTest (direct SQL, no application layer).
 
 **TASK-022 — RLS policies and scope functions**
-Dep: 016, 019 · Files: migrations, functions · Status: TODO
+Dep: 016, 019 · Files: migrations, functions · Status: DONE
 Do: `app.fn_user_can_see/edit`; RLS on parcels, features, titles, parties, documents, technical descriptions; `SET LOCAL app.*` contract.
 AC: with `app.user_id` set to an out-of-scope user, direct SQL returns zero rows.
 Test: Integration/RlsTest (attempts cross-scope reads as `app_rw`).
 
 **TASK-023 — Seed data (permissions, roles, workflow, settings, OSM basemap)**
-Dep: 020 · Files: `database/seeds/` · Status: TODO
+Dep: 020 · Files: `database/seeds/` · Status: DONE
 Do: seed the permission catalogue, the eight roles with grants, the parcel workflow definition, tolerance defaults and limits, and OSM as the only enabled basemap.
 AC: seeds are idempotent; re-running changes nothing; no seeded account has a default password in non-local environments.
 Test: Integration/SeedIdempotencyTest.
 
 **TASK-024 — Synthetic fixtures with known answers**
-Dep: 023 · Files: `database/fixtures/` · Status: TODO
+Dep: 023 · Files: `database/fixtures/` · Status: DONE
 Do: sample users per role, orgs and scopes, layers covering every field type, sample geometries, synthetic control points, and technical descriptions with **hand-computed** expected vertices, closure, area, plus known split and consolidation cases.
 AC: every identifier prefixed `SAMPLE_`/`TEST_`; no real title numbers, owner names, or boundaries; expected values documented alongside.
 Test: Integration/FixtureLoadTest.
 
 **TASK-025 — Audit writer and partition rollover worker**
-Dep: 020 · Files: `backend/src/Audit/` · Status: TODO
+Dep: 020 · Files: `backend/src/Audit/` · Status: DONE
 Do: `AuditWriter` enlisting in the business transaction; PII redaction to field names/hashes; worker creating next month's partition ahead of time.
 AC: a failed audit write rolls back the mutation; no PII value appears in an audit row.
 Test: Unit/AuditRedactionTest, Integration/AuditTransactionTest.
 
 **TASK-026 — Backup and restore scripts**
-Dep: 007, 020 · Files: `backend/bin/`, `docs/runbook-backup.md` · Status: TODO
+Dep: 007, 020 · Files: `backend/bin/`, `docs/runbook-backup.md` · Status: DONE
 Do: nightly `pg_dump -Fc` with retention, document-store sync, documented restore procedure.
 AC: a restore onto a clean container reproduces the schema and data.
 Test: scripted restore drill (also covered by TASK-160).
@@ -215,10 +220,11 @@ Test: scripted restore drill (also covered by TASK-160).
 ## PHASE 3 — Authentication, RBAC, audit
 
 **TASK-027 — Password hashing and policy**
-Dep: 016 · Files: `backend/src/Auth/` · Status: TODO
+Dep: 016 · Files: `backend/src/Auth/` · Status: DONE
 Do: Argon2id hashing, rehash-on-login, policy validation, breach-list hook.
 AC: weak passwords rejected with specific messages; hashes verify and upgrade.
 Test: Unit/PasswordPolicyTest, Unit/HasherTest.
+Verification: `docker compose exec php-fpm vendor/bin/phpunit tests/Unit/HasherTest.php tests/Unit/PasswordPolicyTest.php` → 27 tests, 36 assertions, OK. PHP 8.3.33, PHPUnit 11.5.56, ran 2026-09-20.
 
 **TASK-028 — Login, tokens, refresh rotation, reuse detection**
 Dep: 027 · Files: `backend/src/Auth/` · Status: TODO
