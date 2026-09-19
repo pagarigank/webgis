@@ -1,11 +1,11 @@
 # Next Task
 
-**TASK-012 — CI pipeline**
+**TASK-013 — Database roles and RLS (Row-Level Security)**
 
 Entry criteria:
-- TASK-011 is DONE.
+- TASK-012 is DONE.
+- Start of Phase 2.
 
 To do:
-- Create GitHub Actions workflow (`.github/workflows/ci.yml`).
-- Configure jobs for backend tests, PHPStan, PHP-CS-Fixer.
-- Configure jobs for frontend build, test, and lint.
+- Draft migration for users, passwords, roles mapping (post-Phase 1 setup).
+- Set up RLS backstop (ADR-06).

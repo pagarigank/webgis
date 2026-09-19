@@ -41,3 +41,9 @@
 - **Decisions made**: Leveraged the native Oxlint provided by Vite for speed, paired with Prettier for standard formatting, instead of manually scaffolding ESLint.
 - **Failed approaches**: N/A
 - **Follow-up items**: Proceed to TASK-012 (CI pipeline).
+
+## TASK-012: CI pipeline
+- **What shipped**: Created GitHub Actions workflow (`.github/workflows/ci.yml`). Configured jobs to check out the repository, run PHPStan, PHP-CS-Fixer, and PHPUnit (against a PostGIS sidecar) for the backend. Configured parallel jobs for Vite build, Prettier formatting check, Oxlint, and Vitest for the frontend. Added composer and npm vulnerability scans.
+- **Decisions made**: Added a PostGIS service container directly to the backend test job so migrations can be run on a true spatial database.
+- **Failed approaches**: N/A
+- **Follow-up items**: Move to TASK-013 (first task of Phase 2).

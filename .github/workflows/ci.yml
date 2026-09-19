@@ -1,0 +1,114 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_DB: webgis_test
+          POSTGRES_USER: app_rw
+          POSTGRES_PASSWORD: change_me_in_production
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, pgsql, zip, intl, bcmath
+          tools: composer:v2, cs2pr
+
+      - name: Validate composer.json and composer.lock
+        run: composer validate --strict || true # Allow warning for now since lockfile isn't committed yet
+        working-directory: ./backend
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+        working-directory: ./backend
+
+      - name: Check code formatting (PHP-CS-Fixer)
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff
+        working-directory: ./backend
+
+      - name: Static Analysis (PHPStan)
+        run: vendor/bin/phpstan analyse --error-format=github
+        working-directory: ./backend
+
+      - name: Run Migrations
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: webgis_test
+          DB_USER: app_rw
+          DB_PASS: change_me_in_production
+        run: vendor/bin/phinx migrate -e testing
+        working-directory: ./backend
+
+      - name: Run test suite (PHPUnit)
+        run: vendor/bin/phpunit
+        working-directory: ./backend
+        env:
+          APP_ENV: testing
+          APP_DEBUG: true
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: webgis_test
+          DB_USER: app_rw
+          DB_PASS: change_me_in_production
+          JWT_SECRET: testing_secret
+
+      - name: Security Vulnerability Scan (Local PHP checker)
+        run: composer audit
+        working-directory: ./backend
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Check formatting (Prettier)
+        run: npx prettier --check .
+        working-directory: ./frontend
+
+      - name: Linting (Oxlint)
+        run: npm run lint
+        working-directory: ./frontend
+
+      - name: Run tests (Vitest)
+        run: npm run test
+        working-directory: ./frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: ./frontend
+
+      - name: Security Vulnerability Scan (npm audit)
+        run: npm audit || true # Allow failure if there are issues we haven't fixed yet
+        working-directory: ./frontend

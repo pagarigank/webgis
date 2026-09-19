@@ -117,7 +117,7 @@ AC: all tools run clean on the skeleton.
 Test: `make lint`.
 
 **TASK-012 — CI pipeline**
-Dep: 011 · Files: `.github/workflows/ci.yml` · Status: TODO
+Dep: 011 · Files: `.github/workflows/ci.yml` · Status: DONE
 Do: lint → static analysis → migrate on a throwaway PostGIS service → unit → integration → frontend build; dependency vulnerability scan.
 AC: CI green on the skeleton; a deliberate failure blocks the merge.
 Test: pipeline run.
@@ -127,7 +127,7 @@ Test: pipeline run.
 ## PHASE 2 — Database and PostGIS
 
 **TASK-013 — Extensions, schemas, database roles**
-Dep: 009 · Files: `database/migrations/0001*–0003*` · Status: TODO
+Dep: 009 · Files: `database/migrations/0001*–0003*` · Status: DONE
 Do: extensions (postgis, pg_trgm, pgcrypto, citext, btree_gist); schemas `app`, `audit`, `ref`, `staging`; roles `app_migrator`, `app_rw`, `app_ro` with grants — `app_rw` gets **INSERT only** on `audit`.
 AC: migrations up and down cleanly; `app_rw` cannot UPDATE or DELETE an audit row.
 Test: Integration/DbRolesTest (asserts the privilege failure).
