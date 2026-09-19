@@ -3,7 +3,10 @@
     "description": "Philippine Parcel & Multi-User GIS Web Application",
     "type": "project",
     "require": {
-        "php": "^8.3"
+        "php": "^8.3",
+        "slim/slim": "^4.13",
+        "slim/psr7": "^1.6",
+        "php-di/php-di": "^7.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0"
