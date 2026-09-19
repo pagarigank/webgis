@@ -29,3 +29,9 @@
 - **Decisions made**: `phinx.php` uses `%%PHINX_CONFIG_DIR%%/../database/migrations` to route migrations out of the backend module into the shared database folder.
 - **Failed approaches**: N/A
 - **Follow-up items**: Move to TASK-010 to set up frontend bootstrap.
+
+## TASK-010: Frontend bootstrap
+- **What shipped**: Bootstrapped React 18 + TS + Vite inside `frontend/`. Installed and wired up `react-router-dom`, `@tanstack/react-query`, `zustand`, and `axios`. Configured `apiClient.ts` interceptors to automatically unwrap standard envelope success responses (ADR-13). Added a basic health check UI to test query execution and routing. Wrote a baseline Vitest suite.
+- **Decisions made**: Configured Axios to default to `/api/v1` and handle envelopes transparently for React Query.
+- **Failed approaches**: N/A
+- **Follow-up items**: Proceed to TASK-011 for static analysis tools setup.
