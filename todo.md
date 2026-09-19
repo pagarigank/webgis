@@ -133,7 +133,7 @@ AC: migrations up and down cleanly; `app_rw` cannot UPDATE or DELETE an audit ro
 Test: Integration/DbRolesTest (asserts the privilege failure).
 
 **TASK-014 — `ref` schema and CRS registry**
-Dep: 013 · Files: migrations, `database/seeds/` · Status: TODO
+Dep: 013 · Files: migrations, `database/seeds/` · Status: DONE
 Do: `ref.psgc_areas`, `ref.crs_registry`, `ref.units` and the small lookup tables; seed 4326, 3857, EPSG:3121–3125, EPSG:25391–25395 with `is_historical`, plus exact unit factors.
 AC: registry queryable; PRS92 zone lookup by point returns the correct zone; seeds are idempotent.
 Test: Integration/CrsRegistryTest, Unit/UnitConversionTest.

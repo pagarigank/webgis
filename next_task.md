@@ -1,11 +1,9 @@
 # Next Task
 
-**TASK-013 — Database roles and RLS (Row-Level Security)**
+**TASK-015 — PSGC reference data load**
 
 Entry criteria:
-- TASK-012 is DONE.
-- Start of Phase 2.
+- TASK-014 is DONE.
 
 To do:
-- Draft migration for users, passwords, roles mapping (post-Phase 1 setup).
-- Set up RLS backstop (ADR-06).
+- Seed the reference data for Region/Province/City/Municipality/Barangay codes and names (with geometries if available).

@@ -31,7 +31,7 @@
 | 11 | TASK-011 | Static analysis, lint, format | 008,010 | DONE | |
 | 12 | TASK-012 | CI pipeline | 011 | DONE | closes M1 entry criteria |
 | 13 | TASK-013 | Extensions, schemas, database roles | 009 | DONE | Start of Phase 2 |
-| 14 | TASK-014 | `ref` schema and CRS registry | 013 | TODO | |
+| 14 | TASK-014 | `ref` schema and CRS registry | 013 | DONE | |
 | 15 | TASK-015 | PSGC reference data load | 014 | TODO | |
 | 16 | TASK-016 | Identity and access tables | 013 | TODO | |
 | 17 | TASK-017 | GIS core tables | 016 | TODO | |
