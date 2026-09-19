@@ -1,9 +1,11 @@
 # Next Task
 
-**TASK-015 — PSGC reference data load**
+**TASK-016 — Identity and access tables**
 
 Entry criteria:
-- TASK-014 is DONE.
+- TASK-015 is DONE.
 
 To do:
-- Seed the reference data for Region/Province/City/Municipality/Barangay codes and names (with geometries if available).
+- Create `organizations`, `permissions`, `role_permissions`, `data_scopes`, and `refresh_tokens`. (Note: `users`, `roles`, and `user_roles` were already bootstrapped in TASK-013, so just need to add any missing structures).
+- Add constraints and indexes (e.g. scope target check).
+- Create `Integration/SchemaIdentityTest`.

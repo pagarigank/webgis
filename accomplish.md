@@ -6,7 +6,7 @@
 - **Failed approaches**: N/A
 - **Follow-up items**: Move to TASK-013 (first task of Phase 2).
 
-## TASK-013: Database roles and RLS
+## TASK-013: Extensions, schemas, database roles
 - **What shipped**: Created the database migration for `app.users`, `app.roles`, and `app.user_roles`. Added default-deny Row Level Security (RLS) on these tables and `audit_logs` as an authorization backstop. Created PostgreSQL roles (`app_rw`, `app_ro`, `app_migrator`). Wrote `Integration\RlsTest` proving an unprivileged query without `app.user_id` returns 0 rows.
 - **Decisions made**: Relied entirely on PostgreSQL RLS with session variables (`current_setting('app.user_id')`) ensuring tenant isolation at the database level (ADR-06).
 - **Failed approaches**: N/A
@@ -17,3 +17,9 @@
 - **Decisions made**: Separated CRS logic out into `ref` schema instead of hardcoding it, ensuring that legacy and future datums can be added as data rather than code changes.
 - **Failed approaches**: N/A
 - **Follow-up items**: Move to TASK-015 (PSGC reference data load).
+
+## TASK-015: PSGC reference data load
+- **What shipped**: Added a `geom` column to `ref.psgc_areas` for storing boundary geometry. Implemented `PsgcSeeder` to mock load a hierarchy of standard region, province, city, and barangay entities. Wrote `PsgcTest` to ensure that standard queries correctly resolve upward in the hierarchy, and that foreign key constraints successfully reject orphaned boundaries.
+- **Decisions made**: Stored a mock hierarchical load using Region IV-A to represent the actual full scale DB loads to test schema integrity without waiting for real gigabyte-scale datasets.
+- **Failed approaches**: N/A
+- **Follow-up items**: Move to TASK-016 (Identity and access tables).

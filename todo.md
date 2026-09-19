@@ -139,7 +139,7 @@ AC: registry queryable; PRS92 zone lookup by point returns the correct zone; see
 Test: Integration/CrsRegistryTest, Unit/UnitConversionTest.
 
 **TASK-015 — PSGC reference data load**
-Dep: 014 · Files: `database/seeds/psgc*` · Status: TODO
+Dep: 014 · Files: `database/seeds/psgc*` · Status: DONE
 Do: load region/province/city/municipality/barangay codes and names, with boundary geometry where available.
 AC: hierarchy resolves in both directions; unknown code insert is rejected by FK.
 Test: Integration/PsgcTest.
