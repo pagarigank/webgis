@@ -1,11 +1,11 @@
 # Next Task
 
-**TASK-011 — Static analysis, lint, format**
+**TASK-012 — CI pipeline**
 
 Entry criteria:
-- TASK-010 is DONE.
+- TASK-011 is DONE.
 
 To do:
-- Set up PHPStan (level 8) for the backend.
-- Set up PHP-CS-Fixer for the backend.
-- Set up ESLint and Prettier for the frontend.
+- Create GitHub Actions workflow (`.github/workflows/ci.yml`).
+- Configure jobs for backend tests, PHPStan, PHP-CS-Fixer.
+- Configure jobs for frontend build, test, and lint.

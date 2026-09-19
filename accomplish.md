@@ -35,3 +35,9 @@
 - **Decisions made**: Configured Axios to default to `/api/v1` and handle envelopes transparently for React Query.
 - **Failed approaches**: N/A
 - **Follow-up items**: Proceed to TASK-011 for static analysis tools setup.
+
+## TASK-011: Static analysis, lint, format
+- **What shipped**: Configured PHPStan (level 8) and PHP-CS-Fixer for the backend. Added Prettier to the frontend Vite Oxlint setup. Updated the `Makefile` with a unified `lint` command.
+- **Decisions made**: Leveraged the native Oxlint provided by Vite for speed, paired with Prettier for standard formatting, instead of manually scaffolding ESLint.
+- **Failed approaches**: N/A
+- **Follow-up items**: Proceed to TASK-012 (CI pipeline).

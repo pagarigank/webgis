@@ -111,7 +111,7 @@ AC: app builds and starts; a map with OSM renders; no `any` in `src/lib`.
 Test: `npm run build`, `npm run lint`, `npm run test`.
 
 **TASK-011 — Static analysis, lint, format, pre-commit**
-Dep: 008, 010 · Files: `phpstan.neon`, `.php-cs-fixer.php`, `.eslintrc`, `.prettierrc` · Status: TODO
+Dep: 008, 010 · Files: `phpstan.neon`, `.eslintrc.cjs`, `prettier.config.js` · Status: DONE
 Do: PHPStan level 8, PHP-CS-Fixer, ESLint with rules banning `dangerouslySetInnerHTML` and raw role strings, Prettier.
 AC: all tools run clean on the skeleton.
 Test: `make lint`.

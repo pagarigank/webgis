@@ -18,3 +18,4 @@ test:
 lint:
 	docker compose exec php-fpm vendor/bin/phpstan analyse
 	docker compose exec php-fpm vendor/bin/php-cs-fixer fix
+	cd frontend && npm run lint

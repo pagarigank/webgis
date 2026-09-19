@@ -28,8 +28,8 @@
 | 8 | TASK-008 | Backend bootstrap (Slim 4 + DI + pipeline) | 006,007 | DONE | |
 | 9 | TASK-009 | Migration tooling and DB connection | 008 | DONE | |
 | 10 | TASK-010 | Frontend bootstrap | 005 | DONE | can run parallel to 006–009 |
-| 11 | TASK-011 | Static analysis, lint, format | 008,010 | IN_PROGRESS | |
-| 12 | TASK-012 | CI pipeline | 011 | TODO | closes M1 entry criteria |
+| 11 | TASK-011 | Static analysis, lint, format | 008,010 | DONE | |
+| 12 | TASK-012 | CI pipeline | 011 | IN_PROGRESS | closes M1 entry criteria |
 
 Nothing below TASK-012 is queued yet. The queue is extended one milestone at a time so it reflects reality rather than intention; the full ordered plan is in `todo.md`.
 
