@@ -151,7 +151,7 @@ AC: constraints and indexes in place; scope target check enforced.
 Test: Integration/SchemaIdentityTest.
 
 **TASK-017 — GIS core tables**
-Dep: 016 · Files: migrations · Status: TODO
+Dep: 016 · Files: migrations · Status: DONE
 Do: `gis_layers`, `gis_layer_fields`, `gis_layer_styles`, `gis_features`, `layer_permissions`, `audit.gis_feature_versions`, GIST/GIN indexes.
 AC: geometry column typed `geometry(Geometry,4326)`; GIST index present; JSONB GIN present.
 Test: Integration/SchemaGisTest.

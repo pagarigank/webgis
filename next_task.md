@@ -1,12 +1,13 @@
 # Next Task
 
-**TASK-017 — GIS core tables**
+**TASK-018 — Survey tables**
 
 Entry criteria:
-- TASK-016 is DONE.
+- TASK-017 is DONE.
 
 To do:
-- Create `gis_layers`, `gis_layer_fields`, `gis_layer_styles`, `gis_features`.
-- Setup triggers for validation and geometry type constraints.
-- Create `audit.gis_feature_versions` table and versioning triggers on `gis_features`.
-- Write `Integration/GisCoreTest` to verify that invalid geometry is rejected by the trigger and versions are automatically captured.
+- Create `survey_plans`, `survey_control_points`, `tie_points`.
+- Create `technical_descriptions`, `technical_description_courses`, `tie_lines`.
+- Ensure constraints (`ck_tie_source`), defaults, and unique indexes are applied based on `database.md` §6.
+- Create view `app.parcel_courses`.
+- Write Integration test for the `survey_control_points` unique constraints and relationships.

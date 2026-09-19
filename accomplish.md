@@ -29,3 +29,9 @@
 - **Decisions made**: Applied a raw SQL block in Phinx to generate the PostGIS 'geom' column on 'data_scopes' and its constraint to ensure strict DB-level checking instead of only relying on application logic.
 - **Failed approaches**: N/A
 - **Follow-up items**: Move to TASK-017 (GIS core tables).
+
+## TASK-017: GIS core tables
+- **What shipped**: Built the fundamental GIS tables (gis_layers, gis_layer_fields, gis_layer_styles, gis_features) and the audit tracking table (audit.gis_feature_versions). Created complex PL/pgSQL triggers (	rg_enforce_geometry_type, 	rg_validate_attributes, 	rg_write_feature_version) to handle validation and automatic history capture at the database level.
+- **Decisions made**: Deferring complex regex and max-length checking to the application layer to keep 	rg_validate_attributes performant; the trigger only strictly enforces the equired field constraint and presence check. Switched from Ramsey\Uuid to PostgreSQL's native gen_random_uuid() for test data creation.
+- **Failed approaches**: Attempted to use Ramsey\Uuid\Uuid in tests before installing the composer package; mitigated by switching to native DB UUID generation.
+- **Follow-up items**: Move to TASK-018 (Survey tables).
