@@ -5,3 +5,9 @@
 - **Decisions made**: Set up the 4-layer structure (Http, Application, Domain, Infrastructure) inside every module in `backend/src/`.
 - **Failed approaches**: N/A
 - **Follow-up items**: Proceed to TASK-006.
+
+## TASK-006: `.env.example` and configuration loader
+- **What shipped**: Created `backend/.env.example` with safe placeholders for all expected configuration secrets. Created `App\Core\Config\Config` class that parses environment variables and throws `\RuntimeException` if any required secret is missing. Added `Unit/ConfigTest` for testing. Created `backend/composer.json` defining the PHP 8.3 target and PSR-4 autoloading structure.
+- **Decisions made**: The loader directly uses PHP's `parse_ini_file` for local development if a path is provided, but falls back to `getenv` ensuring Docker's environment injection works out of the box in production.
+- **Failed approaches**: N/A
+- **Follow-up items**: Move to TASK-007 to set up the Docker Compose stack.

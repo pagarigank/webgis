@@ -1,7 +1,11 @@
 # Next Task
 
-**TASK-006 — `.env.example` and configuration loader**
+**TASK-007 — Docker Compose stack**
 
 Entry criteria:
-- TASK-005 is DONE.
-- Repository skeleton is in place and committed.
+- TASK-006 is DONE.
+- .env.example is present.
+
+To do:
+- Set up `docker-compose.yml` with nginx, php-fpm 8.3, postgres16+postgis3.4, and worker.
+- Define named volumes.
