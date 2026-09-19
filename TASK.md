@@ -30,8 +30,18 @@
 | 10 | TASK-010 | Frontend bootstrap | 005 | DONE | can run parallel to 006–009 |
 | 11 | TASK-011 | Static analysis, lint, format | 008,010 | DONE | |
 | 12 | TASK-012 | CI pipeline | 011 | DONE | closes M1 entry criteria |
+| 13 | TASK-013 | Extensions, schemas, database roles | 009 | DONE | Start of Phase 2 |
+| 14 | TASK-014 | `ref` schema and CRS registry | 013 | TODO | |
+| 15 | TASK-015 | PSGC reference data load | 014 | TODO | |
+| 16 | TASK-016 | Identity and access tables | 013 | TODO | |
+| 17 | TASK-017 | GIS core tables | 016 | TODO | |
+| 18 | TASK-018 | Survey tables | 017 | TODO | |
+| 19 | TASK-019 | Parcel, lineage, title tables | 018 | TODO | |
+| 20 | TASK-020 | Document and workflow tables | 019 | TODO | |
+| 21 | TASK-021 | Database seeders | 020 | TODO | |
+| 22 | TASK-022 | Migration testing and rollback | 021 | TODO | closes M2 |
 
-Nothing below TASK-012 is queued yet. The queue is extended one milestone at a time so it reflects reality rather than intention; the full ordered plan is in `todo.md`.
+Nothing below TASK-022 is queued yet. The queue is extended one milestone at a time so it reflects reality rather than intention; the full ordered plan is in `todo.md`.
 
 ---
 
