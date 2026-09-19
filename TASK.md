@@ -26,8 +26,8 @@
 | 6 | TASK-006 | `.env.example` and configuration loader | 005 | DONE | |
 | 7 | TASK-007 | Docker Compose stack | 005 | DONE | |
 | 8 | TASK-008 | Backend bootstrap (Slim 4 + DI + pipeline) | 006,007 | DONE | |
-| 9 | TASK-009 | Migration tooling and DB connection | 008 | IN_PROGRESS | |
-| 10 | TASK-010 | Frontend bootstrap | 005 | TODO | can run parallel to 006–009 |
+| 9 | TASK-009 | Migration tooling and DB connection | 008 | DONE | |
+| 10 | TASK-010 | Frontend bootstrap | 005 | IN_PROGRESS | can run parallel to 006–009 |
 | 11 | TASK-011 | Static analysis, lint, format | 008,010 | TODO | |
 | 12 | TASK-012 | CI pipeline | 011 | TODO | closes M1 entry criteria |
 

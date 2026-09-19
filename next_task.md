@@ -1,11 +1,12 @@
 # Next Task
 
-**TASK-009 — Migration tooling and DB connection**
+**TASK-010 — Frontend bootstrap**
 
 Entry criteria:
-- TASK-008 is DONE.
+- TASK-009 is DONE (or parallel).
 
 To do:
-- Set up Phinx (or PDO-based migrations) in `database/migrations`.
-- Register the PDO connection in the DI container.
-- Create the audit log table schema as the first migration.
+- Set up Vite + React + TypeScript in `frontend/`
+- Configure `tsconfig.json` (strict)
+- Setup baseline TanStack Query, Zustand, and Axios structure
+- Set up React Router skeleton with a health/status view

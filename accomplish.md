@@ -23,3 +23,9 @@
 - **Decisions made**: Adhered exactly to ADR-14 envelope format (`{success,error:{code,message,details}}`).
 - **Failed approaches**: N/A
 - **Follow-up items**: Move to TASK-009 to set up migrations.
+
+## TASK-009: Migration tooling and DB connection
+- **What shipped**: Added `robmorgan/phinx` to `composer.json`. Created `phinx.php` using the backend `Config` loader to read `.env` and map to `database/migrations`. Registered the PostgreSQL PDO connection in `dependencies.php`. Created the first schema migration for `audit_logs` matching the architecture spec.
+- **Decisions made**: `phinx.php` uses `%%PHINX_CONFIG_DIR%%/../database/migrations` to route migrations out of the backend module into the shared database folder.
+- **Failed approaches**: N/A
+- **Follow-up items**: Move to TASK-010 to set up frontend bootstrap.
