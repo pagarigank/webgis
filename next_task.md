@@ -1,11 +1,12 @@
 # Next Task
 
-**TASK-016 — Identity and access tables**
+**TASK-017 — GIS core tables**
 
 Entry criteria:
-- TASK-015 is DONE.
+- TASK-016 is DONE.
 
 To do:
-- Create `organizations`, `permissions`, `role_permissions`, `data_scopes`, and `refresh_tokens`. (Note: `users`, `roles`, and `user_roles` were already bootstrapped in TASK-013, so just need to add any missing structures).
-- Add constraints and indexes (e.g. scope target check).
-- Create `Integration/SchemaIdentityTest`.
+- Create `gis_layers`, `gis_layer_fields`, `gis_layer_styles`, `gis_features`.
+- Setup triggers for validation and geometry type constraints.
+- Create `audit.gis_feature_versions` table and versioning triggers on `gis_features`.
+- Write `Integration/GisCoreTest` to verify that invalid geometry is rejected by the trigger and versions are automatically captured.

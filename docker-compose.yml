@@ -20,6 +20,7 @@ services:
       dockerfile: docker/php/Dockerfile
     volumes:
       - ./backend:/var/www/html
+      - ./database:/var/www/database
       - documents:/var/www/html/storage/documents
     environment:
       - APP_ENV=${APP_ENV:-local}

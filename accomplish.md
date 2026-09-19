@@ -23,3 +23,9 @@
 - **Decisions made**: Stored a mock hierarchical load using Region IV-A to represent the actual full scale DB loads to test schema integrity without waiting for real gigabyte-scale datasets.
 - **Failed approaches**: N/A
 - **Follow-up items**: Move to TASK-016 (Identity and access tables).
+
+## TASK-016: Identity and access tables
+- **What shipped**: Built the remaining authorization and identity schemas per database.md (organizations, permissions, role_permissions, data_scopes, and refresh_tokens). Implemented the SchemaIdentityTest asserting the check constraint (ck_scope_target) effectively rejects data_scopes lacking a target.
+- **Decisions made**: Applied a raw SQL block in Phinx to generate the PostGIS 'geom' column on 'data_scopes' and its constraint to ensure strict DB-level checking instead of only relying on application logic.
+- **Failed approaches**: N/A
+- **Follow-up items**: Move to TASK-017 (GIS core tables).

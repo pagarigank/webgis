@@ -145,7 +145,7 @@ AC: hierarchy resolves in both directions; unknown code insert is rejected by FK
 Test: Integration/PsgcTest.
 
 **TASK-016 — Identity and access tables**
-Dep: 013 · Files: migrations · Status: TODO
+Dep: 013 · Files: migrations · Status: DONE
 Do: `organizations`, `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `data_scopes`, `refresh_tokens` per `database.md` §4.
 AC: constraints and indexes in place; scope target check enforced.
 Test: Integration/SchemaIdentityTest.

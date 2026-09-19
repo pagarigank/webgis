@@ -33,7 +33,7 @@
 | 13 | TASK-013 | Extensions, schemas, database roles | 009 | DONE | Start of Phase 2 |
 | 14 | TASK-014 | `ref` schema and CRS registry | 013 | DONE | |
 | 15 | TASK-015 | PSGC reference data load | 014 | DONE | |
-| 16 | TASK-016 | Identity and access tables | 013 | TODO | |
+| 16 | TASK-016 | Identity and access tables | 013 | DONE | |
 | 17 | TASK-017 | GIS core tables | 016 | TODO | |
 | 18 | TASK-018 | Survey tables | 017 | TODO | |
 | 19 | TASK-019 | Parcel, lineage, title tables | 018 | TODO | |

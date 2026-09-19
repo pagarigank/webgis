@@ -17,12 +17,7 @@ class TestCase extends PHPUnitTestCase
     {
         $containerBuilder = new ContainerBuilder();
         
-        // Mock Config for tests
-        $containerBuilder->addDefinitions([
-            Config::class => function () {
-                return new Config(['APP_ENV' => 'testing', 'APP_DEBUG' => true]);
-            }
-        ]);
+        $containerBuilder->addDefinitions(__DIR__ . '/../config/dependencies.php');
         
         $container = $containerBuilder->build();
         

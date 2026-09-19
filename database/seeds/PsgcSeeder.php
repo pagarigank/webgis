@@ -24,17 +24,17 @@ class PsgcSeeder extends AbstractSeed
             ],
             // City
             [
-                'code' => '133900000_CITY', // Using a distinct code if real PSGC shares the code, usually City has its own
+                'code' => '133901000',
                 'level' => 'CITY',
                 'name' => 'CALOOCAN CITY',
                 'parent_code' => '133900000',
             ],
             // Barangay
             [
-                'code' => '133900001',
+                'code' => '133901001',
                 'level' => 'BARANGAY',
                 'name' => 'Barangay 1',
-                'parent_code' => '133900000_CITY',
+                'parent_code' => '133901000',
             ],
             
             // Another standard Region -> Province -> Muni -> Brgy
