@@ -24,8 +24,8 @@
 | 4 | TASK-004 | Sponsor approval of the planning set | 003 | DONE | Sponsor requested to start Phase 1 |
 | 5 | TASK-005 | Repository skeleton and Git hygiene | 004 | DONE | first implementation task |
 | 6 | TASK-006 | `.env.example` and configuration loader | 005 | DONE | |
-| 7 | TASK-007 | Docker Compose stack | 005 | IN_PROGRESS | |
-| 8 | TASK-008 | Backend bootstrap (Slim 4 + DI + pipeline) | 006,007 | TODO | |
+| 7 | TASK-007 | Docker Compose stack | 005 | DONE | |
+| 8 | TASK-008 | Backend bootstrap (Slim 4 + DI + pipeline) | 006,007 | IN_PROGRESS | |
 | 9 | TASK-009 | Migration tooling and DB connection | 008 | TODO | |
 | 10 | TASK-010 | Frontend bootstrap | 005 | TODO | can run parallel to 006–009 |
 | 11 | TASK-011 | Static analysis, lint, format | 008,010 | TODO | |

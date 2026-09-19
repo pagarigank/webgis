@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginxinc/nginx-unprivileged:alpine
+    ports:
+      - "80:8080"
+    volumes:
+      - ./backend/public:/var/www/html/public
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - tilecache:/var/cache/nginx
+    depends_on:
+      - php-fpm
+    networks:
+      - app-network
+
+  php-fpm:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    volumes:
+      - ./backend:/var/www/html
+      - documents:/var/www/html/storage/documents
+    environment:
+      - APP_ENV=${APP_ENV:-local}
+      - APP_DEBUG=${APP_DEBUG:-true}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-webgis}
+      - DB_USER=${DB_USER:-app_rw}
+      - DB_PASS=${DB_PASS:-change_me_in_production}
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${DB_NAME:-webgis}
+      - POSTGRES_USER=${DB_USER:-app_rw}
+      - POSTGRES_PASSWORD=${DB_PASS:-change_me_in_production}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - backups:/backups
+    networks:
+      - app-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    command: php /var/www/html/bin/worker.php
+    volumes:
+      - ./backend:/var/www/html
+      - documents:/var/www/html/storage/documents
+    environment:
+      - APP_ENV=${APP_ENV:-local}
+      - APP_DEBUG=${APP_DEBUG:-true}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-webgis}
+      - DB_USER=${DB_USER:-app_rw}
+      - DB_PASS=${DB_PASS:-change_me_in_production}
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
+  documents:
+  tilecache:
+  backups:
+
+networks:
+  app-network:
+    driver: bridge

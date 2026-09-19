@@ -1,11 +1,13 @@
 # Next Task
 
-**TASK-007 — Docker Compose stack**
+**TASK-008 — Backend bootstrap (Slim 4 + DI + pipeline)**
 
 Entry criteria:
-- TASK-006 is DONE.
-- .env.example is present.
+- TASK-007 is DONE.
 
 To do:
-- Set up `docker-compose.yml` with nginx, php-fpm 8.3, postgres16+postgis3.4, and worker.
-- Define named volumes.
+- Configure DI container (PHP-DI)
+- Set up Slim 4 router and error handler
+- Middleware pipeline skeleton (RequestId, Cors, ErrorHandler)
+- Envelope responders and `/api/v1/health` endpoint
+- Test: Api/HealthTest, Api/ErrorEnvelopeTest
