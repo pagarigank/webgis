@@ -59,5 +59,5 @@ export const tokenStore = {
 
 /** True when a refresh cookie exists in the browser (cheap pre-flight check). */
 export function hasRefreshCookie(): boolean {
-  return readCookie(CSRF_COOKIE) !== null;
+  return readCookie(REFRESH_COOKIE) !== null;
 }

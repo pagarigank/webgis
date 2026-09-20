@@ -32,17 +32,22 @@ class GisLayerController
         $code = $data['code'] ?? '';
         $name = $data['name'] ?? '';
         $geometryType = $data['geometry_type'] ?? 'POLYGON';
-        
+        $description = $data['description'] ?? null;
+        $groupPath = $data['group_path'] ?? null;
+        $srid = isset($data['srid']) ? (int) $data['srid'] : null;
+        $source = $data['source'] ?? null;
+        $renderMode = $data['render_mode'] ?? null;
+
         if (empty($code) || empty($name)) {
             throw new ApiError('VALIDATION_FAILED', 'Code and name are required', 400);
         }
 
         $stmt = $this->pdo->prepare("
-            INSERT INTO app.gis_layers (code, name, geometry_type)
-            VALUES (?, ?, ?)
+            INSERT INTO app.gis_layers (code, name, geometry_type, description, group_path, srid, source, render_mode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
         ");
-        $stmt->execute([$code, $name, $geometryType]);
+        $stmt->execute([$code, $name, $geometryType, $description, $groupPath, $srid, $source, $renderMode]);
         $id = $stmt->fetchColumn();
 
         return Envelope::success($response, ['id' => $id], 201);

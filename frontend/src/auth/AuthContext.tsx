@@ -16,21 +16,37 @@ import type { AuthStatus, MePayload } from './types';
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
+  // On mount, check whether a refresh cookie exists before firing the me
+  // query. Without this guard a hard-refreshed page fires GET /me immediately,
+  // gets 401, triggers a refresh that fails because the refresh cookie was
+  // never stored (or was rejected), dispatches auth:unauthorized, and loops
+  // back to /login. When there is no refresh cookie the session is dead and
+  // we should go straight to unauthenticated.
+  const [initialCheck, setInitialCheck] = useState<'checking' | 'has-cookie' | 'no-cookie'>('checking');
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    (async () => {
+      const hasCookie = typeof document !== 'undefined' && tokenStore.hasRefreshCookie();
+      setInitialCheck(hasCookie ? 'has-cookie' : 'no-cookie');
+    })();
+  }, []);
+
   const meQuery = useQuery<MePayload>({
     queryKey: ['me'],
     queryFn: async () => {
       return await apiClient.get('/me');
     },
-    retry: false, // Don't retry auth fetches
-    staleTime: 5 * 60 * 1000, // Consider fresh for 5 minutes
+    enabled: initialCheck === 'has-cookie',
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Derived auth status from TanStack Query
   const status: AuthStatus = useMemo(() => {
-    if (meQuery.isPending) return 'loading';
+    if (initialCheck === 'checking' || meQuery.isPending) return 'loading';
     if (meQuery.isSuccess && meQuery.data) return 'authenticated';
     return 'unauthenticated';
-  }, [meQuery.isPending, meQuery.isSuccess, meQuery.data]);
+  }, [initialCheck, meQuery.isPending, meQuery.isSuccess, meQuery.data]);
 
   // Eviction listener for unauthorized events from apiClient interceptor
   useEffect(() => {

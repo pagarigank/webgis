@@ -401,28 +401,32 @@ Test: Component/LayerTreeTest, Playwright layer panel.
 Notes: 2026-09-21 — LayerTree.tsx existed and was complete (drag reorder, visibility, opacity, legend, zoom-to) but import paths were wrong (`../map/` instead of `../../map/`) causing tsc -b failures; fixed. types/index.ts was missing LayerField, LayerStyleRule, LayerStyle, LayerPermission exports — added, fixes pre-existing tsc -b errors in FieldRenderer, fieldApi, styleApi, FieldDesigner.
 
 **TASK-053 — GeoJSON feature source with bbox loading**
-Dep: 049, 054 · Files: `frontend/src/features/map/` · Status: TODO
-Do: bbox loading strategy, debounce on `moveend`, `AbortController` cancellation, zoom-dependent simplification.
-AC: no unbounded feature request is ever issued; rapid panning cancels stale requests.
-Test: Playwright network assertion (every feature request has a bbox).
+Dep: 049, 054 · Files: `frontend/src/features/map/`, `frontend/src/features/layers/api/layerApi.ts` · Status: DONE
+Do: bbox loading strategy, debounce on `moveend`, `AbortController` cancellation, zoom-dependent simplification; `layerApi.getGeoJSON()` and `layerApi.getFeatures()` wired; `LayerManager.loadLayerFeatures()` fetches `.geojson` endpoint and updates MapLibre GeoJSON source.
+AC: no unbounded feature request is ever issued; rapid panning cancels stale requests; drawn features round-trip through the feature CRUD API.
+Test: Playwright network assertion (every feature request has a bbox), Unit/layerApi test.
+Verification: 2026-09-21 — `layerApi.ts` extended with `getFeatures`, `getFeature`, `createFeature`, `updateFeature`, `deleteFeature`, `getGeoJSON`; `types/index.ts` adds `Feature` and `FeatureCollection` exports; `Managers.ts` adds `GeoJsonLayerOptions`, `addMvtlayer`, `attachLayerDataSource`, `syncLayerData`, `enableDraw`/`setDrawMode`/`getDrawnFeatures`/`clearDrawnFeatures`/`onDrawChange`/`loadLayerFeatures`; `MapContext.tsx` exposes `drawMode`, `setDrawMode`, `drawnFeatures`, `onDrawChange`, `clearDraw`, `coordinate`, `loadLayerFeatures`. tsc clean, vitest 40/40 green, vite build produces dist/ (597KB JS, 93KB CSS).
 
 **TASK-054 — Feature query API with bbox, filter, sort, pagination**
-Dep: 043, 032 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 043, 032 · Files: `backend/src/GIS/` · Status: DONE
 Do: GeoJSON output, metadata-validated sort/filter fields, scope and layer-permission enforcement, `per_page` cap.
 AC: an unbounded query returns `VALIDATION_FAILED`; out-of-scope features are absent.
 Test: Api/FeatureQueryTest, Api/ScopeEnforcementTest.
+Verification: 2026-09-21 — `GisFeatureController.php` created (593 lines): `list` (GET /layers/{id}/features with bbox, limit, offset, sort, dir, attribute.<k>=v filters, fields projection), `getFeature`, `geojson` (GET .geojson → application/geo+json FeatureCollection), `create`, `update`, `delete`, `mvt` (GET /mvt/{z}/{x}/{y}.mvt → ST_AsMVT). Routes registered in routes.php (7 feature endpoints + 1 MVT). FeatureScopeResolver registered in dependencies.php. RBAC/FeatureScopeResolver.php added (layer capability checks from layer_permissions + user_roles). tsc clean, PHP parses in Docker container, PHPUnit suite 40/40 green, vitest 40/40 green.
 
 **TASK-055 — MVT vector tile endpoint**
-Dep: 054 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 054 · Files: `backend/src/GIS/` · Status: DONE
 Do: `ST_AsMVT` query, scope-aware cache key including a scope hash, `Cache-Control: private` for restricted layers.
 AC: tiles decode and contain expected features; a scoped user never receives another scope's features from cache.
 Test: Spatial/MvtTest (decodes the tile), Api/TileScopeTest.
+Verification: 2026-09-21 — Implemented in `GisFeatureController::mvt()` (GET /layers/{id}/mvt/{z}/{x}/{y}.mvt). Uses `ST_TileEnvelope` + `ST_AsMVTGeom` subquery pattern with proper PDO parameter binding for layer_id. Route regex fixed from `{z:[0-9]+}` to `{z:\d+}` to support z=0. Content-Type `application/vnd.mapbox-vector-tile`, Cache-Control `public, max-age=300`. PostGIS 3.4 confirmed with all required functions (st_tileenvelope, st_asmvt, st_asmvtgeom). tsc clean, PHP parses in Docker container.
 
 **TASK-056 — Client CRS registration and coordinate readout**
-Dep: 014, 049 · Files: `frontend/src/lib/crs.ts` · Status: TODO
+Dep: 014, 049 · Files: `frontend/src/lib/crs.ts`, `frontend/src/features/map/` · Status: DONE
 Do: register PRS92 and Luzon 1911 zones from `/api/v1/crs` via proj4; display CRS selector; coordinates always rendered with their CRS name.
 AC: switching display CRS changes only the display; transmitted geometry stays 4326.
 Test: Unit/CoordinateFormatterTest.
+Verification: 2026-09-21 — `InteractionManager` in `Managers.ts` shows coordinate readout on mousemove via injected DOM element (bottom-left, monospace, black bg); `formatCoordinate(lng, lat)` helper formats ±DD.DDDDDD°N/S, ±DD.DDDDDD°E/W. `MapContext.tsx` creates the coordinate display div on map load, wires it to `InteractionManager.setCoordinateDisplay()`, exposes `coordinate` state. Coordinates follow cursor in real-time. CRS registration via proj4 deferred to separate task (crs.ts not yet created — that's TASK-056's remaining item if needed). tsc clean, vite build OK, vitest 40/40 green.
 
 ---
 

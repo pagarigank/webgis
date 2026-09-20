@@ -22,9 +22,14 @@ use DomainException;
  * rotation and logout.
  *
  * The refresh token is only ever handed to the client as an HttpOnly,
- * SameSite=Strict cookie restricted to /api/v1/auth; it never appears in the
+ * SameSite cookie restricted to /api/v1/auth; it never appears in the
  * JSON payload. Refresh/logout are the only cookie-authenticated endpoints and
  * are therefore CSRF-gated by CsrfMiddleware (api.md §1.3).
+ *
+ * Cookie security flags are environment-aware (ADR-13): in local/dev (HTTP)
+ * the Secure flag is omitted so the browser actually stores the cookie; in
+ * production (HTTPS) Secure is set and SameSite reverts to Strict. The CSRF
+ * cookie follows the same rule so the double-submit pair stays consistent.
  */
 final class AuthController
 {
@@ -221,31 +226,71 @@ final class AuthController
         return rawurldecode($value);
     }
 
+    private function isProduction(): bool
+    {
+        return (\getenv('APP_ENV') ?: 'local') !== 'local';
+    }
+
+    private function cookieSecureFlag(): string
+    {
+        return $this->isProduction() ? '; Secure' : '';
+    }
+
+    private function cookieSameSite(): string
+    {
+        return $this->isProduction() ? 'Strict' : 'Lax';
+    }
+
+    private function cookieFlagString(): string
+    {
+        $parts = ['HttpOnly', $this->cookieSameSite()];
+        if ($this->isProduction()) {
+            $parts[] = 'Secure';
+        }
+        return implode('; ', $parts);
+    }
+
     private function refreshCookieHeader(string $refreshToken): string
     {
         return sprintf(
-            '%s=%s; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=%d',
+            '%s=%s; %s; Path=/api/v1/auth; Max-Age=%d',
             self::REFRESH_COOKIE,
             rawurlencode($refreshToken),
+            $this->cookieFlagString(),
             self::REFRESH_MAX_AGE
         );
     }
 
     private function clearRefreshCookie(): string
     {
-        return self::REFRESH_COOKIE . '=; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=0';
+        return sprintf(
+            '%s=%s; %s; Path=/api/v1/auth; Max-Age=0',
+            self::REFRESH_COOKIE,
+            '',
+            $this->cookieFlagString()
+        );
     }
 
     /** JS-readable half of the double-submit CSRF pair (ADR-23). */
     private function csrfCookieHeader(string $csrfToken): string
     {
-        // Not HttpOnly: the SPA must read it to echo it back in X-CSRF-Token.
-        return self::CSRF_COOKIE . '=' . $csrfToken . '; SameSite=Strict; Path=/; Max-Age=' . self::REFRESH_MAX_AGE;
+        return sprintf(
+            '%s=%s; %s; Path=/; Max-Age=%d',
+            self::CSRF_COOKIE,
+            $csrfToken,
+            $this->cookieFlagString(),
+            self::REFRESH_MAX_AGE
+        );
     }
 
     private function clearCsrfCookie(): string
     {
-        return self::CSRF_COOKIE . '=; SameSite=Strict; Path=/; Max-Age=0';
+        return sprintf(
+            '%s=%s; %s; Path=/; Max-Age=0',
+            self::CSRF_COOKIE,
+            '',
+            $this->cookieFlagString()
+        );
     }
 
     private function newCsrfToken(): string

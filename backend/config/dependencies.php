@@ -101,4 +101,6 @@ return [
     \App\GIS\Domain\MigrationGeneratorService::class => function (ContainerInterface $c) {
         return new \App\GIS\Domain\MigrationGeneratorService(__DIR__ . '/../database/migrations/');
     },
+
+    \App\RBAC\FeatureScopeResolver::class => \DI\autowire(\App\RBAC\FeatureScopeResolver::class),
 ];

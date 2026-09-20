@@ -43,7 +43,7 @@ return function (App $app) {
         // ---- Users (user.manage) ----
         $group->get('/users', \App\Users\Http\UserAdminController::class . ':list')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
-            
+
         // ---- GIS Layers (layer.manage) ----
         $layerAuthed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
         $group->get('/layers', \App\GIS\Http\GisLayerController::class . ':list')
@@ -74,6 +74,22 @@ return function (App $app) {
               ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
         $group->put('/layers/{layer_id:[0-9]+}/styles/{id:[0-9]+}', \App\GIS\Http\GisLayerStyleController::class . ':update')
               ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+
+        // ---- GIS Features (layer.manage) ----
+        $group->get('/layers/{layer_id:[0-9]+}/features', \App\GIS\Http\GisFeatureController::class . ':list')
+              ->add(AuthenticateMiddleware::class);
+        $group->get('/layers/{layer_id:[0-9]+}/features/{id}', \App\GIS\Http\GisFeatureController::class . ':getFeature')
+              ->add(AuthenticateMiddleware::class);
+        $group->post('/layers/{layer_id:[0-9]+}/features', \App\GIS\Http\GisFeatureController::class . ':create')
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+        $group->patch('/layers/{layer_id:[0-9]+}/features/{id}', \App\GIS\Http\GisFeatureController::class . ':update')
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+        $group->delete('/layers/{layer_id:[0-9]+}/features/{id}', \App\GIS\Http\GisFeatureController::class . ':delete')
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+        $group->get('/layers/{layer_id:[0-9]+}/features.geojson', \App\GIS\Http\GisFeatureController::class . ':geojson')
+              ->add(AuthenticateMiddleware::class);
+        $group->get('/layers/{layer_id:[0-9]+}/mvt/{z:\d+}/{x:\d+}/{y:\d+}.mvt', \App\GIS\Http\GisFeatureController::class . ':mvt')
+              ->add(AuthenticateMiddleware::class);
 
         $group->post('/users', \App\Users\Http\UserAdminController::class . ':create')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);

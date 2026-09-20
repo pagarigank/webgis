@@ -1,3 +1,4 @@
-**TASK-053 — GeoJSON feature source with bbox loading**
-Dep: 049, 054 · Files: `frontend/src/features/map/` · Status: TODO
-Entry Criteria: TASK-052 DONE (layer panel working: drag reorder, visibility, opacity, legend, zoom-to).
+**TASK-057 — Feature create/update/delete API with concurrency**
+Dep: 054, 021 · Files: `backend/src/GIS/` · Status: TODO
+Entry Criteria: TASK-053 DONE (GeoJSON source + draw tools), TASK-054 DONE (feature query API), TASK-055 DONE (MVT endpoint), TASK-056 DONE (coordinate readout).
+Note: GisFeatureController already implements create/update/delete with ST_IsValid validation and version bumping. The remaining work for TASK-057 is: If-Match concurrency control on update (currently missing — update locks row with FOR UPDATE but doesn't check client version), ST_IsSimple validation, attribute validation via AttributeValidator, audit row writing via AuditWriter, and the closed error codes VERSION_CONFLICT / GEOMETRY_INVALID / GEOMETRY_SIMPLE. Frontend draw-and-save round-trip (TASK-058) depends on this. Backend tests needed: Api/FeatureCrudTest, Api/ConcurrencyTest.
