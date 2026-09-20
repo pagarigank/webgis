@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { UsersManager } from './UsersManager';
 import { RolesManager } from './RolesManager';
 import { OrganizationsManager } from './OrganizationsManager';
+import { BasemapsManager } from './BasemapsManager';
 
 import { LayerListPage } from '../layers/pages/LayerListPage';
 import { LayerDesignerPage } from '../layers/pages/LayerDesignerPage';
@@ -24,6 +25,9 @@ export function AdminView() {
         {hasPermission(me, 'gis.layer.create') && (
           <NavLink to="/admin/layers" className={({ isActive }) => `tab-item ${isActive ? 'active' : ''}`}>GIS Layers</NavLink>
         )}
+        {hasPermission(me, 'basemap.manage') && (
+          <NavLink to="/admin/basemaps" className={({ isActive }) => `tab-item ${isActive ? 'active' : ''}`}>Basemaps</NavLink>
+        )}
       </nav>
 
       <Routes>
@@ -33,6 +37,7 @@ export function AdminView() {
         <Route path="organizations" element={<OrganizationsManager />} />
         <Route path="layers" element={<LayerListPage />} />
         <Route path="layers/:id" element={<LayerDesignerPage />} />
+        <Route path="basemaps" element={<BasemapsManager />} />
       </Routes>
     </div>
   );

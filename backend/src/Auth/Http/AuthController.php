@@ -240,12 +240,12 @@ final class AuthController
     private function csrfCookieHeader(string $csrfToken): string
     {
         // Not HttpOnly: the SPA must read it to echo it back in X-CSRF-Token.
-        return self::CSRF_COOKIE . '=' . $csrfToken . '; SameSite=Strict; Path=/api/v1/auth; Max-Age=' . self::REFRESH_MAX_AGE;
+        return self::CSRF_COOKIE . '=' . $csrfToken . '; SameSite=Strict; Path=/; Max-Age=' . self::REFRESH_MAX_AGE;
     }
 
     private function clearCsrfCookie(): string
     {
-        return self::CSRF_COOKIE . '=; SameSite=Strict; Path=/api/v1/auth; Max-Age=0';
+        return self::CSRF_COOKIE . '=; SameSite=Strict; Path=/; Max-Age=0';
     }
 
     private function newCsrfToken(): string

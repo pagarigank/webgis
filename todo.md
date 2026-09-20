@@ -364,7 +364,7 @@ AC: an administrator creates a layer with five field types and a categorized sty
 Test: Playwright layer-creation flow.
 
 **TASK-048 — `FieldRenderer` and runtime Zod schema generation**
-Dep: 042, 010 · Files: `frontend/src/components/forms/` · Status: TODO
+Dep: 042, 010 · Files: `frontend/src/components/forms/` · Status: DONE
 Do: one component per field type; schema generated from metadata; permission- and PII-aware rendering.
 AC: client rules mirror server rules; PII fields the user cannot see are absent from the payload, not hidden.
 Test: Component/FieldRendererTest (every type), Unit/zodFromFieldMetaTest.
@@ -374,25 +374,25 @@ Test: Component/FieldRendererTest (every type), Unit/zodFromFieldMetaTest.
 ## PHASE 5 — Map rendering
 
 **TASK-049 — Map shell and `MapContext`**
-Dep: 010 · Files: `frontend/src/features/map/` · Status: TODO
+Dep: 010 · Files: `frontend/src/features/map/` · Status: DONE
 Do: single `ol/Map` instance, `layerManager`, `interactionMgr`, `selectionMgr`, `styleFactory`, `previewLayer`; map never unmounts inside the workspace.
 AC: route changes within the workspace preserve view state and tile cache.
 Test: Map harness tests for layer reconciliation and instance stability.
 
 **TASK-050 — Basemap provider API and manager UI**
-Dep: 020, 030 · Files: `backend/src/GIS/Basemaps/`, `frontend/src/features/admin/` · Status: TODO
+Dep: 020, 030 · Files: `backend/src/GIS/Basemaps/`, `frontend/src/features/admin/` · Status: DONE
 Do: provider CRUD with licence fields, `GET /basemaps` (no keys), admin UI, connectivity test.
 AC: an unlicensed or expired provider cannot be enabled (`LICENSE_RESTRICTED`); no key is ever returned or rendered.
 Test: Api/BasemapLicenseTest, Playwright basemap admin.
 
 **TASK-051 — Authenticated tile proxy for key-bearing providers**
-Dep: 050 · Files: `backend/src/GIS/Basemaps/` · Status: TODO
+Dep: 050 · Files: `backend/src/GIS/Basemaps/` · Status: DONE
 Do: server-side proxy injecting the key from env, enforcing role restrictions, rate limits, and licence-conditional caching (default off).
 AC: the key never appears in a browser request or a log; role restriction enforced; caching off unless the licence permits it.
 Test: Api/TileProxyTest.
 
 **TASK-052 — Layer panel, legend, visibility, opacity, ordering**
-Dep: 049, 041 · Files: `frontend/src/features/layers/` · Status: TODO
+Dep: 049, 041 · Files: `frontend/src/features/layers/` · Status: DONE
 Do: layer tree with groups, drag reorder, opacity, zoom-to-layer, legend from style metadata, layer metadata popover.
 AC: reordering and visibility persist per user; legend matches the server style.
 Test: Component/LayerTreeTest, Playwright layer panel.

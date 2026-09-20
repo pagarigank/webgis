@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../lib/apiClient';
-import { hasRefreshCookie, tokenStore } from './tokenStore';
+import { tokenStore } from './tokenStore';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 import type { AuthStatus, MePayload } from './types';

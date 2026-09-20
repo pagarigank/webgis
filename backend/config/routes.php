@@ -25,6 +25,21 @@ return function (App $app) {
         $container = $app->getContainer();
         $authed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
 
+        // ---- Basemaps ----
+        $group->get('/basemaps', \App\GIS\Http\BasemapProviderController::class . ':listPublic')
+            ->add(AuthenticateMiddleware::class);
+        $group->get('/basemaps/{id:[0-9]+}/tiles/{z}/{x}/{y}', \App\GIS\Http\TileProxyController::class . ':proxy')
+            ->add(\App\Core\Http\Middleware\RateLimitMiddleware::class)
+            ->add(AuthenticateMiddleware::class);
+        $group->get('/admin/basemaps', \App\GIS\Http\BasemapProviderController::class . ':listAdmin')
+            ->add($authed('basemap.manage'))->add(AuthenticateMiddleware::class);
+        $group->post('/admin/basemaps', \App\GIS\Http\BasemapProviderController::class . ':create')
+            ->add($authed('basemap.manage'))->add(AuthenticateMiddleware::class);
+        $group->put('/admin/basemaps/{id:[0-9]+}', \App\GIS\Http\BasemapProviderController::class . ':update')
+            ->add($authed('basemap.manage'))->add(AuthenticateMiddleware::class);
+        $group->delete('/admin/basemaps/{id:[0-9]+}', \App\GIS\Http\BasemapProviderController::class . ':delete')
+            ->add($authed('basemap.manage'))->add(AuthenticateMiddleware::class);
+
         // ---- Users (user.manage) ----
         $group->get('/users', \App\Users\Http\UserAdminController::class . ':list')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);

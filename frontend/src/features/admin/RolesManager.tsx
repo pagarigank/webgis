@@ -8,7 +8,7 @@ export function RolesManager() {
   const queryClient = useQueryClient();
   const { data: roles, isLoading } = useQuery({
     queryKey: ['admin_roles'],
-    queryFn: () => apiClient.get('/roles').then(res => res.data.data)
+    queryFn: () => apiClient.get('/roles').then((res: any) => res)
   });
 
   const [isCreating, setIsCreating] = useState(false);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/useAuth';
 import { RequireAuth, RequirePermission } from './auth/guards';
 import { hasPermission } from './auth/permissions';
@@ -9,14 +9,13 @@ import ForbiddenPage from './pages/ForbiddenPage';
 import HealthView from './pages/HealthView';
 import { AdminView } from './features/admin/AdminView';
 import { AuditLogView } from './features/audit/AuditLogView';
-import { MapView } from './features/map/MapView';
+import { MapShell } from './features/map/MapShell';
+import { LayerTree } from './features/layers/LayerTree';
 
 const HomePage: React.FC = () => {
-  const { me: _me } = useAuth();
-
   return (
-    <div style={{ height: 'calc(100vh - 60px)', width: '100%', margin: 0, padding: 0 }}>
-      <MapView />
+    <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 1000, width: 300, pointerEvents: 'auto' }}>
+      <LayerTree />
     </div>
   );
 };
@@ -27,7 +26,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="app-container">
-      <header className="app-header">
+      <header className="app-header" style={{ pointerEvents: 'auto' }}>
         <div>
           <h2 style={{ margin: 0 }}>WebGIS</h2>
         </div>
@@ -42,7 +41,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Link to="/status" className={location.pathname === '/status' ? 'active' : ''}>System Status</Link>
         </nav>
       </header>
-      <main className="app-main" style={location.pathname === '/' ? { padding: 0, maxWidth: '100%' } : {}}>
+      <main className="app-main" style={
+        location.pathname === '/' 
+          ? { padding: 0, maxWidth: '100%', pointerEvents: 'none' } 
+          : { backgroundColor: '#fff', pointerEvents: 'auto', minHeight: 'calc(100vh - 60px)' }
+      }>
         {children}
       </main>
     </div>
@@ -51,8 +54,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 function App() {
   return (
-    <Layout>
-      <Routes>
+    <MapShell>
+      <Layout>
+        <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/chpass"
@@ -81,16 +85,16 @@ function App() {
           }
         />
         <Route
-          path="/"
+          path="/*"
           element={
             <RequireAuth>
               <HomePage />
             </RequireAuth>
           }
         />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Layout>
+        </Routes>
+      </Layout>
+    </MapShell>
   );
 }
 

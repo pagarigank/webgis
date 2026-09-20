@@ -6,12 +6,12 @@ export function UsersManager() {
   const queryClient = useQueryClient();
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin_users'],
-    queryFn: () => apiClient.get('/users').then(res => res.data.data)
+    queryFn: () => apiClient.get('/users').then((res: any) => res?.data || res || [])
   });
 
   const { data: roles } = useQuery({
     queryKey: ['admin_roles'],
-    queryFn: () => apiClient.get('/roles').then(res => res.data.data)
+    queryFn: () => apiClient.get('/roles').then((res: any) => res)
   });
 
   const [selectedUser, setSelectedUser] = useState<any>(null);

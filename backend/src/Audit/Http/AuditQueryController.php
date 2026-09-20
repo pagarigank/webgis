@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Audit\Http;
 
-use App\Core\Http\Envelope;
+use App\Core\Http\Response\Envelope;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
