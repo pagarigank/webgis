@@ -44,8 +44,8 @@ export function PermissionGate({
   }
 
   // mode === 'disable'
-  return React.cloneElement(children, {
-    
+  return React.cloneElement(children as ReactElement<any>, {
+    disabled: true,
     title: 'You do not have permission to perform this action.',
     'aria-disabled': true,
   });

@@ -68,7 +68,7 @@ export function RolesManager() {
       <div>
         {isCreating && (
           <RoleForm 
-            onSave={(data) => createRole.mutate(data)} 
+            onSave={(data: any) => createRole.mutate(data)} 
             isSaving={createRole.isPending} 
             onCancel={() => setIsCreating(false)} 
           />
@@ -77,7 +77,7 @@ export function RolesManager() {
           <div>
             <RoleForm 
               role={selectedRole}
-              onSave={(data) => updateRole.mutate({ id: selectedRole.id, payload: data })}
+              onSave={(data: any) => updateRole.mutate({ id: selectedRole.id, payload: data })}
               isSaving={updateRole.isPending}
             />
             <hr style={{ margin: '2rem 0', borderColor: 'var(--border-color)' }} />

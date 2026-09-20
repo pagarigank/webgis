@@ -15,7 +15,7 @@ vi.mock('../../auth/useAuth', () => ({
 
 describe('PermissionGate', () => {
   const mockMe = (permissions: string[]): MePayload => ({
-    user: { id: 1, username: 'test', full_name: 'Test' },
+    user: { id: 1, username: 'test', full_name: 'Test', must_change_password: false },
     roles: [],
     permissions,
     layer_capabilities: {},
