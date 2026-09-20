@@ -11,7 +11,7 @@ export interface DrawManagerOptions {
 }
 
 export interface DrawError {
-    type: 'geometry_invalid' | 'geometry_not_simple' | 'version_conflict' | 'network' | 'validation';
+    type: 'geometry_invalid' | 'geometry_not_simple' | 'version_conflict' | 'network' | 'validation' | 'no_undo' | 'no_redo';
     message: string;
     detail?: unknown;
 }
@@ -23,6 +23,8 @@ export class DrawManager {
     private currentLayerId: number | null = null;
     private currentFeatureId: string | null = null;
     private pendingFeatures: FeatureCollection | null = null;
+    private undoStack: GeoJSON.Feature[] = [];
+    private redoStack: GeoJSON.Feature[] = [];
 
     constructor(options: DrawManagerOptions) {
         this.map = options.map;
@@ -76,7 +78,15 @@ export class DrawManager {
         this.draw.on('draw.delete', () => this.onDrawChange());
     }
 
-    private onDrawChange() {
+    private onDrawChange(isUndoRedo = false) {
+        if (!isUndoRedo) {
+            // Capture current state before mutation for undo
+            const before = this.getDrawnFeatures();
+            if (before.features.length > 0) {
+                this.undoStack.push(before.features[0]);
+                this.redoStack = []; // clear redo on new action
+            }
+        }
         const features = this.getDrawnFeatures();
         if (features.features.length > 0) {
             this.pendingFeatures = features;
@@ -165,6 +175,54 @@ export class DrawManager {
         if (this.draw) {
             this.map.removeControl(this.draw);
         }
+    }
+
+    // ── undo / redo (TASK-059) ─────────────────────────────────────────────────
+
+    canUndo(): boolean {
+        return this.undoStack.length > 0;
+    }
+
+    canRedo(): boolean {
+        return this.redoStack.length > 0;
+    }
+
+    /** Restore the previous drawn-feature state (pop from undo stack). */
+    async undo(): Promise<Feature | null> {
+        if (!this.canUndo()) {
+            this.options.onError?.({ type: 'no_undo', message: 'Nothing to undo' });
+            return null;
+        }
+        const previous = this.undoStack.pop()!;
+        this.redoStack.push(this.getFirstFeature() ?? { ...previous, id: '' });
+        await this.applyFeatureToDraw(previous);
+        this.options.onSave?.(previous);
+        return previous;
+    }
+
+    /** Re-apply a previously undone state (pop from redo stack). */
+    async redo(): Promise<Feature | null> {
+        if (!this.canRedo()) {
+            this.options.onError?.({ type: 'no_redo', message: 'Nothing to redo' });
+            return null;
+        }
+        const next = this.redoStack.pop()!;
+        this.undoStack.push(this.getFirstFeature() ?? { ...next, id: '' });
+        await this.applyFeatureToDraw(next);
+        this.options.onSave?.(next);
+        return next;
+    }
+
+    /**
+     * Replace the current drawn features with a single feature.
+     * Used by undo/redo to restore a known geometry.
+     */
+    private async applyFeatureToDraw(feature: GeoJSON.Feature): Promise<void> {
+        if (!this.draw) return;
+        this.draw.deleteAll();
+        // MapboxDraw needs a GeoJSON Feature with id for proper tracking
+        const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [feature] };
+        this.draw.add(fc);
     }
 
     private mapErrorToDrawError(err: any): DrawError {

@@ -17,6 +17,11 @@ export interface MapContextState {
     drawMode: DrawMode;
     setDrawMode: (mode: DrawMode) => void;
     clearDraw: () => void;
+    undo: () => Promise<void>;
+    redo: () => Promise<void>;
+    canUndo: () => boolean;
+    canRedo: () => boolean;
+    hasUnsavedChanges: () => boolean;
     onError: (error: DrawError) => void;
     coordinate: string;
     loadLayerFeatures: (layerId: number, sourceLayerId: string, bbox?: [number, number, number, number], status?: string) => Promise<GeoJSON.FeatureCollection>;
@@ -34,6 +39,7 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const [drawnFeatures, setDrawnFeatures] = useState<GeoJSON.FeatureCollection>({ type: 'FeatureCollection', features: [] });
     const [savedFeatureCallback, setSavedFeatureCallback] = useState<((feature: GeoJSON.Feature) => void) | null>(null);
     const [coordinate, setCoordinate] = useState<string>('');
+    const [hasPendingEdits, setHasPendingEdits] = useState(false);
     const layerManagerRef = useRef<LayerManager | null>(null);
     const drawChangeListenerRef = useRef<(() => void) | null>(null);
 
@@ -94,21 +100,41 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         drawChangeListenerRef.current = unsubscribe;
 
         // Coordinate update on mousemove (handled by InteractionManager)
-        const coordUpdate = () => {
-            if (instance && map.getContainer()) {
-                // Read coordinate from the injected div
-                const el = document.getElementById('coordinate-display') as HTMLElement | null;
-                if (el) setCoordinate(el.textContent || '');
-            }
-        };
-        instance.on('mousemove', coordUpdate);
+            const coordUpdate = () => {
+                if (instance && map.getContainer()) {
+                    // Read coordinate from the injected div
+                    const el = document.getElementById('coordinate-display') as HTMLElement | null;
+                    if (el) setCoordinate(el.textContent || '');
+                }
+            };
+            instance.on('mousemove', coordUpdate);
 
-        return () => {
-            unsubscribe();
-            if (drawChangeListenerRef.current) drawChangeListenerRef.current();
-            coordDiv.remove();
-        };
-    }, [map, isLoaded]);
+            // ── Keyboard shortcuts for undo/redo (TASK-059) ─────────────────────
+            const handleKeyDown = (e: KeyboardEvent) => {
+                // Ignore when typing in an input
+                if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+                if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                        drawManagerRef.current?.redo().then(() => setHasPendingEdits(false));
+                    } else {
+                        drawManagerRef.current?.undo().then(() => setHasPendingEdits(false));
+                    }
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+                    e.preventDefault();
+                    drawManagerRef.current?.redo().then(() => setHasPendingEdits(false));
+                }
+            };
+            window.addEventListener('keydown', handleKeyDown);
+
+            return () => {
+                unsubscribe();
+                if (drawChangeListenerRef.current) drawChangeListenerRef.current();
+                coordDiv.remove();
+                window.removeEventListener('keydown', handleKeyDown);
+            };
+        }, [map, isLoaded]);
 
     // Draw mode setter
     const handleSetDrawMode = useCallback((mode: DrawMode) => {
@@ -129,6 +155,7 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (drawManagerRef.current) {
             drawManagerRef.current.clearDraw();
         }
+        setHasPendingEdits(false);
     }, []);
 
     const handleLoadLayerFeatures = useCallback(async (
@@ -150,19 +177,24 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, [map, isLoaded]);
 
     return (
-        <MapContext.Provider value={{
-            map,
-            isLoaded,
-            layerManager: managers.layerManager,
-            interactionMgr: managers.interactionMgr,
-            drawManager,
-            drawMode,
-            setDrawMode: handleSetDrawMode,
-            clearDraw: handleClearDraw,
-            onError: (error) => { if (onError) onError(error); },
-            coordinate,
-            loadLayerFeatures: handleLoadLayerFeatures,
-        }}>
+            <MapContext.Provider value={{
+                map,
+                isLoaded,
+                layerManager: managers.layerManager,
+                interactionMgr: managers.interactionMgr,
+                drawManager,
+                drawMode,
+                setDrawMode: handleSetDrawMode,
+                clearDraw: handleClearDraw,
+                undo: async () => { drawManagerRef.current?.undo().then(() => setHasPendingEdits(false)); },
+                redo: async () => { drawManagerRef.current?.redo().then(() => setHasPendingEdits(false)); },
+                canUndo: () => drawManagerRef.current?.canUndo() ?? false,
+                canRedo: () => drawManagerRef.current?.canRedo() ?? false,
+                hasUnsavedChanges: () => hasPendingEdits,
+                onError: (error) => { if (onError) onError(error); },
+                coordinate,
+                loadLayerFeatures: handleLoadLayerFeatures,
+            }}>
             <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
                 <div ref={mapContainerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
                 <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
