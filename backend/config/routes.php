@@ -34,31 +34,31 @@ return function (App $app) {
         $group->get('/layers', \App\GIS\Http\GisLayerController::class . ':list')
             ->add(AuthenticateMiddleware::class);
         $group->post('/layers', \App\GIS\Http\GisLayerController::class . ':create')
-            ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+            ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
         $group->put('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':update')
-            ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+            ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
         $group->delete('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':delete')
-            ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+            ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
 
         // ---- GIS Layer Fields ----
         $group->get('/layers/{layer_id:[0-9]+}/fields', \App\GIS\Http\GisLayerFieldController::class . ':list')
             ->add(AuthenticateMiddleware::class);
         $group->post('/layers/{layer_id:[0-9]+}/fields', \App\GIS\Http\GisLayerFieldController::class . ':create')
-              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
         $group->put('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}', \App\GIS\Http\GisLayerFieldController::class . ':update')
-              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
         $group->post('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}/retype-preview', \App\GIS\Http\GisLayerFieldController::class . ':retypePreview')
-              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
         $group->delete('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}', \App\GIS\Http\GisLayerFieldController::class . ':delete')
-              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
 
         // ---- GIS Layer Styles ----
         $group->get('/layers/{layer_id:[0-9]+}/styles', \App\GIS\Http\GisLayerStyleController::class . ':list')
               ->add(AuthenticateMiddleware::class);
         $group->post('/layers/{layer_id:[0-9]+}/styles', \App\GIS\Http\GisLayerStyleController::class . ':create')
-              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
         $group->put('/layers/{layer_id:[0-9]+}/styles/{id:[0-9]+}', \App\GIS\Http\GisLayerStyleController::class . ':update')
-              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
 
         $group->post('/users', \App\Users\Http\UserAdminController::class . ':create')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);

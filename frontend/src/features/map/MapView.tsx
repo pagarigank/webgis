@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import * as MapboxDraw from '@mapbox/mapbox-gl-draw';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -39,9 +39,9 @@ export function MapView() {
       }
     };
 
-    map.current.on('draw.create', updateGeometry);
-    map.current.on('draw.delete', updateGeometry);
-    map.current.on('draw.update', updateGeometry);
+    map.current.on('draw.create' as any, updateGeometry);
+    map.current.on('draw.delete' as any, updateGeometry);
+    map.current.on('draw.update' as any, updateGeometry);
 
     return () => {
       if (map.current) {

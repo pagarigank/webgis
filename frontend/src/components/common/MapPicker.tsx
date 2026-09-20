@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
@@ -59,9 +59,9 @@ export function MapPicker({ initialGeoJson, onChange, height = '400px' }: MapPic
       }
     };
 
-    map.current.on('draw.create', updateGeometry);
-    map.current.on('draw.delete', updateGeometry);
-    map.current.on('draw.update', updateGeometry);
+    map.current.on('draw.create' as any, updateGeometry);
+    map.current.on('draw.delete' as any, updateGeometry);
+    map.current.on('draw.update' as any, updateGeometry);
 
     return () => {
       if (map.current) {

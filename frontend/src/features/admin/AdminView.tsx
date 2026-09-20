@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+
 import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { UsersManager } from './UsersManager';
 import { RolesManager } from './RolesManager';
 import { OrganizationsManager } from './OrganizationsManager';
-import { GISManager } from './GISManager';
+
+import { LayerListPage } from '../layers/pages/LayerListPage';
+import { LayerDesignerPage } from '../layers/pages/LayerDesignerPage';
 import { useAuth } from '../../auth/useAuth';
 import { hasPermission } from '../../auth/permissions';
 
@@ -19,7 +21,7 @@ export function AdminView() {
           <NavLink to="roles" className={({ isActive }) => `tab-item ${isActive ? 'active' : ''}`}>Roles</NavLink>
         )}
         <NavLink to="organizations" className={({ isActive }) => `tab-item ${isActive ? 'active' : ''}`}>Organizations</NavLink>
-        {hasPermission(me, 'layer.manage') && (
+        {hasPermission(me, 'gis.layer.create') && (
           <NavLink to="layers" className={({ isActive }) => `tab-item ${isActive ? 'active' : ''}`}>GIS Layers</NavLink>
         )}
       </nav>
@@ -29,7 +31,8 @@ export function AdminView() {
         <Route path="users" element={<UsersManager />} />
         <Route path="roles" element={<RolesManager />} />
         <Route path="organizations" element={<OrganizationsManager />} />
-        <Route path="layers" element={<GISManager />} />
+        <Route path="layers" element={<LayerListPage />} />
+        <Route path="layers/:id" element={<LayerDesignerPage />} />
       </Routes>
     </div>
   );

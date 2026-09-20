@@ -12,6 +12,7 @@ export function RolesManager() {
   });
 
   const [isCreating, setIsCreating] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<any>(null);
 
   const createRole = useMutation({
     mutationFn: (data: any) => apiClient.post('/roles', data),
