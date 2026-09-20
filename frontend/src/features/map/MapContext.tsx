@@ -22,27 +22,8 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (mapContainerRef.current && !map) {
             const instance = new maplibregl.Map({
                 container: mapContainerRef.current,
-                style: {
-                    version: 8,
-                    sources: {
-                        'osm': {
-                            type: 'raster',
-                            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-                            tileSize: 256,
-                            attribution: '&copy; OpenStreetMap Contributors'
-                        }
-                    },
-                    layers: [
-                        {
-                            id: 'osm-layer',
-                            type: 'raster',
-                            source: 'osm',
-                            minzoom: 0,
-                            maxzoom: 19
-                        }
-                    ]
-                },
-                center: [121, 14.5], // default to Manila, PH approx
+                style: 'https://demotiles.maplibre.org/style.json',
+                center: [121, 14.5],
                 zoom: 5
             });
 

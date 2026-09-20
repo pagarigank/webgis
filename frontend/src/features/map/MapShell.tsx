@@ -12,7 +12,7 @@ const BasemapLoader: React.FC = () => {
 
     useEffect(() => {
         if (status !== 'authenticated') return;
-        
+
         apiClient.get('/basemaps')
             .then((res: any) => setProviders(res))
             .catch((err: any) => console.error('Failed to load basemaps', err));
@@ -25,59 +25,46 @@ const BasemapLoader: React.FC = () => {
         const defaultProvider = providers.find(p => p.is_default) || providers[0];
         if (!defaultProvider) return;
 
-        // If it's an XYZ provider, update the style
-        if (defaultProvider.provider_type === 'XYZ' && defaultProvider.url_template) {
-            const tilesUrl = (defaultProvider.requires_api_key || defaultProvider.proxy_required)
-                ? `/api/v1/basemaps/${defaultProvider.id}/tiles/{z}/{x}/{y}`
-                : defaultProvider.url_template;
+        const providerType = defaultProvider.provider_type;
+        const tilesUrl = (defaultProvider.requires_api_key || defaultProvider.proxy_required)
+            ? `/api/v1/basemaps/${defaultProvider.id}/tiles/{z}/{x}/{y}`
+            : defaultProvider.url_template;
 
-            // Check if source already exists
+        // ---- XYZ raster tiles: update only the source URL, never call setStyle() ----
+        if (providerType === 'XYZ' && tilesUrl) {
             if (map.getSource('basemap')) {
-                // To replace a source in MapLibre, you often have to remove layers, then source, then add back.
-                // For simplicity, we just set the style.
-                map.setStyle({
-                    version: 8,
-                    sources: {
-                        'basemap': {
-                            type: 'raster',
-                            tiles: [tilesUrl],
-                            tileSize: 256,
-                            attribution: defaultProvider.attribution_html
-                        }
-                    },
-                    layers: [
-                        {
-                            id: 'basemap-layer',
-                            type: 'raster',
-                            source: 'basemap',
-                            minzoom: defaultProvider.min_zoom ?? 0,
-                            maxzoom: defaultProvider.max_zoom ?? 19
-                        }
-                    ]
-                });
+                //@ts-expect-error — maplibre-gl types aren't in this project's tsconfig yet
+                map.getSource('basemap').setTiles([tilesUrl]);
             } else {
-                map.setStyle({
-                    version: 8,
-                    sources: {
-                        'basemap': {
-                            type: 'raster',
-                            tiles: [tilesUrl],
-                            tileSize: 256,
-                            attribution: defaultProvider.attribution_html
-                        }
-                    },
-                    layers: [
-                        {
-                            id: 'basemap-layer',
-                            type: 'raster',
-                            source: 'basemap',
-                            minzoom: defaultProvider.min_zoom ?? 0,
-                            maxzoom: defaultProvider.max_zoom ?? 19
-                        }
-                    ]
+                map.addSource('basemap', {
+                    type: 'raster',
+                    tiles: [tilesUrl],
+                    tileSize: 256,
+                    attribution: defaultProvider.attribution_html ?? ''
+                });
+                if (map.getLayer('basemap-layer')) {
+                    map.removeLayer('basemap-layer');
+                }
+                map.addLayer({
+                    id: 'basemap-layer',
+                    type: 'raster',
+                    source: 'basemap',
+                    minzoom: defaultProvider.min_zoom ?? 0,
+                    maxzoom: defaultProvider.max_zoom ?? 19
                 });
             }
+            return;
         }
+
+        // ---- Non-XYZ types are not yet implemented in the frontend renderer ----
+        // Log so the mismatch between what the admin form allows and what the
+        // map can render is visible during development.
+        console.warn(
+            `[BasemapLoader] Provider "${defaultProvider.name}" uses unsupported ` +
+            `provider_type "${providerType}". Only XYZ tiles are rendered client-side ` +
+            `right now. The provider row is stored and listed correctly, but the map ` +
+            `keeps its current style.`
+        );
     }, [map, isLoaded, providers]);
 
     return null;

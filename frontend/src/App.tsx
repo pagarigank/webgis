@@ -10,19 +10,15 @@ import HealthView from './pages/HealthView';
 import { AdminView } from './features/admin/AdminView';
 import { AuditLogView } from './features/audit/AuditLogView';
 import { MapShell } from './features/map/MapShell';
-import { LayerTree } from './features/layers/LayerTree';
-
-const HomePage: React.FC = () => {
-  return (
-    <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 1000, width: 300, pointerEvents: 'auto' }}>
-      <LayerTree />
-    </div>
-  );
-};
+import { HomePage } from './pages/HomePage';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { me: _me } = useAuth();
   const location = useLocation();
+
+  const mainStyle: React.CSSProperties = location.pathname === '/'
+    ? { padding: 0, maxWidth: '100%', pointerEvents: 'none' as const }
+    : { backgroundColor: '#fff', pointerEvents: 'auto' as const, minHeight: 'calc(100vh - 60px)' };
 
   return (
     <div className="app-container">
@@ -41,11 +37,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Link to="/status" className={location.pathname === '/status' ? 'active' : ''}>System Status</Link>
         </nav>
       </header>
-      <main className="app-main" style={
-        location.pathname === '/' 
-          ? { padding: 0, maxWidth: '100%', pointerEvents: 'none' } 
-          : { backgroundColor: '#fff', pointerEvents: 'auto', minHeight: 'calc(100vh - 60px)' }
-      }>
+      <main className="app-main" style={mainStyle}>
         {children}
       </main>
     </div>
@@ -54,9 +46,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 function App() {
   return (
-    <MapShell>
-      <Layout>
-        <Routes>
+    <Layout>
+      <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/chpass"
@@ -85,6 +76,16 @@ function App() {
           }
         />
         <Route
+          path="/map"
+          element={
+            <RequireAuth>
+              <MapShell>
+                <HomePage />
+              </MapShell>
+            </RequireAuth>
+          }
+        />
+        <Route
           path="/*"
           element={
             <RequireAuth>
@@ -92,9 +93,8 @@ function App() {
             </RequireAuth>
           }
         />
-        </Routes>
-      </Layout>
-    </MapShell>
+      </Routes>
+    </Layout>
   );
 }
 

@@ -10,8 +10,19 @@ export interface Layer {
     render_mode: 'geojson' | 'mvt';
     extent?: string;
     feature_count_cache?: number;
+    status?: string;
+    is_system?: boolean;
+    is_snap_target?: boolean;
+    render_mode_extra?: any;
+    label_field?: string;
+    visible_default?: boolean;
+    opacity_default?: number;
+    source_config?: any;
+    created_by?: number;
+    updated_by?: number;
     created_at?: string;
     updated_at?: string;
+    version?: number;
 }
 
 export interface LayerField {

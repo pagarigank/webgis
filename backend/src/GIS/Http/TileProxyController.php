@@ -12,111 +12,113 @@ use Slim\Psr7\Stream;
 
 class TileProxyController
 {
-    private PDO ;
+    private PDO $pdo;
 
-    public function __construct(PDO )
+    public function __construct(PDO $pdo)
     {
-        ->pdo = ;
+        $this->pdo = $pdo;
     }
 
-    public function proxy(Request , Response , array ): Response
+    public function proxy(Request $request, Response $response, array $args): Response
     {
-         = (int) ['id'];
-         = ['z'];
-         = ['x'];
-         = ['y'];
+        $id = (int) $args['id'];
+        $z   = (int) $args['z'];
+        $x   = (int) $args['x'];
+        $y   = (int) $args['y'];
 
         // Retrieve provider details
-         = ->pdo->prepare("SELECT * FROM app.basemap_providers WHERE id = :id");
-        ->execute([':id' => ]);
-         = ->fetch(PDO::FETCH_ASSOC);
+        $stmt = $this->pdo->prepare("SELECT * FROM app.basemap_providers WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        $provider = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!) {
+        if (!$provider) {
             throw new ApiError('NOT_FOUND', 'Basemap provider not found.', 404);
         }
 
-        if (!['is_enabled']) {
+        if (!$provider['is_enabled']) {
             throw new ApiError('FORBIDDEN', 'Basemap provider is disabled.', 403);
         }
 
-        if (['license_type'] === 'UNLICENSED') {
+        if ($provider['license_type'] === 'UNLICENSED') {
             throw new ApiError('FORBIDDEN', 'Basemap provider is unlicensed.', 403);
         }
 
-        if (!empty(['license_expires_on'])) {
-             = new DateTimeImmutable(['license_expires_on']);
-             = new DateTimeImmutable();
-            if ( < ) {
+        if (!empty($provider['license_expires_on'])) {
+            $expiresOn = new DateTimeImmutable($provider['license_expires_on']);
+            $now       = new DateTimeImmutable();
+            if ($expiresOn < $now) {
                 throw new ApiError('FORBIDDEN', 'Basemap provider license has expired.', 403);
             }
         }
 
-        // Construct target URL
-         = ['url_template'];
-        
+        // Construct target URL from the provider's template
+        $url = $provider['url_template'];
+
         // Inject API Key if required
-        if (['requires_api_key']) {
-             = ['api_key_env_name'];
-             = getenv() ?: [] ?? null;
-            if (!) {
+        if ($provider['requires_api_key']) {
+            $envName = $provider['api_key_env_name'];
+            $apiKey  = getenv($envName) ?: ($_ENV[$envName] ?? null);
+            if (!$apiKey) {
                 throw new ApiError('INTERNAL_ERROR', 'API key not configured for provider.', 500);
             }
-             = str_replace('{key}', , );
+            $url = str_replace('{key}', $apiKey, $url);
         }
 
-        // Replace XYZ
-         = str_replace(['{z}', '{x}', '{y}'], [, , ], );
+        // Replace XYZ tile coordinates in the upstream URL template
+        $url = str_replace(['{z}', '{x}', '{y}'], [$z, $x, $y], $url);
 
-        // Fetch image
-        // Suppress warnings from file_get_contents to handle 404s gracefully
-         = stream_context_create([
+        // Fetch the tile from the upstream provider
+        $context = stream_context_create([
             'http' => [
-                'timeout' => 5, // 5 seconds timeout
-                'header' => 'User-Agent: WebGIS-TileProxy/1.0\r\n'
-            ]
+                'timeout' => 5,
+                'header' => "User-Agent: WebGIS-TileProxy/1.0\r\n",
+            ],
         ]);
-        
-         = @file_get_contents(, false, );
-        
-        if ( === false) {
-            // Check headers to see if it was a 404 or something else
-             = [0] ?? '';
-            if (strpos(, '404') !== false) {
-                // Return a transparent 1x1 png or 404
-                 = ->withStatus(404);
-                return ;
+
+        $image = @file_get_contents($url, false, $context);
+
+        if ($image === false) {
+            $headers = $http_response_header ?? [];
+            $status  = $headers[0] ?? '';
+            if (strpos($status, '404') !== false) {
+                $response = $response->withStatus(404);
+                return $response;
             }
             throw new ApiError('BAD_GATEWAY', 'Failed to fetch tile from upstream provider.', 502);
         }
 
-        // Determine content type from headers
-         = 'image/png'; // default
-        if (!empty()) {
-            foreach ( as ) {
-                if (stripos(, 'Content-Type:') === 0) {
-                     = trim(substr(, 13));
+        // Determine content type from response headers
+        $contentType = 'image/png'; // default
+        if (!empty($http_response_header)) {
+            foreach ($http_response_header as $header) {
+                if (stripos($header, 'Content-Type:') === 0) {
+                    $contentType = trim(substr($header, 13));
                     break;
                 }
             }
         }
 
-        // Write to stream
-         = fopen('php://temp', 'r+');
-        fwrite(, );
-        rewind();
-        
-         = ->withBody(new Stream())
-            ->withHeader('Content-Type', );
+        // Write to a temp stream and return it
+        $tempStream = fopen('php://temp', 'r+');
+        fwrite($tempStream, $image);
+        rewind($tempStream);
 
-        // Cache headers
-        // Only allow caching for specific open licenses, otherwise force no-cache
-         = ['OPEN_ODBL', 'GOVERNMENT_GRANT'];
-        if (in_array(['license_type'], ) && ['cache_ttl_seconds'] > 0) {
-             = ->withHeader('Cache-Control', 'public, max-age=' . ['cache_ttl_seconds']);
+        $response = $response
+            ->withBody(new Stream($tempStream))
+            ->withHeader('Content-Type', $contentType);
+
+        // Cache headers — only cacheable for open licences that permit it
+        $cacheableTypes = ['OPEN_ODBL', 'GOVERNMENT_GRANT'];
+        if (in_array($provider['license_type'], $cacheableTypes, true)
+            && (int) $provider['cache_ttl_seconds'] > 0) {
+            $response = $response->withHeader(
+                'Cache-Control',
+                'public, max-age=' . (int) $provider['cache_ttl_seconds']
+            );
         } else {
-             = ->withHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            $response = $response->withHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         }
 
-        return ;
+        return $response;
     }
 }

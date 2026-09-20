@@ -380,22 +380,25 @@ AC: route changes within the workspace preserve view state and tile cache.
 Test: Map harness tests for layer reconciliation and instance stability.
 
 **TASK-050 — Basemap provider API and manager UI**
-Dep: 020, 030 · Files: `backend/src/GIS/Basemaps/`, `frontend/src/features/admin/` · Status: DONE
+Dep: 020, 030 · Files: `backend/src/GIS/Basemaps/`, `frontend/src/features/admin/` · Status: DONE (fixed)
 Do: provider CRUD with licence fields, `GET /basemaps` (no keys), admin UI, connectivity test.
 AC: an unlicensed or expired provider cannot be enabled (`LICENSE_RESTRICTED`); no key is ever returned or rendered.
 Test: Api/BasemapLicenseTest, Playwright basemap admin.
+Notes: 2026-09-21 — TileProxyController.php had all variable names stripped (PHP parse error); fixed. BasemapLoader used setStyle() which destroyed map state on every basemap switch; replaced with source.setTiles(). Non-XYZ provider types now log a warning instead of silently failing.
 
 **TASK-051 — Authenticated tile proxy for key-bearing providers**
-Dep: 050 · Files: `backend/src/GIS/Basemaps/` · Status: DONE
+Dep: 050 · Files: `backend/src/GIS/Basemaps/` · Status: DONE (fixed)
 Do: server-side proxy injecting the key from env, enforcing role restrictions, rate limits, and licence-conditional caching (default off).
 AC: the key never appears in a browser request or a log; role restriction enforced; caching off unless the licence permits it.
 Test: Api/TileProxyTest.
+Notes: 2026-09-21 — TileProxyController.php was non-functional (every variable name stripped from the file); fully restored and verified parsing in Docker PHP 8.3.33 container at /var/www/html/src/GIS/Http/TileProxyController.php.
 
 **TASK-052 — Layer panel, legend, visibility, opacity, ordering**
 Dep: 049, 041 · Files: `frontend/src/features/layers/` · Status: DONE
 Do: layer tree with groups, drag reorder, opacity, zoom-to-layer, legend from style metadata, layer metadata popover.
 AC: reordering and visibility persist per user; legend matches the server style.
 Test: Component/LayerTreeTest, Playwright layer panel.
+Notes: 2026-09-21 — LayerTree.tsx existed and was complete (drag reorder, visibility, opacity, legend, zoom-to) but import paths were wrong (`../map/` instead of `../../map/`) causing tsc -b failures; fixed. types/index.ts was missing LayerField, LayerStyleRule, LayerStyle, LayerPermission exports — added, fixes pre-existing tsc -b errors in FieldRenderer, fieldApi, styleApi, FieldDesigner.
 
 **TASK-053 — GeoJSON feature source with bbox loading**
 Dep: 049, 054 · Files: `frontend/src/features/map/` · Status: TODO
