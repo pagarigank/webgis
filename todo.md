@@ -357,8 +357,8 @@ Do: SINGLE and CATEGORIZED style rules (GRADUATED behind a flag), label config, 
 AC: styles are data; no style constant exists in frontend code.
 Test: Api/StyleTest.
 
-**TASK-047 — Layer designer UI (metadata, fields, styles, permissions)**
-Dep: 041–046, 038 · Files: `frontend/src/features/layers/` · Status: TODO
+**TASK-047 - Layer designer UI (metadata, fields, styles, permissions)**
+Dep: 041-046, 038  Files: `frontend/src/features/layers/`  Status: DONE
 Do: `LayerDesigner` with `FieldDesigner`, `StyleDesigner`, `LayerPermissionMatrix`.
 AC: an administrator creates a layer with five field types and a categorized style entirely through the UI.
 Test: Playwright layer-creation flow.

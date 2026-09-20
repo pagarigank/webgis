@@ -163,3 +163,5 @@ On 2026-09-20 the complete suite ran **98 tests / 228 assertions, OK** on the Do
 
 - **TASK-045**: Created MigrationGeneratorService to generate Phinx migrations for expression indexes when searchable/sortable flags change. Updated GisLayerFieldController.
 - **TASK-046**: Implemented GisLayerStyleController to support SINGLE, CATEGORIZED, and GRADUATED styling rules. Created API routes and tests.
+
+- **TASK-047**: Implemented LayerDesigner UI (frontend) with subcomponents for editing layer metadata, fields, styles, and basic role permissions. Added Cypress E2E test.
