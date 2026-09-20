@@ -2,8 +2,8 @@
 
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
-**Current phase:** PHASE 0 — Planning
-**Implementation status:** NOT STARTED — blocked pending sponsor approval (TASK-004)
+**Current phase:** PHASE 3 — Authentication, RBAC, audit (M2 Identity)
+**Implementation status:** IN PROGRESS — foundation (001–026) shipped; Identity tasks 027–033 DONE; next up TASK-034
 **Last updated:** 2026-09-20
 
 ---
@@ -39,11 +39,21 @@
 | 19 | TASK-019 | Parcel, lineage, title tables | 018 | DONE | |
 | 20 | TASK-020 | Document and workflow tables | 019 | DONE | |
 | 21 | TASK-021 | Database seeders | 020 | DONE | |
-| 22 | TASK-022 | Migration testing and rollback | 021 | TODO | closes M2 |
+| 22 | TASK-022 | RLS policies and scope functions | 016,019 | DONE | data-scope and RLS foundation |
+| 23 | TASK-023 | Seed data (permissions, roles, workflow, settings, OSM basemap) | 020 | DONE | idempotent, per integration suite |
+| 24 | TASK-024 | Synthetic fixtures with known answers | 023 | DONE | `SAMPLE_`/`TEST_`-prefixed identities |
+| 25 | TASK-025 | Audit writer and partition rollover worker | 020 | DONE | enlists in the business transaction |
+| 26 | TASK-026 | Backup and restore scripts | 007,020 | DONE | `backend/bin/backup.sh`, `restore.sh` |
 | 27 | TASK-027 | Password hashing and policy | 016 | DONE | Argon2id Hasher + PasswordPolicy; 27 tests/36 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56). Verified via `docker compose exec php-fpm vendor/bin/phpunit tests/Unit/HasherTest.php tests/Unit/PasswordPolicyTest.php`. Config-driven policy knobs and a pluggable breach-list checker are flagged for future extension (FR-002 says "complexity configurable"; today min/max length and breach list are hardcoded). |
-| 28 | TASK-028 | Login, tokens, refresh rotation, reuse detection | 027 | TODO | |
+| 28 | TASK-028 | Login, tokens, refresh rotation, reuse detection | 027 | DONE | JWT login (15 min access) + rotating hashed refresh family with reuse-revocation and lockout; committed |
+| 29 | TASK-029 | Authenticate middleware and `SET LOCAL` DB session context | 028,022 | DONE | token verify → user resolve → `SET LOCAL app.*` inside the tx; DbSessionContextTest green |
+| 30 | TASK-030 | Permission resolver and Authorize middleware | 029 | DONE | effective permissions cached by `scope_version`; `PERMISSION_DENIED` names the required code |
+| 31 | TASK-031 | Layer capability resolver | 030,017 | DONE | per-layer view/create/update/delete/approve from `layer_permissions` |
+| 32 | TASK-032 | Data scope resolver | 030 | DONE | FR-016 resolution order; GLOBAL/REGION documented and DB-enforced (migration `20260920000014`) |
+| 33 | TASK-033 | `GET /me` with effective access | 031,032 | DONE | payload per `api.md` §2; changing a role bumps `scope_version` |
+| 34 | TASK-034 | User, role, permission, organisation, scope admin APIs | 033 | TODO | next up |
 
-Nothing below TASK-022 is queued yet. The queue is extended one milestone at a time so it reflects reality rather than intention; the full ordered plan is in `todo.md`.
+Nothing below TASK-034 is queued yet. The queue is extended one milestone at a time so it reflects reality rather than intention; the full ordered plan is in `todo.md`. TASK-028–033 shipped as code in `backend/src/Auth/`, `backend/src/RBAC/`, `backend/src/Core/Http/Middleware/`, and `backend/src/Audit/`. On 2026-09-20 the scope vocabularies were reconciled in a single migration (`20260920000014`): `data_scopes.scope_type` and `access_level` gained CHECK-enum constraints matching `database.md` §4 (`ORGANIZATION, PROVINCE, MUNICIPALITY, BARANGAY, REGION, CUSTOM_AREA, GLOBAL, PROJECT` — PROJECT reserved for a future project-scoped release), GLOBAL is exempt from the target check, and `app.fn_user_can_see`/`fn_user_can_edit` were rewritten from the legacy `'ORG'/'PSGC'/'WRITE'` vocabulary to the documented one (geographic prefix matching covers BARANGAY/MUNICIPALITY/PROVINCE/REGION; write maps to EDIT/APPROVE). The fixture seeder was corrected from `('PSGC','WRITE')` to `('PROVINCE','EDIT')`. Full suite: 98 tests / 228 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56).
 
 ---
 
@@ -51,7 +61,7 @@ Nothing below TASK-022 is queued yet. The queue is extended one milestone at a t
 
 | Task | Blocked since | Error / reason | Attempts | Suspected cause | Recommended next action |
 |---|---|---|---|---|---|
-| TASK-003 | 2026-09-20 | Requires sponsor input on D-01…D-19 | n/a | external dependency | Put the decision list to the sponsor; accept the stated defaults for any unanswered item and record the acceptance |
+| — | — | None currently blocked. TASK-003 was resolved on 2026-09-20: the sponsor skipped formal approval and accepted the stated defaults (see TASK-003 / TASK-004 in the queue). | — | — | — |
 
 ---
 

@@ -195,14 +195,14 @@ CREATE TABLE app.data_scopes (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id bigint NOT NULL REFERENCES app.users(id) ON DELETE CASCADE,
   scope_type varchar(24) NOT NULL CHECK (scope_type IN
-     ('ORGANIZATION','PROVINCE','MUNICIPALITY','BARANGAY','CUSTOM_AREA','PROJECT')),
+     ('ORGANIZATION','PROVINCE','MUNICIPALITY','BARANGAY','REGION','CUSTOM_AREA','GLOBAL','PROJECT')),
   scope_ref_code varchar(40),               -- PSGC code or org code
   geom geometry(MultiPolygon,4326),         -- for CUSTOM_AREA
   access_level varchar(12) NOT NULL CHECK (access_level IN ('NONE','VIEW','EDIT','APPROVE')),
   valid_from date, valid_to date,
   granted_by bigint REFERENCES app.users(id),
   granted_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ck_scope_target CHECK (scope_ref_code IS NOT NULL OR geom IS NOT NULL)
+  CONSTRAINT ck_scope_target CHECK (scope_type = 'GLOBAL' OR scope_ref_code IS NOT NULL OR geom IS NOT NULL)
 );
 CREATE INDEX idx_scopes_user ON app.data_scopes(user_id, scope_type);
 CREATE INDEX gix_scopes_geom ON app.data_scopes USING GIST (geom);

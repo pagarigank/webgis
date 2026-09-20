@@ -2,8 +2,11 @@
 declare(strict_types=1);
 
 use App\Core\Config\Config;
-
+use App\Core\Http\Middleware\AuthenticateMiddleware;
 use Psr\Container\ContainerInterface;
+use Psr\SimpleCache\CacheInterface;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
 
 return [
     Config::class => function () {
@@ -26,5 +29,16 @@ return [
         ]);
         
         return $pdo;
-    }
+    },
+
+    'jwtSecret' => function (ContainerInterface $c) {
+        return $c->get(Config::class)->get('JWT_SECRET');
+    },
+
+    CacheInterface::class => function () {
+        return new Psr16Cache(new ArrayAdapter());
+    },
+
+    AuthenticateMiddleware::class => \DI\autowire(AuthenticateMiddleware::class)
+        ->constructorParameter('jwtSecret', \DI\get('jwtSecret')),
 ];

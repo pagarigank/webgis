@@ -7,5 +7,7 @@ use App\Core\Http\Controllers\HealthController;
 return function (App $app) {
     $app->group('/api/v1', function ($group) {
         $group->get('/health', HealthController::class);
+        $group->get('/me', \App\Auth\Http\MeController::class)
+              ->add(\App\Core\Http\Middleware\AuthenticateMiddleware::class);
     });
 };

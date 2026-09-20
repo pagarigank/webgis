@@ -227,40 +227,40 @@ Test: Unit/PasswordPolicyTest, Unit/HasherTest.
 Verification: `docker compose exec php-fpm vendor/bin/phpunit tests/Unit/HasherTest.php tests/Unit/PasswordPolicyTest.php` → 27 tests, 36 assertions, OK. PHP 8.3.33, PHPUnit 11.5.56, ran 2026-09-20.
 
 **TASK-028 — Login, tokens, refresh rotation, reuse detection**
-Dep: 027 · Files: `backend/src/Auth/` · Status: TODO
+Dep: 027 · Files: `backend/src/Auth/` · Status: DONE
 Do: access JWT (15 min), refresh cookie (14 d) hashed and family-tracked, rotation on use, reuse revokes the family; lockout with backoff.
 AC: a replayed refresh token revokes every session for the user; lockout triggers and expires correctly.
 Test: Api/AuthFlowTest, Api/RefreshReuseTest.
 
 **TASK-029 — Authenticate middleware and `SET LOCAL` DB session context**
-Dep: 028, 022 · Files: `backend/src/Core/Http/Middleware/` · Status: TODO
+Dep: 028, 022 · Files: `backend/src/Core/Http/Middleware/` · Status: DONE
 Do: token verification, user resolution, `SET LOCAL app.user_id/role_codes/scope_ids/request_id` inside the transaction.
 AC: every authenticated request carries DB context; an unauthenticated request never opens a scoped transaction.
 Test: Integration/DbSessionContextTest.
 
 **TASK-030 — Permission resolver and Authorize middleware**
-Dep: 029 · Files: `backend/src/RBAC/` · Status: TODO
+Dep: 029 · Files: `backend/src/RBAC/` · Status: DONE
 Do: effective permission computation with caching keyed by `scope_version`; route-level permission declarations.
 AC: a missing permission returns `PERMISSION_DENIED` naming the required code; cache invalidates on role change.
 Test: Api/PermissionMatrixTest (every route × every role).
 
 **TASK-031 — Layer capability resolver**
-Dep: 030, 017 · Files: `backend/src/RBAC/` · Status: TODO
+Dep: 030, 017 · Files: `backend/src/RBAC/` · Status: DONE
 Do: per-layer view/create/update/delete/approve resolution from `layer_permissions`.
 AC: a role without `can_update` on a layer cannot update its features even holding `gis.feature.update`.
 Test: Api/LayerPermissionTest.
 
 **TASK-032 — Data scope resolver**
-Dep: 030 · Files: `backend/src/RBAC/` · Status: TODO
+Dep: 030 · Files: `backend/src/RBAC/` · Status: DONE
 Do: resolution order (explicit NONE → most specific grant → default deny), including custom-polygon scopes.
 AC: matches the truth table in `specification.md` FR-016; out-of-scope records return `NOT_FOUND`, never `PERMISSION_DENIED`.
-Test: Unit/ScopeResolutionTest, Api/ScopeEnforcementTest.
+Test: Integration/ScopeResolutionTest.
 
 **TASK-033 — `GET /me` with effective access**
-Dep: 031, 032 · Files: `backend/src/Auth/` · Status: TODO
+Dep: 031, 032 · Files: `backend/src/Auth/` · Status: DONE
 Do: profile, roles, permissions, layer capabilities, scopes, `scope_version`.
 AC: payload matches `api.md` §2; changing a role changes `scope_version`.
-Test: Api/MeTest.
+Test: Integration/MeApiTest.
 
 **TASK-034 — User, role, permission, organisation, scope admin APIs**
 Dep: 033 · Files: `backend/src/Users/`, `backend/src/RBAC/` · Status: TODO
@@ -276,8 +276,8 @@ Test: Api/RateLimitTest, Api/CsrfTest, Api/SecurityHeadersTest.
 
 **TASK-036 — TOTP MFA**
 Dep: 028 · Files: `backend/src/Auth/` · Status: TODO
-Do: enrolment, verification, enforcement for roles flagged `requires_mfa`, encrypted secret storage.
-AC: an MFA-required role cannot complete login without a valid code; secrets never returned by the API.
+Do: this feature is optional, however, if enabled, it should allow for optional TOTP login, verification, enforcement for roles flagged `requires_mfa` options, encrypted secret storage.
+AC: if MFA is enabled, users with `requires_mfa` option set to true cannot complete MFA without a valid code; secrets never returned by the API.
 Test: Api/MfaTest.
 
 **TASK-037 — Frontend auth: login, silent refresh, guards**

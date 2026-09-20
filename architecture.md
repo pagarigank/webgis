@@ -135,7 +135,7 @@ Environments: `local` → `staging` (production-like, synthetic data only) → `
 - **Nightly** `pg_dump -Fc` of the full database, retained 30 days; **weekly** retained 12 weeks.
 - **Continuous** WAL archiving to a separate volume once the platform is in production (target RPO ≤ 15 min; default assumption D-11 is 24h until WAL archiving is enabled).
 - Document store: nightly rsync/replication; blobs are immutable and content-addressed so incremental backup is cheap.
-- **Restore drills are a task, not an aspiration** (TASK-152). A backup that has never been restored does not count.
+- **Restore drills are a task, not an aspiration** (TASK-150). A backup that has never been restored does not count.
 - Audit log and version tables are included in every backup; they are never truncated by application code.
 
 ---
@@ -319,7 +319,7 @@ Constraints and indexes:
 - `CREATE INDEX gis_features_geom_gix ON app.gis_features USING GIST (geom);`
 - `CREATE INDEX gis_features_layer_idx ON app.gis_features (layer_id) WHERE deleted_at IS NULL;`
 - `CREATE INDEX gis_features_attrs_gin ON app.gis_features USING GIN (attributes jsonb_path_ops);`
-- Partitioning by `layer_id` (LIST) is deferred; revisit at > 5M rows (D-03). The migration path is documented in TASK-146.
+- Partitioning by `layer_id` (LIST) is deferred; revisit at > 5M rows (D-03). The migration path is designed but not executed at v1 (`database.md` §10).
 
 ### 3.6 ERD — parcel, survey, title
 

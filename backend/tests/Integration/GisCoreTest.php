@@ -76,14 +76,13 @@ class GisCoreTest extends TestCase
         ");
         $layerId = $this->pdo->query("SELECT id FROM app.gis_layers WHERE code = 'TEST_VER_LAYER'")->fetchColumn();
 
-        // Insert
-        $this->pdo->exec("
+        // Insert and get the generated UUID
+        $stmt = $this->pdo->query("
             INSERT INTO app.gis_features (id, layer_id, geom, attributes, version)
             VALUES (gen_random_uuid(), {$layerId}, ST_GeomFromText('LINESTRING(120 15, 121 16)', 4326), '{}', 1)
+            RETURNING id
         ");
-
-        // get the generated UUID
-        $uuid = $this->pdo->query("SELECT id FROM app.gis_features WHERE layer_id = {$layerId} LIMIT 1")->fetchColumn();
+        $uuid = $stmt->fetchColumn();
 
         // Update
         $this->pdo->exec("

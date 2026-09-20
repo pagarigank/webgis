@@ -58,7 +58,7 @@ Roles are data, not code (FR-030). The set above is seeded, editable, and extens
 | FR-012 | M | Permission codes are a seeded, immutable catalogue (§3.3) |
 | FR-013 | M | Assign roles to users, optionally scoped to an organisation |
 | FR-014 | M | Per-layer permissions: view/create/update/delete/approve by role |
-| FR-015 | M | Record-level data scopes by organisation, province, municipality, barangay, or custom polygon, with access level NONE/VIEW/EDIT/APPROVE |
+| FR-015 | M | Record-level data scopes by organisation, region, province, municipality, barangay, custom polygon, or global, with access level NONE/VIEW/EDIT/APPROVE |
 | FR-016 | M | Scope resolution: explicit NONE denies; otherwise the most specific grant wins; default deny |
 | FR-017 | M | All permission and scope changes are audited with actor and reason |
 | FR-018 | S | Effective-permission preview: "what can this user do to this record, and why" |

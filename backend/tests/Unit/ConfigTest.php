@@ -8,14 +8,27 @@ use PHPUnit\Framework\TestCase;
 
 class ConfigTest extends TestCase
 {
+    private array $originalEnv = [];
+
     protected function setUp(): void
     {
         parent::setUp();
-        // Clear environment variables before each test
+        // Save and clear environment variables before each test
         $vars = ['APP_ENV', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS', 'JWT_SECRET', 'APP_DEBUG'];
         foreach ($vars as $var) {
+            $this->originalEnv[$var] = getenv($var);
             putenv($var);
         }
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ($this->originalEnv as $var => $value) {
+            if ($value !== false) {
+                putenv("{$var}={$value}");
+            }
+        }
+        parent::tearDown();
     }
 
     public function testLoadsConfigWhenAllRequiredVariablesArePresent(): void
