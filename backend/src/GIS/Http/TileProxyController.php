@@ -52,7 +52,7 @@ class TileProxyController
         }
 
         // Construct target URL from the provider's template
-        $url = $provider['url_template'];
+        $url = $provider['url_template'] ?? $provider['service_url'];
 
         // Inject API Key if required
         if ($provider['requires_api_key']) {

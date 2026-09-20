@@ -497,18 +497,18 @@ class GisFeatureController
         // MV tile query using ST_TileEnvelope + ST_AsMVTGeom + ST_AsMVT (PostGIS 3.4).
         // Layer ID is bound via PDO parameter; tile coords are safe ints via sprintf.
         $sql = sprintf(
-            "SELECT ST_AsMVT(sub, 'layer_%d', 4096, 0, %d, 'fid', 'geom') FROM (" .
-            "SELECT id AS fid, ST_AsMVTGeom(geom, ST_TileEnvelope(%d, %d, %d, 4096), 4096, 0) AS geom, attributes " .
+            "SELECT ST_AsMVT(sub, 'layer_%d', 4096, 'geom', 'fid') FROM (" .
+            "SELECT id AS fid, ST_AsMVTGeom(geom, ST_TileEnvelope(%d, %d, %d), 4096, 0) AS geom, attributes " .
             "FROM app.gis_features " .
-            "WHERE layer_id = :lid AND deleted_at IS NULL AND geom && ST_TileEnvelope(%d, %d, %d, 4096)" .
+            "WHERE layer_id = :lid AND deleted_at IS NULL AND geom && ST_TileEnvelope(%d, %d, %d)" .
             ") AS sub",
-            $safeLid, $safeZ,
-            $safeZ, $safeX, $safeY,
-            $safeZ, $safeX, $safeY
+            $lid,
+            $z, $x, $y,
+            $z, $x, $y
         );
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(':lid', $safeLid, PDO::PARAM_INT);
+        $stmt->bindValue(':lid', $lid, PDO::PARAM_INT);
         $stmt->execute();
         $mvt = $stmt->fetchColumn();
 
