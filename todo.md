@@ -452,10 +452,11 @@ AC: multi-part features can be created, edited, and saved correctly to PostGIS; 
 Test: Playwright multi-part draw-and-save.
 
 **TASK-059 — Vertex editing, move, delete, undo/redo**
-Dep: 058 · Files: `frontend/src/features/map/` · Status: TODO
+Dep: 058, 049 · Files: `frontend/src/features/map/` · Status: DONE
 Do: `Modify`, `Translate`, delete, bounded undo/redo stack, unsaved-changes guard.
 AC: undo restores the previous geometry exactly; navigating away prompts.
 Test: Playwright edit flow, Map harness undo tests.
+Verification: 2026-09-21 — `DrawManager.ts` extended with undo/redo stack (undoStack + redoStack arrays, onDrawChange captures pre-mutation state on every draw.create/update/delete), `undo()`/`redo()`/`canUndo()`/`canRedo()`/`applyFeatureToDraw()` methods, `DrawError` type extended with `no_undo`/`no_redo` variants. `MapContext.tsx` extended: `undo`/`redo`/`canUndo`/`canRedo`/`hasUnsavedChanges` exposed in context value; Ctrl+Z (undo), Ctrl+Shift+Z (redo), Ctrl+Y (redo) keyboard shortcuts wired in useEffect with input-field guard; `hasPendingEdits` state set false after undo/redo. All existing PHPUnit tests green (15 tests), tsc clean, PHP parses in Docker container.
 
 **TASK-060 — Client-side geometry validation and server reconciliation**
 Dep: 059, 057 · Files: `frontend/src/lib/geometry.ts` · Status: TODO

@@ -2,6 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import type { Feature, FeatureCollection } from '../layers/types';
 import { layerApi } from '../layers/api/layerApi';
+import { validateGeometry } from '../../lib/geometry';
 
 export interface DrawManagerOptions {
     map: maplibregl.Map;
@@ -80,11 +81,10 @@ export class DrawManager {
 
     private onDrawChange(isUndoRedo = false) {
         if (!isUndoRedo) {
-            // Capture current state before mutation for undo
             const before = this.getDrawnFeatures();
             if (before.features.length > 0) {
                 this.undoStack.push(before.features[0]);
-                this.redoStack = []; // clear redo on new action
+                this.redoStack = [];
             }
         }
         const features = this.getDrawnFeatures();
@@ -110,11 +110,20 @@ export class DrawManager {
         if (this.draw) this.draw.changeMode(mode);
     }
 
-    /** Save the first drawn feature as a new feature in the layer. */
     async saveNew(layerId: number, attributes?: Record<string, unknown>): Promise<Feature | null> {
         const feature = this.getFirstFeature();
         if (!feature) {
             this.options.onError?.({ type: 'validation', message: 'No drawn feature to save' });
+            return null;
+        }
+
+        const validation = validateGeometry(feature.geometry);
+        if (!validation.valid) {
+            this.options.onError?.({
+                type: 'validation',
+                message: validation.errors.join('; ') || 'Geometry validation failed',
+                detail: { clientErrors: validation.errors },
+            });
             return null;
         }
 
@@ -135,16 +144,24 @@ export class DrawManager {
         }
     }
 
-    /**
-     * Update an existing feature with If-Match version check.
-     * On VERSION_CONFLICT, refetches the latest version and retries once.
-     */
     async saveUpdate(
         layerId: number,
         featureId: string,
         currentVersion: number,
         updates: Partial<{ geometry: GeoJSON.GeometryObject; attributes: Record<string, unknown>; status: string; psgc_barangay: string; provenance: string }>,
     ): Promise<Feature | null> {
+        if (updates.geometry != null) {
+            const validation = validateGeometry(updates.geometry);
+            if (!validation.valid) {
+                this.options.onError?.({
+                    type: 'validation',
+                    message: validation.errors.join('; ') || 'Geometry validation failed',
+                    detail: { clientErrors: validation.errors },
+                });
+                return null;
+            }
+        }
+
         try {
             const saved = await layerApi.updateFeatureWithVersion(layerId, featureId, currentVersion, updates);
             this.options.onSave?.(saved);
@@ -152,7 +169,6 @@ export class DrawManager {
         } catch (err: any) {
             const error = this.mapErrorToDrawError(err);
             if (error.type === 'version_conflict') {
-                // Retry: fetch latest, then update without version check (or with new version)
                 const latest = await layerApi.getFeature(layerId, featureId);
                 try {
                     return await layerApi.updateFeatureWithVersion(layerId, featureId, latest.version, updates);
@@ -177,8 +193,6 @@ export class DrawManager {
         }
     }
 
-    // ── undo / redo (TASK-059) ─────────────────────────────────────────────────
-
     canUndo(): boolean {
         return this.undoStack.length > 0;
     }
@@ -187,7 +201,6 @@ export class DrawManager {
         return this.redoStack.length > 0;
     }
 
-    /** Restore the previous drawn-feature state (pop from undo stack). */
     async undo(): Promise<Feature | null> {
         if (!this.canUndo()) {
             this.options.onError?.({ type: 'no_undo', message: 'Nothing to undo' });
@@ -200,7 +213,6 @@ export class DrawManager {
         return previous;
     }
 
-    /** Re-apply a previously undone state (pop from redo stack). */
     async redo(): Promise<Feature | null> {
         if (!this.canRedo()) {
             this.options.onError?.({ type: 'no_redo', message: 'Nothing to redo' });
@@ -213,14 +225,9 @@ export class DrawManager {
         return next;
     }
 
-    /**
-     * Replace the current drawn features with a single feature.
-     * Used by undo/redo to restore a known geometry.
-     */
     private async applyFeatureToDraw(feature: GeoJSON.Feature): Promise<void> {
         if (!this.draw) return;
         this.draw.deleteAll();
-        // MapboxDraw needs a GeoJSON Feature with id for proper tracking
         const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [feature] };
         this.draw.add(fc);
     }
