@@ -276,10 +276,11 @@ Test: Integration/UserAdminTest, Integration/RoleAdminTest, Integration/Organiza
 Verification: 23 new integration tests green 2026-09-20; full suite 121 tests / 306 assertions. JSON bodies parse via `App\Core\Http\Request\JsonBodyParser`; services use `App\Core\Db\DbTransaction` (AuthenticateMiddleware holds the request transaction).
 
 **TASK-035 — Rate limiting, CSRF, security headers, CORS**
-Dep: 029 · Files: `backend/src/Core/Http/Middleware/`, nginx config · Status: TODO
+Dep: 029 · Files: `backend/src/Core/Http/Middleware/`, nginx config · Status: DONE
 Do: per-user token buckets per route class; double-submit CSRF plus Origin check on cookie endpoints; HSTS, CSP without `unsafe-inline`, `X-Frame-Options`, `nosniff`, `Referrer-Policy`; explicit CORS allow-list.
 AC: limits return 429 with `Retry-After`; CSRF absence blocks refresh; headers present on every response.
 Test: Api/RateLimitTest, Api/CsrfTest, Api/SecurityHeadersTest.
+Verification: 18 new tests green 2026-09-20; full suite 139 tests / 366 assertions. `RateLimitMiddleware` uses DB-backed 1-minute buckets in `app.rate_limit_entries` (migration `20260920000016`), keyed by JWT subject or address; `CsrfMiddleware` is inert until a `refresh_token` cookie is presented (Bearer API is not cookie-authenticated); decorators wrap the error middleware so 4xx/5xx responses carry headers + `X-Request-Id`; `CORS_ALLOWED_ORIGINS` env (comma-separated) controls reflection with credentials; nginx `limit_req` burst 100 ~30 r/s. New `.env` join (local, gitignored): `CORS_ALLOWED_ORIGINS`.
 
 **TASK-036 — TOTP MFA**
 Dep: 028 · Files: `backend/src/Auth/` · Status: TODO

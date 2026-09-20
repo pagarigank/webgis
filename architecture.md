@@ -145,8 +145,9 @@ Environments: `local` → `staging` (production-like, synthetic data only) → `
 ```text
 src/
   Http/                  PSR-15 pipeline
-    Middleware/          Cors, RequestId, RateLimit, Authenticate, DbSessionContext,
-                         Authorize, ValidateJson, AuditContext, ErrorHandler
+    Middleware/          RequestId, SecurityHeaders, Cors, Csrf, RateLimit,
+                         Authenticate, DbSessionContext, Authorize, ValidateJson,
+                         AuditContext, ErrorHandler
     Controller/          thin: parse → call use case → serialize
     Response/            Problem+JSON, GeoJSON, MVT writers
   Application/
@@ -599,7 +600,10 @@ Tolerance values, the engine version, and the tolerance set used are all written
 
 - Password hashing: `password_hash()` with Argon2id (fallback bcrypt cost 12), rehash-on-login when parameters change.
 - **Tokens:** short-lived access JWT (15 min, HS256 with a rotating server key, claims: `sub`, `roles`, `scope_version`, `jti`, `exp`) returned in the JSON body and held in memory by the SPA; long-lived refresh token (14 days) as an **httpOnly, Secure, SameSite=Strict** cookie, stored hashed server-side, **rotated on every use** with reuse detection (a replayed refresh token revokes the whole family).
-- Because the refresh endpoint is cookie-authenticated it is CSRF-exposed: it requires a double-submit CSRF token and an `Origin` check. All other endpoints use the `Authorization: Bearer` header and are therefore not CSRF-reachable.
+- Because the refresh endpoint is cookie-authenticated it is CSRF-exposed: it requires a double-submit CSRF token and an `Origin` check. All other endpoints use the `Authorization: Bearer` header and are therefore not CSRF-reachable. `CsrfMiddleware` implements this: it stays inert unless a request carries the `refresh_token` cookie, and then enforces an Origin check (Host match or CORS allow-list) plus a constant-time `X-CSRF-Token` ≈ `csrf_token` cookie match on every state-changing method (403 `PERMISSION_DENIED` otherwise).
+- `RateLimitMiddleware` gives per-user 1-minute token buckets by route class (auth 10, search 60, calculate 30, split/consolidate 10, import commit 5, tiles 600, general 300), keyed by JWT subject or client address; over-limit requests get 429 `RATE_LIMITED` with `Retry-After`. Counters live in `app.rate_limit_entries` so they are shared across php-fpm workers; nginx adds a coarse per-address flood limit.
+- `SecurityHeadersMiddleware` stamps security headers on every response (HSTS, CSP without `unsafe-inline`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`). `CorsMiddleware` enforces the explicit `CORS_ALLOWED_ORIGINS` allow-list with exact origin reflection and credentials; unlisted origins receive no CORS headers.
+- The header decorators sit **outside** the error middleware, so 4xx/5xx responses (including rate-limit 429s) still carry security headers, CORS rules and `X-Request-Id`.
 - `scope_version` in the token forces re-authorization when a user's roles or scopes change — permission changes take effect within one access-token lifetime, and immediately for refresh.
 - Lockout after N failed attempts with exponential backoff; every attempt logged.
 - MFA (TOTP) supported for roles flagged `requires_mfa` (administrators, approvers).
@@ -642,11 +646,11 @@ db role  app_ro         SELECT only (reporting, read replica)
 | Control | Implementation |
 |---|---|
 | SQL injection | PDO prepared statements everywhere; `ATTR_EMULATE_PREPARES = false`; identifiers (sort columns, JSON keys) validated against a metadata allow-list, never interpolated raw |
-| XSS | React escaping by default; `dangerouslySetInnerHTML` banned by lint rule; API returns data, never HTML; CSP with no `unsafe-inline` |
-| CSRF | Bearer tokens for the API; double-submit + Origin check on the cookie-authenticated refresh/logout endpoints |
+| XSS | React escaping by default; `dangerouslySetInnerHTML` banned by lint rule; API returns data, never HTML; CSP with no `unsafe-inline` (stamped by `SecurityHeadersMiddleware` on every response) |
+| CSRF | Bearer tokens for the API; `CsrfMiddleware` requires double-submit + Origin check whenever the `refresh_token` cookie is presented (refresh/logout endpoints) |
 | Upload safety | extension + MIME sniff (`finfo`) + magic-byte check, size cap (default 25 MB), random storage keys outside the web root, images re-encoded, PDFs scanned and never executed, `X-Content-Type-Options: nosniff` on download |
-| Rate limiting | nginx global + per-user token bucket in PHP on auth, search, compute, import endpoints |
-| Headers | HSTS, CSP, `Referrer-Policy: same-origin`, `X-Frame-Options: DENY`, `Permissions-Policy` |
+| Rate limiting | nginx per-address flood limit + PHP per-user token buckets (shared via `app.rate_limit_entries`) over 1-minute windows; 429 `RATE_LIMITED` with `Retry-After` on auth, search, compute, import endpoints |
+| Headers | every response carries HSTS, CSP, `Referrer-Policy: same-origin`, `X-Frame-Options: DENY`, `Permissions-Policy`, `nosniff` |
 | Secrets | env only, never in the repo, never in the SPA bundle, never in migrations; startup fails loudly if a required secret is missing |
 | Least privilege | separate DB roles, container runs non-root, document store not web-served |
 | Logging | structured JSON with `request_id`; PII never logged; failed authz logged with actor and target |

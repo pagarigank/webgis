@@ -27,13 +27,21 @@ class TestCase extends PHPUnitTestCase
         (require __DIR__ . '/../config/routes.php')($app);
         
         $app->addRoutingMiddleware();
-        $app->add(new \App\Core\Http\Middleware\CorsMiddleware());
-        $app->add(new \App\Core\Http\Middleware\RequestIdMiddleware());
-        
+
         $errorMiddleware = $app->addErrorMiddleware(true, true, true);
         $errorMiddleware->setDefaultErrorHandler(
             new \App\Core\Http\Handlers\HttpErrorHandler($app->getCallableResolver(), $app->getResponseFactory())
         );
+
+        // Decorators sit OUTSIDE the error middleware so 4xx/5xx error
+        // responses (which originate in the error handler) still carry
+        // security headers, CORS rules and X-Request-Id. Execution from the
+        // outside in: RequestId -> SecurityHeaders -> Cors -> Csrf -> RateLimit.
+        $app->add($container->get(\App\Core\Http\Middleware\RateLimitMiddleware::class));
+        $app->add($container->get(\App\Core\Http\Middleware\CsrfMiddleware::class));
+        $app->add($container->get(\App\Core\Http\Middleware\CorsMiddleware::class));
+        $app->add($container->get(\App\Core\Http\Middleware\SecurityHeadersMiddleware::class));
+        $app->add(new \App\Core\Http\Middleware\RequestIdMiddleware());
         
         return $app;
     }

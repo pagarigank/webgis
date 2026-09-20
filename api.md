@@ -64,6 +64,17 @@ Validation failures list every failure, not the first: `details.fields[] = { fie
 | `If-Match: "<version>"` | **required** on PUT/PATCH/DELETE of versioned entities; absence → 428 `PRECONDITION_REQUIRED` |
 | `Idempotency-Key` | required on `calculate`, `split`, `consolidate`, `imports/{id}/commit`, document upload |
 | `X-CSRF-Token` | required on the cookie-authenticated `refresh` and `logout` endpoints only |
+| `Origin` | verified on cookie-authenticated state-changing requests (must match `Host` or the CORS allow-list) |
+| `Cookie: csrf_token` | double-submit half of the CSRF guard; must equal `X-CSRF-Token` |
+
+Every response carries `Strict-Transport-Security` (`max-age=31536000; includeSubDomains`),
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`,
+`Permissions-Policy`, and a `Content-Security-Policy` with **no** `unsafe-inline`.
+
+**CSRF (SR-06).** Non-cookie requests (the Bearer-authenticated API) are not CSRF-exposed and
+carry no CSRF burden. Requests that present the `refresh_token` cookie are: every
+POST/PUT/PATCH/DELETE must then pass an Origin check and a constant-time double-submit match
+(`X-CSRF-Token` header === `csrf_token` cookie). Failures return 403 `PERMISSION_DENIED`.
 
 ### 1.4 Query grammar
 
@@ -83,7 +94,20 @@ An unbounded feature query (no `bbox`, no bounded `per_page`) returns `VALIDATIO
 
 ### 1.5 Rate limits
 
-Defaults, per user: auth 10/min, search 60/min, calculate 30/min, split/consolidate 10/min, import commit 5/min, tiles 600/min, general 300/min. Exceeding returns 429 with `Retry-After`.
+Per-user token buckets over a fixed 1-minute window (SR-08): auth 10, search 60, calculate
+30, split/consolidate 10, import commit 5, tiles 600, general 300. Exceeding a limit returns
+429 `RATE_LIMITED` with `Retry-After: <seconds>` (seconds until the current window resets).
+
+Buckets are keyed by JWT subject for authenticated callers and by client address for the
+auth endpoints or invalid tokens, so login brute force is bounded per source. `GET /health`
+and `/metrics` are exempt. `OPTIONS` preflight requests are answered by the CORS middleware
+and never consume a ticket. nginx additionally enforces a coarse per-address flood limit
+(`limit_req`, burst 100, ~30 r/s); the PHP buckets are the finer-grained control.
+
+Cross-origin access is opt-in via `CORS_ALLOWED_ORIGINS` (comma-separated). Allowed origins
+are reflected exactly with `Access-Control-Allow-Credentials: true`; unlisted origins get no
+CORS headers and are blocked by the browser. `X-CSRF-Token` is allowed/exposed for the
+cookie-authenticated endpoints.
 
 ---
 
