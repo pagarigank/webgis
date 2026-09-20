@@ -19,9 +19,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const meQuery = useQuery<MePayload>({
     queryKey: ['me'],
     queryFn: async () => {
-      if (!hasRefreshCookie()) {
-        throw new Error('No refresh cookie');
-      }
       return await apiClient.get('/me');
     },
     retry: false, // Don't retry auth fetches
