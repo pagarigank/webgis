@@ -1,4 +1,4 @@
-import apiClient from '../../../lib/apiClient';
+import { apiClient } from '../../../lib/apiClient';
 import type { Layer } from '../types';
 
 export interface Feature {
@@ -104,9 +104,23 @@ export const layerApi = {
         status: string;
         psgc_barangay: string;
         provenance: string;
-    }>): Promise<Feature> => {
-        const response = await apiClient.patch(`/layers/${layerId}/features/${featureId}`, data);
+    }>, version?: number): Promise<Feature> => {
+        const headers: Record<string, string> = {};
+        if (version != null) {
+            headers['If-Match'] = String(version);
+        }
+        const response = await apiClient.patch(`/layers/${layerId}/features/${featureId}`, data, { headers });
         return response.data.data;
+    },
+
+    updateFeatureWithVersion: async (layerId: number, featureId: string, version: number, data: Partial<{
+        geometry: GeoJSON.GeometryObject;
+        attributes: Record<string, unknown>;
+        status: string;
+        psgc_barangay: string;
+        provenance: string;
+    }>): Promise<Feature> => {
+        return layerApi.updateFeature(layerId, featureId, data, version);
     },
 
     deleteFeature: async (layerId: number, featureId: string): Promise<{id: string; deleted: boolean}> => {

@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import * as maplibregl from 'maplibregl-gl';
+import * as maplibregl from 'maplibre-gl';
 import { LayerManager, InteractionManager, formatCoordinate } from './Managers';
+import { DrawManager } from './DrawManager';
+import type { DrawError } from './DrawManager';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 export type DrawMode = 'simple_select' | 'direct_select' | 'draw_polygon' | 'draw_point' | 'draw_line' | 'static';
@@ -11,11 +13,11 @@ export interface MapContextState {
     isLoaded: boolean;
     layerManager: LayerManager | null;
     interactionMgr: InteractionManager | null;
+    drawManager: DrawManager | null;
     drawMode: DrawMode;
     setDrawMode: (mode: DrawMode) => void;
-    drawnFeatures: GeoJSON.FeatureCollection;
-    onDrawChange: (cb: (features: GeoJSON.FeatureCollection) => void) => () => void;
     clearDraw: () => void;
+    onError: (error: DrawError) => void;
     coordinate: string;
     loadLayerFeatures: (layerId: number, sourceLayerId: string, bbox?: [number, number, number, number], status?: string) => Promise<GeoJSON.FeatureCollection>;
 }
@@ -27,7 +29,10 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const [map, setMap] = useState<maplibregl.Map | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [drawMode, setDrawMode] = useState<DrawMode>('simple_select');
+    const [drawManager, setDrawManager] = useState<DrawManager | null>(null);
+    const [onError, setOnError] = useState<((error: DrawError) => void) | null>(null);
     const [drawnFeatures, setDrawnFeatures] = useState<GeoJSON.FeatureCollection>({ type: 'FeatureCollection', features: [] });
+    const [savedFeatureCallback, setSavedFeatureCallback] = useState<((feature: GeoJSON.Feature) => void) | null>(null);
     const [coordinate, setCoordinate] = useState<string>('');
     const layerManagerRef = useRef<LayerManager | null>(null);
     const drawChangeListenerRef = useRef<(() => void) | null>(null);
@@ -60,6 +65,19 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const im = new InteractionManager(map);
         layerManagerRef.current = lm;
 
+        // Draw manager (TASK-058)
+            const dm = new DrawManager({
+                map,
+                onSave: () => {
+                    if (savedFeatureCallback) savedFeatureCallback(null);
+                },
+                onError: (error) => {
+                    if (onError) onError(error);
+                },
+            });
+        drawManagerRef.current = dm;
+        setDrawManager(dm);
+
         // Coordinate readout display (TASK-056) — use a floating div
         const coordDiv = document.createElement('div');
         coordDiv.id = 'coordinate-display';
@@ -68,7 +86,7 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         map.getContainer().appendChild(coordDiv);
         im.setCoordinateDisplay(coordDiv);
 
-        // Draw change listener
+        // Draw change listener (legacy — still fires on draw.create/update/delete)
         const unsubscribe = lm.onDrawChange(({ features }) => {
             setDrawnFeatures(features);
         });
@@ -98,12 +116,18 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (layerManagerRef.current) {
             layerManagerRef.current.setDrawMode(mode);
         }
+        if (drawManagerRef.current) {
+            drawManagerRef.current.setMode(mode);
+        }
     }, []);
 
     const handleClearDraw = useCallback(() => {
         if (layerManagerRef.current) {
             layerManagerRef.current.clearDrawnFeatures();
             setDrawnFeatures({ type: 'FeatureCollection', features: [] });
+        }
+        if (drawManagerRef.current) {
+            drawManagerRef.current.clearDraw();
         }
     }, []);
 
@@ -131,14 +155,11 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             isLoaded,
             layerManager: managers.layerManager,
             interactionMgr: managers.interactionMgr,
+            drawManager,
             drawMode,
             setDrawMode: handleSetDrawMode,
-            drawnFeatures,
-            onDrawChange: (cb) => {
-                if (!layerManagerRef.current) return () => {};
-                return layerManagerRef.current.onDrawChange(({ features }) => cb(features));
-            },
             clearDraw: handleClearDraw,
+            onError: (error) => { if (onError) onError(error); },
             coordinate,
             loadLayerFeatures: handleLoadLayerFeatures,
         }}>

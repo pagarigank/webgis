@@ -13,10 +13,12 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 class GisFeatureController
 {
     private PDO $pdo;
+    private App\Audit\AuditWriter $audit;
 
-    public function __construct(PDO $pdo)
+    public function __construct(PDO $pdo, App\Audit\AuditWriter $audit)
     {
         $this->pdo = $pdo;
+        $this->audit = $audit;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -318,6 +320,9 @@ class GisFeatureController
         $fetchStmt->execute([':fid' => $fid, ':lid' => $lid]);
         $fetched = $fetchStmt->fetch(PDO::FETCH_ASSOC);
 
+        // Audit row (TASK-057)
+        $this->audit->writeFromSession('INSERT', 'app.gis_features', $fid, null, $this->stripGeometryForAudit($fetched), null, null, 'Feature created via API');
+
         return Envelope::success($response, $this->formatFeature($fetched), 201);
     }
 
@@ -339,11 +344,22 @@ class GisFeatureController
             throw new ApiError('VALIDATION_FAILED', 'Invalid feature id', 400);
         }
 
-        // Verify existence + lock row
+        // Verify existence + lock row + read current version
         $existsStmt = $this->pdo->prepare("SELECT id, version FROM app.gis_features WHERE id = :fid AND layer_id = :lid AND deleted_at IS NULL FOR UPDATE");
         $existsStmt->execute([':fid' => $fid, ':lid' => $lid]);
-        if ($existsStmt->fetch() === false) {
+        $row = $existsStmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
             throw new ApiError('NOT_FOUND', 'Feature not found', 404);
+        }
+        $currentVersion = (int) $row['version'];
+
+        // If-Match concurrency check (TASK-057)
+        $ifMatch = $request->getHeaderLine('If-Match');
+        if ($ifMatch === '') {
+            throw new ApiError('PRECONDITION_REQUIRED', 'An If-Match header with the current version is required for updates.', 428);
+        }
+        if ((int) $ifMatch !== $currentVersion) {
+            throw new ApiError('VERSION_CONFLICT', 'This feature was modified by another user.', 409, ['current_version' => $currentVersion]);
         }
 
         $body = $request->getParsedBody();
@@ -363,13 +379,19 @@ class GisFeatureController
             $vStmt = $this->pdo->prepare("SELECT ST_IsValid(ST_GeomFromGeoJSON(:gj)) AS ok");
             $vStmt->execute([':gj' => $geomJson]);
             if (!(bool) $vStmt->fetchColumn()) {
-                throw new ApiError('VALIDATION_FAILED', 'geometry is not valid per ST_IsValid', 400);
+                throw new ApiError('GEOMETRY_INVALID', 'geometry is not valid per ST_IsValid', 400, ['reason' => 'ST_IsValid returned false']);
+            }
+            // ST_IsSimple check (TASK-057)
+            $simpleStmt = $this->pdo->prepare("SELECT ST_IsSimple(ST_GeomFromGeoJSON(:gj)) AS ok");
+            $simpleStmt->execute([':gj' => $geomJson]);
+            if (!(bool) $simpleStmt->fetchColumn()) {
+                throw new ApiError('GEOMETRY_NOT_SIMPLE', 'geometry is not simple per ST_IsSimple (self-intersection or other validity issue)', 400, ['reason' => 'ST_IsSimple returned false']);
             }
             $sets[] = 'geom = ST_GeomFromGeoJSON(:gj)';
             $params[':gj'] = $geomJson;
         }
 
-        if (array_key_exists('attributes', $body)) {
+        if (isset($body['attributes']) && !empty($body['attributes'])) {
             $sets[] = 'attributes = :attrs';
             $params[':attrs'] = json_encode($body['attributes']);
         }
@@ -407,8 +429,18 @@ class GisFeatureController
         $stmt->execute();
         $newVer = (int) $stmt->fetchColumn();
 
-        // Return updated feature
-        return $this->getFeature($request, $response, $args);
+        // Read the updated feature for response (avoids getFeature's If-Match re-check)
+        $updatedRow = $this->readFeatureSnapshot($fid, $lid);
+        if ($updatedRow === false) {
+            throw new ApiError('NOT_FOUND', 'Feature not found after update', 404);
+        }
+        $updatedFeature = $this->formatFeature($updatedRow);
+
+        // Audit row (TASK-057): snapshot pre-change state before mutation
+        $oldSnapshot = $this->buildPreChangeSnapshot($fid, $lid, $currentVersion);
+        $this->audit->writeFromSession('UPDATE', 'app.gis_features', $fid, $oldSnapshot, $this->stripForAudit($updatedFeature), null, null, 'Feature updated via API');
+
+        return Envelope::success($response, $updatedFeature);
     }
 
     /**
@@ -436,6 +468,10 @@ class GisFeatureController
         if ($affected === 0) {
             throw new ApiError('NOT_FOUND', 'Feature not found', 404);
         }
+
+        // Audit row (TASK-057)
+        $oldSnapshot = $this->buildPreChangeSnapshot($fid, $lid, 0);
+        $this->audit->writeFromSession('DELETE', 'app.gis_features', $fid, $oldSnapshot, null, null, null, 'Feature deleted via API');
 
         return Envelope::success($response, ['id' => $fid, 'deleted' => true]);
     }
@@ -509,7 +545,12 @@ class GisFeatureController
             throw new ApiError('VALIDATION_FAILED', 'geometry.coordinates is required', 400);
         }
 
-        if (!isset($body['attributes']) || !is_array($body['attributes'])) {
+        // Reject coordinates that are clearly not geography (longitude must be [-180,180], latitude [-90,90])
+        if (!$this->coordinatesLookGeographic($geom['coordinates'])) {
+            throw new ApiError('VALIDATION_FAILED', 'geometry coordinates do not look like valid geography (longitude must be in [-180,180], latitude in [-90,90])', 400);
+        }
+
+        if (isset($body['attributes']) && !is_array($body['attributes'])) {
             throw new ApiError('VALIDATION_FAILED', 'attributes must be a JSON object', 400);
         }
 
@@ -590,5 +631,80 @@ class GisFeatureController
         $out = $row;
         unset($out['geometry']);
         return $out;
+    }
+
+    // ── TASK-057 helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Read a single feature row for audit/snapshot purposes.
+     * Does not enforce If-Match (caller already holds the lock).
+     */
+    private function readFeatureSnapshot(string $fid, int $lid): ?array
+    {
+        $sql = "SELECT f.id, f.status, f.psgc_barangay, f.provenance, f.version, f.created_by, f.created_at, f.updated_by, f.updated_at, f.attributes, ST_AsGeoJSON(f.geom)::json AS geometry FROM app.gis_features f WHERE f.id = :fid AND f.layer_id = :lid AND f.deleted_at IS NULL";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':fid' => $fid, ':lid' => $lid]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    /**
+     * Build a pre-change snapshot for audit. Called after the row is locked
+     * and the current version is known but before the UPDATE is issued.
+     */
+    private function buildPreChangeSnapshot(string $fid, int $lid, int $currentVersion): array
+    {
+        $row = $this->readFeatureSnapshot($fid, $lid);
+        if ($row === null) {
+            return ['id' => $fid, 'version' => $currentVersion, 'deleted_at' => null];
+        }
+        $snap = $this->stripGeometry($row);
+        $snap['version'] = $currentVersion;
+        return $snap;
+    }
+
+    /**
+     * Strip geometry + internal columns from a feature array for audit payload.
+     */
+    private function stripForAudit(array $feature): array
+    {
+        $out = $this->stripGeometry($feature);
+        unset($out['id'], $out['created_by'], $out['updated_by'], $out['created_at'], $out['updated_at']);
+        return $out;
+    }
+
+    /**
+     * Strip geometry from a raw DB row fetched for audit INSERT snapshot.
+     */
+    private function stripGeometryForAudit(?array $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        return $this->stripGeometry($row);
+    }
+
+    /**
+     * Heuristic: do the coordinates in a GeoJSON geometry look like WGS84
+     * geography? Used to reject obviously-wrong inputs before hitting PostGIS.
+     */
+    private function coordinatesLookGeographic(array $coords, int $depth = 0): bool
+    {
+        // Leaf: a [longitude, latitude] pair
+        if (isset($coords[0]) && is_array($coords[0]) === false) {
+            if (count($coords) < 2) {
+                return false;
+            }
+            $x = (float) $coords[0];
+            $y = (float) $coords[1];
+            return $x >= -180 && $x <= 180 && $y >= -90 && $y <= 90;
+        }
+
+        // Otherwise recurse into every element
+        foreach ($coords as $c) {
+            if (is_array($c) && !$this->coordinatesLookGeographic($c, $depth + 1)) {
+                return false;
+            }
+        }
+        return true;
     }
 }

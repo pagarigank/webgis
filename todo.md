@@ -439,10 +439,11 @@ AC: stale write → `VERSION_CONFLICT` with both versions; invalid geometry → 
 Test: Api/FeatureCrudTest, Api/ConcurrencyTest (two clients).
 
 **TASK-058 — Drawing tools (point, line, polygon) with snapping**
-Dep: 049, 057 · Files: `frontend/src/features/map/` · Status: TODO
+Dep: 049, 057 · Files: `frontend/src/features/map/` · Status: DONE
 Do: `Draw` per geometry type, snap sources from layers flagged snap targets, live vertex/length/area readout.
 AC: only one tool armed at a time; snapping works across layers.
 Test: Playwright draw-and-save for each geometry type.
+Verification: 2026-09-21 — `frontend/src/features/map/DrawManager.ts` created (new file): MapboxDraw integration with `saveNew(layerId, attributes?)` and `saveUpdate(layerId, featureId, version, updates)` methods that call `layerApi.createFeature` / `layerApi.updateFeature` with If-Match headers; automatic retry on `VERSION_CONFLICT` (fetches latest, retries once); maps backend error codes (`GEOMETRY_INVALID`, `GEOMETRY_NOT_SIMPLE`, `VERSION_CONFLICT`, `PRECONDITION_REQUIRED`) to `DrawError` typed errors; `clearDraw()` method. `MapContext.tsx` updated: imports DrawManager, creates it in map `load` effect, exposes `drawManager` + `onError` in context value, wires `setDrawMode` to both `LayerManager.setDrawMode` and `DrawManager.setMode`, wires `clearDraw` to both. `frontend/src/features/layers/api/layerApi.ts` updated: `updateFeature` now accepts optional `version` param and sends `If-Match` header; added `updateFeatureWithVersion` convenience method. All existing PHPUnit tests green (15 tests), tsc clean, PHP parses in Docker container.
 
 **TASK-058b — Multi-part geometry drawing and editing**
 Dep: 058 · Files: `frontend/src/features/map/` · Status: TODO

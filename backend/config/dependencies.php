@@ -103,4 +103,7 @@ return [
     },
 
     \App\RBAC\FeatureScopeResolver::class => \DI\autowire(\App\RBAC\FeatureScopeResolver::class),
+
+    \App\GIS\Http\GisFeatureController::class => \DI\autowire(\App\GIS\Http\GisFeatureController::class)
+        ->constructorParameter('audit', \DI\get(AuditWriter::class)),
 ];
