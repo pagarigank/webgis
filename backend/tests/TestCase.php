@@ -47,9 +47,49 @@ class TestCase extends PHPUnitTestCase
         return $app;
     }
 
+    protected function createMockUser(\PDO $pdo, array $permissions, array $roles): array
+    {
+        $pdo->exec("INSERT INTO app.organizations (code, name, org_type, status) VALUES ('TESTORG', 'Test Org', 'GOVERNMENT', 'ACTIVE') ON CONFLICT DO NOTHING");
+        $orgId = (int) $pdo->query("SELECT id FROM app.organizations WHERE code = 'TESTORG'")->fetchColumn();
+
+        $pdo->exec("INSERT INTO app.users (username, email, password_hash, full_name, org_id, status, version) VALUES ('testuser', 'test@example.com', 'dummy', 'Test', $orgId, 'ACTIVE', 1) ON CONFLICT DO NOTHING");
+        $userId = (int) $pdo->query("SELECT id FROM app.users WHERE username = 'testuser'")->fetchColumn();
+
+        foreach ($roles as $roleCode) {
+            $pdo->exec("INSERT INTO app.roles (code, name, is_system) VALUES ('$roleCode', '$roleCode', false) ON CONFLICT DO NOTHING");
+            $roleId = (int) $pdo->query("SELECT id FROM app.roles WHERE code = '$roleCode'")->fetchColumn();
+            $pdo->exec("INSERT INTO app.user_roles (user_id, role_id) VALUES ($userId, $roleId) ON CONFLICT DO NOTHING");
+
+            foreach ($permissions as $permCode) {
+                $pdo->exec("INSERT INTO app.permissions (code, description) VALUES ('$permCode', '$permCode') ON CONFLICT DO NOTHING");
+                $permId = (int) $pdo->query("SELECT id FROM app.permissions WHERE code = '$permCode'")->fetchColumn();
+                $pdo->exec("INSERT INTO app.role_permissions (role_id, permission_id) VALUES ($roleId, $permId) ON CONFLICT DO NOTHING");
+            }
+        }
+
+        $token = \Firebase\JWT\JWT::encode([
+            'sub' => (string) $userId, 'v' => 1, 'exp' => time() + 3600
+        ], getenv('JWT_SECRET') ?: 'dummy_secret', 'HS256');
+
+        return ['id' => $userId, 'token' => $token];
+    }
+
     protected function createRequest(string $method, string $path): ServerRequestInterface
     {
         $factory = new ServerRequestFactory();
         return $factory->createServerRequest($method, $path);
+    }
+    
+    protected function createJsonRequest(string $method, string $path, array $data = []): ServerRequestInterface
+    {
+        $request = $this->createRequest($method, $path)
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Accept', 'application/json');
+            
+        if (!empty($data)) {
+            $request = $request->withParsedBody($data);
+        }
+        
+        return $request;
     }
 }

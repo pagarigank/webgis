@@ -12,7 +12,7 @@ import { AuditLogView } from './features/audit/AuditLogView';
 import { MapView } from './features/map/MapView';
 
 const HomePage: React.FC = () => {
-  const { me } = useAuth();
+  const { me: _me } = useAuth();
 
   return (
     <div style={{ height: 'calc(100vh - 60px)', width: '100%', margin: 0, padding: 0 }}>
@@ -22,8 +22,7 @@ const HomePage: React.FC = () => {
 };
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { status, me } = useAuth();
-  const authenticated = status === 'authenticated';
+  const { me: _me } = useAuth();
   const location = useLocation();
 
   return (
@@ -34,10 +33,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
         <nav className="app-nav">
           <Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link>
-          {hasPermission(me, 'user.manage') && (
+          {hasPermission(_me, 'user.manage') && (
             <Link to="/admin" className={location.pathname.startsWith('/admin') ? 'active' : ''}>Admin</Link>
           )}
-          {hasPermission(me, 'audit.view') && (
+          {hasPermission(_me, 'audit.view') && (
             <Link to="/audit" className={location.pathname === '/audit' ? 'active' : ''}>Audit Logs</Link>
           )}
           <Link to="/status" className={location.pathname === '/status' ? 'active' : ''}>System Status</Link>

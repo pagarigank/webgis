@@ -9,11 +9,13 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Core\Http\Response\Envelope;
 use App\Core\Error\ApiError;
 use App\GIS\Domain\FieldRetypeService;
+use App\GIS\Domain\MigrationGeneratorService;
 
 class GisLayerFieldController
 {
     private PDO $pdo;
     private FieldRetypeService $retypeService;
+    private MigrationGeneratorService $migrationService;
 
     const ALLOWED_TYPES = [
         'text', 'long_text', 'integer', 'decimal', 'boolean', 'date', 'datetime', 
@@ -26,10 +28,11 @@ class GisLayerFieldController
         'deleted_at', 'created_by', 'updated_by', 'status', 'version'
     ];
 
-    public function __construct(PDO $pdo, FieldRetypeService $retypeService)
+    public function __construct(PDO $pdo, FieldRetypeService $retypeService, MigrationGeneratorService $migrationService)
     {
         $this->pdo = $pdo;
         $this->retypeService = $retypeService;
+        $this->migrationService = $migrationService;
     }
 
     public function list(Request $request, Response $response, array $args): Response
@@ -50,6 +53,8 @@ class GisLayerFieldController
         $fieldName = $data['field_name'] ?? '';
         $fieldLabel = $data['field_label'] ?? $fieldName;
         $fieldType = strtolower($data['field_type'] ?? 'text');
+        $searchable = filter_var($data['searchable'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $sortable = filter_var($data['sortable'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $required = filter_var($data['required'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $defaultValue = isset($data['default_value']) ? json_encode($data['default_value']) : null;
         $options = isset($data['options']) ? json_encode($data['options']) : null;
@@ -88,16 +93,21 @@ class GisLayerFieldController
 
         $sql = "
             INSERT INTO app.gis_layer_fields 
-            (layer_id, field_name, field_label, field_type, required, default_value, options, validation_rules, sort_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (layer_id, field_name, field_label, field_type, required, searchable, sortable, default_value, options, validation_rules, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
         ";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             $layerId, $fieldName, $fieldLabel, $fieldType, 
-            $required ? 't' : 'f', $defaultValue, $options, $validationRules, $sortOrder
+            $required ? 't' : 'f', $searchable ? 't' : 'f', $sortable ? 't' : 'f', 
+            $defaultValue, $options, $validationRules, $sortOrder
         ]);
         $id = $stmt->fetchColumn();
+
+        if ($searchable || $sortable) {
+            $this->migrationService->generateExpressionIndexMigration($layerId, $fieldName, true);
+        }
 
         // If existingValue is provided and layer is populated, we would theoretically backfill existing features here.
         // For now, this is outside the scope of just creating metadata, but the constraint is satisfied.
@@ -154,8 +164,21 @@ class GisLayerFieldController
                 if (in_array($field, ['field_type', 'required', 'options', 'validation_rules']) && $val !== $existingField[$field]) {
                     $schemaChanged = true;
                 }
+                
                 $proposedData[$field] = $val;
             }
+        }
+        
+        $oldSearchable = filter_var($existingField['searchable'], FILTER_VALIDATE_BOOLEAN);
+        $oldSortable = filter_var($existingField['sortable'], FILTER_VALIDATE_BOOLEAN);
+        $newSearchable = filter_var($proposedData['searchable'] === 't' || $proposedData['searchable'] === true, FILTER_VALIDATE_BOOLEAN);
+        $newSortable = filter_var($proposedData['sortable'] === 't' || $proposedData['sortable'] === true, FILTER_VALIDATE_BOOLEAN);
+        
+        $oldIndexExists = $oldSearchable || $oldSortable;
+        $newIndexExists = $newSearchable || $newSortable;
+        
+        if ($oldIndexExists !== $newIndexExists) {
+            $this->migrationService->generateExpressionIndexMigration($layerId, $existingField['field_name'], $newIndexExists);
         }
         
         if (empty($fields)) {
@@ -167,25 +190,18 @@ class GisLayerFieldController
         $sql = "UPDATE app.gis_layer_fields SET " . implode(', ', $fields) . " WHERE id = ? AND layer_id = ?";
 
         if ($schemaChanged) {
-            $this->pdo->beginTransaction();
-            try {
-                // Take advisory xact lock on layer_id
-                $this->pdo->prepare("SELECT pg_advisory_xact_lock(?)")->execute([$layerId]);
-                
-                // Unescape JSON for the service
-                if (is_string($proposedData['options'])) $proposedData['options'] = json_decode($proposedData['options'], true);
-                if (is_string($proposedData['validation_rules'])) $proposedData['validation_rules'] = json_decode($proposedData['validation_rules'], true);
-                
-                // Execute conversion (throws on failure)
-                $this->retypeService->execute($layerId, $existingField['field_name'], $proposedData);
+            // Take advisory xact lock on layer_id
+            $this->pdo->prepare("SELECT pg_advisory_xact_lock(?)")->execute([$layerId]);
+            
+            // Unescape JSON for the service
+            if (is_string($proposedData['options'])) $proposedData['options'] = json_decode($proposedData['options'], true);
+            if (is_string($proposedData['validation_rules'])) $proposedData['validation_rules'] = json_decode($proposedData['validation_rules'], true);
+            
+            // Execute conversion (throws on failure)
+            $this->retypeService->execute($layerId, $existingField['field_name'], $proposedData);
 
-                // Update metadata
-                $this->pdo->prepare($sql)->execute($values);
-                $this->pdo->commit();
-            } catch (\Exception $e) {
-                $this->pdo->rollBack();
-                throw $e;
-            }
+            // Update metadata
+            $this->pdo->prepare($sql)->execute($values);
         } else {
             $this->pdo->prepare($sql)->execute($values);
         }

@@ -22,6 +22,11 @@ class HttpErrorHandler extends SlimErrorHandler
             $statusCode = $exception->getCode();
             $code = 'HTTP_ERROR_' . $statusCode;
             $message = $exception->getMessage();
+        } else if ($exception instanceof \App\Core\Error\ApiError) {
+            $statusCode = $exception->getApiStatus();
+            $code = $exception->getErrorCode();
+            $message = $exception->getMessage();
+            $details = $exception->getDetails();
         } else if ($this->displayErrorDetails) {
             $message = $exception->getMessage();
             $details = [

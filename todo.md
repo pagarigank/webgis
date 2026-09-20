@@ -340,19 +340,19 @@ AC: every rule in `specification.md` VR-25 enforced; error paths name the field.
 Test: Unit/AttributeValidatorTest (one case per type, valid and invalid).
 
 **TASK-044 — Field retype dry-run and conversion**
-Dep: 043 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 043 · Files: `backend/src/GIS/` · Status: DONE
 Do: preview convertible/failing counts; transactional conversion under an advisory lock.
 AC: a type change with any unconvertible value is refused with examples; conversion is atomic.
 Test: Api/FieldRetypeTest.
 
 **TASK-045 — Searchable-field expression indexes**
-Dep: 042 · Files: `backend/src/GIS/`, migrations · Status: TODO
+Dep: 042 · Files: `backend/src/GIS/`, migrations · Status: DONE
 Do: create/drop expression indexes when a field's `searchable`/`sortable` flag changes, by generated migration.
 AC: index exists after flagging; `EXPLAIN` shows it used for a filtered query.
 Test: Integration/ExpressionIndexTest.
 
 **TASK-046 — Style metadata API**
-Dep: 041 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 041 · Files: `backend/src/GIS/` · Status: DONE
 Do: SINGLE and CATEGORIZED style rules (GRADUATED behind a flag), label config, versioned styles.
 AC: styles are data; no style constant exists in frontend code.
 Test: Api/StyleTest.

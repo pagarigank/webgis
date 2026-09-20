@@ -51,6 +51,15 @@ return function (App $app) {
               ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
         $group->delete('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}', \App\GIS\Http\GisLayerFieldController::class . ':delete')
               ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+
+        // ---- GIS Layer Styles ----
+        $group->get('/layers/{layer_id:[0-9]+}/styles', \App\GIS\Http\GisLayerStyleController::class . ':list')
+              ->add(AuthenticateMiddleware::class);
+        $group->post('/layers/{layer_id:[0-9]+}/styles', \App\GIS\Http\GisLayerStyleController::class . ':create')
+              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+        $group->put('/layers/{layer_id:[0-9]+}/styles/{id:[0-9]+}', \App\GIS\Http\GisLayerStyleController::class . ':update')
+              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+
         $group->post('/users', \App\Users\Http\UserAdminController::class . ':create')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
         $group->get('/users/{id}', \App\Users\Http\UserAdminController::class . ':get')

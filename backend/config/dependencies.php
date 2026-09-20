@@ -97,4 +97,8 @@ return [
     RateLimitMiddleware::class => function (ContainerInterface $c) {
         return new RateLimitMiddleware($c->get(PDO::class), $c->get('jwtSecret'));
     },
+    
+    \App\GIS\Domain\MigrationGeneratorService::class => function (ContainerInterface $c) {
+        return new \App\GIS\Domain\MigrationGeneratorService(__DIR__ . '/../database/migrations/');
+    },
 ];

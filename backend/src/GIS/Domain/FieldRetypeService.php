@@ -125,7 +125,7 @@ class FieldRetypeService
 
         // Apply updates
         if (!empty($updates)) {
-            $stmt = $this->pdo->prepare("UPDATE app.gis_features SET attributes = ? WHERE id = ?");
+            $stmt = $this->pdo->prepare("UPDATE app.gis_features SET attributes = ?, version = version + 1 WHERE id = ?");
             foreach ($updates as $id => $newAttributes) {
                 $stmt->execute([$newAttributes, $id]);
             }

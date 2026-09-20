@@ -158,3 +158,8 @@ On 2026-09-20 the complete suite ran **98 tests / 228 assertions, OK** on the Do
 - **What shipped**: `AttributeValidator.php` domain service parsing metadata out of `app.gis_layer_fields` to enforce type, presence, enum, and min/max/regex constraints against an arbitrary set of input attributes. Added `AttributeValidatorTest.php`. Tests passed locally.
 - **Decisions made**: Separated the attribute validation logic into a pure domain class so it can be invoked safely from both API feature endpoints and batch import paths.
 - **Follow-up items**: TASK-044.
+
+- **TASK-044**: Completed FieldRetypeService and dry-run preview, fixed nested transactions in controller, incremented version in gis_features on update, fixed tests.
+
+- **TASK-045**: Created MigrationGeneratorService to generate Phinx migrations for expression indexes when searchable/sortable flags change. Updated GisLayerFieldController.
+- **TASK-046**: Implemented GisLayerStyleController to support SINGLE, CATEGORIZED, and GRADUATED styling rules. Created API routes and tests.
