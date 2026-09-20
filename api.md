@@ -121,8 +121,19 @@ POST /api/v1/auth/login
     "user": { "id": 12, "username": "jdelacruz", "full_name": "…", "org_id": 3,
               "must_change_password": false } } }
    Set-Cookie: refresh_token=…; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth
-→ 401 AUTH_INVALID | 401 MFA_REQUIRED (details.mfa_token) | 429 RATE_LIMITED
+   X-CSRF-Token: <token>
+   Set-Cookie: csrf_token=<token>; SameSite=Strict; Path=/api/v1/auth; Max-Age=1209600
+→ 401 AUTH_INVALID | 401 MFA_REQUIRED (details.mfa_token + details.enrolled) | 429 RATE_LIMITED
 ```
+
+Every successful authentication handshake — login, MFA verify and refresh — issues the
+readable half of the CSRF double-submit pair (ADR-23): a non-HttpOnly `csrf_token` cookie
+`SameSite=Strict; Path=/api/v1/auth` and the same value in an `X-CSRF-Token` response header
+(CORS-exposed). The SPA sends `X-CSRF-Token` from memory on `refresh`/`logout`; the server
+rejects a request presenting the `refresh_token` cookie whose header does not match the
+cookie (404-safe `hash_equals`, plus a same-origin `Origin` check), per §1.3. Logout also
+clears `csrf_token`. On refresh the server reuses the incoming `csrf_token` cookie value to
+avoid invalidating a concurrent tab; if absent it rotates to a fresh value.
 
 | Endpoint | Purpose |
 |---|---|
@@ -131,6 +142,50 @@ POST /api/v1/auth/login
 | `POST /auth/logout` | revokes the family → 204 |
 | `PUT /me/password` | `{current_password, new_password}` |
 | `GET /me` | profile + effective access (below) |
+
+`PUT /me/password` verifies `current_password` against the stored hash, validates
+`new_password` against the policy (PasswordPolicy), bumps the account `version`, clears
+`must_change_password`, revokes every refresh token for the account (all sessions end) and
+returns `{ "must_change_password": false }`. Failures: 401 `AUTH_INVALID` (bad current
+password), 422 `VALIDATION_FAILED` with `details.field_errors.new_password` listing policy
+violations.
+
+**TOTP MFA (SR-07).** A successful password check returns the token pair only when no
+factor is required. If the account has MFA enabled, or any of the user's roles is flagged
+`requires_mfa` (see `database.md` §4), login returns 401 `MFA_REQUIRED` instead:
+
+```http
+POST /api/v1/auth/login  { "username": "jdelacruz", "password": "…" }
+→ 401 { "success": false, "error": { "code": "MFA_REQUIRED",
+    "message": "A one-time code is required.",
+    "details": { "mfa_token": "eyJ…", "enrolled": true, "request_id": "01J…" } } }
+```
+
+`mfa_token` is a short-lived (5 min) signed code that authorises the *one* pending login —
+a username + a successful password check — and nothing else; **no session exists before it
+is redeemed.** It can be exchanged exactly once:
+
+```http
+POST /api/v1/auth/mfa/verify
+{ "mfa_token": "eyJ…", "code": "287082" }
+→ 200 { "success": true, "data": { "access_token": "…", "expires_in": 900,
+    "token_type": "Bearer", "user": { … } } }
+   Set-Cookie: refresh_token=…; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth
+```
+
+- The code is an RFC 6238 TOTP (SHA-1, 30-second period, 6 digits, ±1-step window,
+  RFC 4226 counter per timestamp) validated in constant-ish time against the user's secret.
+- `details.enrolled` reports whether a secret exists, so the SPA can route a user whose role
+  demands MFA but who has never enrolled (e.g. SYS_ADMIN) to their administrator for
+  activation rather than to an authentication app.
+- `enrolled: false` with a `requires_mfa` role returns `AUTH_INVALID` ("MFA is required for
+  this account but is not yet enrolled"), not `MFA_REQUIRED` — login must not begin a flow
+  that cannot complete.
+- Bad, expired, reused, or tampered with `mfa_token` → 401 `AUTH_INVALID` with a generic
+  message; repeated failures count against the `auth` rate-limit bucket.
+- The MFA secret is stored **at-rest encrypted** (libsodium `crypto_secretbox`, key derived
+  from `MFA_ENCRYPTION_KEY`, `architecture.md` ADR-22). If the key is absent or invalid the
+  MFA verify path fails closed (401 `AUTH_INVALID` "MFA is not configured…").
 
 ```json
 GET /me → data: {
@@ -154,6 +209,7 @@ GET /me → data: {
 GET|POST         /users                 GET|PUT|DELETE /users/{id}     (DELETE = deactivate)
 PUT              /users/{id}/roles      GET|PUT        /users/{id}/scopes
 POST             /users/{id}/force-password-reset
+GET|POST         /users/{id}/mfa        POST /users/{id}/mfa/enroll | /mfa/disable   (§3.2)
 GET              /users/{id}/effective-access?entity_type=parcel&entity_id=…
 GET|POST         /roles                 GET|PUT|DELETE /roles/{id}
 PUT              /roles/{id}/permissions
@@ -188,6 +244,42 @@ Validation: username/email unique (VR-USER-201/202) and well-formed (VR-USER-203
 
 `POST /users/{id}/force-password-reset` → `{ "id":903, "temporary_password":"Tmp!…", "must_change_password":true }` and revokes the user's tokens.
 
+### 3.2 Users — MFA administration (`user.manage`)
+
+```text
+GET  /users/{id}/mfa             status only: { user_id, mfa_enabled, mfa_secret_set }
+POST /users/{id}/mfa/enroll      activate MFA and return the one-time plaintext secret
+POST /users/{id}/mfa/disable     deactivate MFA and wipe the stored secret
+```
+
+A `reason` (≤ 500 chars, VR-ADMIN-501) is required in the `enroll`/`disable` body; every
+mutation bumps the user's `version` and writes an audit row with the acting user, the
+request id, and the reason.
+
+```json
+POST /users/903/mfa/enroll   { "reason": "System role requires MFA per agency policy." }
+→ 200 { "success": true, "data": {
+    "user_id": 903, "mfa_enabled": true,
+    "secret":   "JBSWY3DPEHPK3PXP",
+    "issuer":   "webgis",
+    "account":  "j.mendoza" } }
+```
+
+- `secret` is the **base32 TOTP seed, returned in plaintext exactly once**, at enrollment, so
+  the user can scan it into an authenticator app (the response also returns the seed's
+  `issuer` and `account` attributes for building the otpauth URI client-side; the seed itself
+  never recurs anywhere else).
+- Enrolling an already-enrolled user returns 422 `VALIDATION_FAILED` ("already enrolled…
+  disable it first to re-enroll"); the response never contains the stored secret.
+- `GET /users/{id}/mfa` confirms `mfa_secret_set` without exposing the secret or its
+  ciphertext (`architecture.md` ADR-22).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /users/{id}/mfa` | `{ "user_id":903, "mfa_enabled":false, "mfa_secret_set":false }` |
+| `POST /users/{id}/mfa/enroll` | generates a new seed, stores it encrypted, enables MFA → 200 with one-time `secret` |
+| `POST /users/{id}/mfa/disable` | `mfa_enabled=false`, wipes `mfa_secret_enc` → `{ "user_id":903, "mfa_enabled":false }` |
+
 `GET /users/{id}/effective-access?entity_type=parcel&entity_id=<uuid>` →
 
 ```json
@@ -200,7 +292,7 @@ Validation: username/email unique (VR-USER-201/202) and well-formed (VR-USER-203
 
 Only `entity_type=parcel` is supported (VR-SCOPE-310). Priority (FR-016): BARANGAY > MUNICIPALITY > PROVINCE > REGION > ORGANIZATION > CUSTOM_AREA > GLOBAL; an explicit `NONE` grant denies regardless of position.
 
-### 3.2 Roles & permissions — `role.manage`
+### 3.3 Roles & permissions — `role.manage`
 
 ```json
 POST /roles
@@ -210,7 +302,7 @@ POST /roles
 
 Code 3–50, uppercase letter first (VR-ROLE-301); name 2–160 (VR-ROLE-302). `PUT /roles/{id}/permissions` → `{ "permissions":["parcel.view","parcel.edit"], "reason":"…" }` (reason required); unknown codes are rejected (VR-ROLE-305). Permission changes bump the `version` of every user holding the role so cached permission results invalidate. `GET /permissions?module=&page=&per_page=` lists the catalogue (61 codes). System roles (`is_system`) cannot be deleted or have their code/permission set changed (VR-ROLE-303/304); a role assigned to users cannot be deleted (VR-ROLE-304).
 
-### 3.3 Organisations — `system.config`
+### 3.4 Organisations — `system.config`
 
 ```json
 POST /organizations

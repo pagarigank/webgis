@@ -12,6 +12,15 @@ return function (App $app) {
         $group->get('/health', HealthController::class);
         $group->get('/me', \App\Auth\Http\MeController::class)
               ->add(AuthenticateMiddleware::class);
+        $group->put('/me/password', \App\Auth\Http\MeController::class . ':changePassword')
+              ->add(AuthenticateMiddleware::class);
+
+        // ---- Auth (public; no Bearer required) ----
+        $auth = \App\Auth\Http\AuthController::class;
+        $group->post('/auth/login', $auth . ':login');
+        $group->post('/auth/mfa/verify', $auth . ':mfaVerify');
+        $group->post('/auth/refresh', $auth . ':refresh');
+        $group->post('/auth/logout', $auth . ':logout');
 
         $container = $app->getContainer();
         $authed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
@@ -19,6 +28,29 @@ return function (App $app) {
         // ---- Users (user.manage) ----
         $group->get('/users', \App\Users\Http\UserAdminController::class . ':list')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
+            
+        // ---- GIS Layers (layer.manage) ----
+        $layerAuthed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
+        $group->get('/layers', \App\GIS\Http\GisLayerController::class . ':list')
+            ->add(AuthenticateMiddleware::class);
+        $group->post('/layers', \App\GIS\Http\GisLayerController::class . ':create')
+            ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+        $group->put('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':update')
+            ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+        $group->delete('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':delete')
+            ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+
+        // ---- GIS Layer Fields ----
+        $group->get('/layers/{layer_id:[0-9]+}/fields', \App\GIS\Http\GisLayerFieldController::class . ':list')
+            ->add(AuthenticateMiddleware::class);
+        $group->post('/layers/{layer_id:[0-9]+}/fields', \App\GIS\Http\GisLayerFieldController::class . ':create')
+              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+        $group->put('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}', \App\GIS\Http\GisLayerFieldController::class . ':update')
+              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+        $group->post('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}/retype-preview', \App\GIS\Http\GisLayerFieldController::class . ':retypePreview')
+              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
+        $group->delete('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}', \App\GIS\Http\GisLayerFieldController::class . ':delete')
+              ->add($layerAuthed('layer.manage'))->add(AuthenticateMiddleware::class);
         $group->post('/users', \App\Users\Http\UserAdminController::class . ':create')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
         $group->get('/users/{id}', \App\Users\Http\UserAdminController::class . ':get')
@@ -34,6 +66,12 @@ return function (App $app) {
         $group->put('/users/{id}/scopes', \App\Users\Http\UserAdminController::class . ':setScopes')
             ->add($authed('scope.manage'))->add(AuthenticateMiddleware::class);
         $group->post('/users/{id}/force-password-reset', \App\Users\Http\UserAdminController::class . ':forcePasswordReset')
+            ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
+        $group->get('/users/{id}/mfa', \App\Users\Http\UserAdminController::class . ':getMfa')
+            ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
+        $group->post('/users/{id}/mfa/enroll', \App\Users\Http\UserAdminController::class . ':enrollMfa')
+            ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
+        $group->post('/users/{id}/mfa/disable', \App\Users\Http\UserAdminController::class . ':disableMfa')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
         $group->get('/users/{id}/effective-access', \App\Users\Http\UserAdminController::class . ':effectiveAccess')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
@@ -65,5 +103,13 @@ return function (App $app) {
             ->add($authed('system.config'))->add(AuthenticateMiddleware::class);
         $group->post('/organizations/{id}/deactivate', \App\Organizations\Http\OrganizationAdminController::class . ':deactivate')
             ->add($authed('system.config'))->add(AuthenticateMiddleware::class);
+
+        // ---- Audit Logs (audit.view) ----
+        $group->get('/audit-logs/export', \App\Audit\Http\AuditQueryController::class . ':export')
+            ->add($authed('audit.export'))->add(AuthenticateMiddleware::class);
+        $group->get('/audit-logs', \App\Audit\Http\AuditQueryController::class . ':list')
+            ->add($authed('audit.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/audit-logs/{id}', \App\Audit\Http\AuditQueryController::class . ':get')
+            ->add($authed('audit.view'))->add(AuthenticateMiddleware::class);
     });
 };

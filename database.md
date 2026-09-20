@@ -146,7 +146,8 @@ CREATE TABLE app.users (
   status varchar(16) NOT NULL DEFAULT 'ACTIVE'
      CHECK (status IN ('ACTIVE','SUSPENDED','DISABLED')),
   mfa_enabled boolean NOT NULL DEFAULT false,
-  mfa_secret_enc bytea,
+  mfa_secret_enc text,              -- libsodium secretbox ciphertext (nonce||cipher, base64),
+                                    -- key = sha256(MFA_ENCRYPTION_KEY) — never plaintext (ADR-22)
   must_change_password boolean NOT NULL DEFAULT true,
   failed_login_count int NOT NULL DEFAULT 0,
   locked_until timestamptz,
@@ -870,6 +871,29 @@ CREATE POLICY parcels_scope_write ON app.parcels FOR UPDATE TO app_rw
 
 Applied to `parcels`, `gis_features`, `land_titles`, `parties`, `documents`, `technical_descriptions`. RLS is a **backstop**; the application still enforces authorization so errors are meaningful (`architecture.md` §6.3). `app.fn_user_can_see/edit` are `STABLE` and index-friendly; scope sets are also cached per request in the application to avoid repeated evaluation.
 
+**Pre-authentication reads** (`architecture.md` ADR-21). Authentication must read `app.users` before any `app.user_id` exists — which plain RLS forbids. The login path therefore goes through three `SECURITY DEFINER` functions owned by `app_migrator` (the RLS-exempt table owner), each with `SET search_path = app, public`, `EXECUTE` revoked from `PUBLIC` and granted to `app_rw` only:
+
+```sql
+app.fn_login_lookup(p_username text)
+  -- returns the login row for an exact username (deleted rows excluded):
+  --  id, username, email, password_hash, full_name, "position", org_id, status,
+  --  mfa_enabled, mfa_secret_enc, must_change_password, failed_login_count,
+  --  locked_until, last_login_at, password_changed_at, version,
+  --  mfa_required = mfa_enabled OR EXISTS (any role with requires_mfa)
+
+app.fn_login_record(p_user_id bigint, p_succeeded boolean, p_new_password_hash text)
+  -- SELECT … FOR UPDATE on the user row; on failure applies the counter and the
+  --  15-minute lockout at ≥ 5 attempts; on success resets counter/lockout and
+  --  records last_login_at; applies p_new_password_hash (Argon2id rehash) when given;
+  --  returns the post-update row with the same shape as fn_login_lookup.
+
+app.fn_user_profile(p_user_id bigint)
+  -- bounded profile read for /me and post-login responses (includes mfa_enabled,
+  --  mfa_secret_enc, must_change_password, status; never decrypts the secret).
+```
+
+The exposed surface is deliberately narrow: fixed column lists, exact-match keys, no free-form SQL, and the app `app_rw` role can call these functions without gaining table-level access.
+
 Database roles: `app_migrator` (DDL, deploy only), `app_rw` (DML on `app`/`staging`, SELECT on `ref`, **INSERT-only on `audit`**), `app_ro` (SELECT only).
 
 ---
@@ -895,7 +919,7 @@ Partitioning: `audit.audit_logs` monthly from day one (worker creates the next p
 
 ## 12. Seed and fixture data
 
-**Seeds (all environments, idempotent):** permission catalogue; the eight system roles with their permission grants; CRS registry entries; `ref.units` with exact conversion factors; PSGC reference data; workflow definition for parcels with states and transitions; default system settings and tolerances; the OSM basemap provider (the only one enabled by default, `OPEN_ODBL`).
+**Seeds (all environments, idempotent):** permission catalogue; the eight system roles with their permission grants (`requires_mfa` flags included — SYS_ADMIN is seeded MFA-mandatory, so it must be enrolled before it can log in); CRS registry entries; `ref.units` with exact conversion factors; PSGC reference data; workflow definition for parcels with states and transitions; default system settings and tolerances; the OSM basemap provider (the only one enabled by default, `OPEN_ODBL`).
 
 **Fixtures (never production):** clearly labelled synthetic data — `SAMPLE_`/`TEST_` prefixes on every identifier — comprising sample users per role, sample organisations and scopes, sample layers with each field type, sample points/lines/polygons, synthetic control points, synthetic survey plans, synthetic technical descriptions with **known expected coordinates, closure, and area**, and known split/consolidation cases with expected results.
 

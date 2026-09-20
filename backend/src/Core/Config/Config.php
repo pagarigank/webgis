@@ -53,6 +53,7 @@ class Config
         // Optional variables
         $settings['APP_DEBUG'] = filter_var(getenv('APP_DEBUG') ?: false, FILTER_VALIDATE_BOOLEAN);
         $settings['CORS_ALLOWED_ORIGINS'] = getenv('CORS_ALLOWED_ORIGINS') ?: '';
+        $settings['MFA_ENCRYPTION_KEY'] = getenv('MFA_ENCRYPTION_KEY') ?: '';
 
         return new self($settings);
     }

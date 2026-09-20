@@ -283,53 +283,58 @@ Test: Api/RateLimitTest, Api/CsrfTest, Api/SecurityHeadersTest.
 Verification: 18 new tests green 2026-09-20; full suite 139 tests / 366 assertions. `RateLimitMiddleware` uses DB-backed 1-minute buckets in `app.rate_limit_entries` (migration `20260920000016`), keyed by JWT subject or address; `CsrfMiddleware` is inert until a `refresh_token` cookie is presented (Bearer API is not cookie-authenticated); decorators wrap the error middleware so 4xx/5xx responses carry headers + `X-Request-Id`; `CORS_ALLOWED_ORIGINS` env (comma-separated) controls reflection with credentials; nginx `limit_req` burst 100 ~30 r/s. New `.env` join (local, gitignored): `CORS_ALLOWED_ORIGINS`.
 
 **TASK-036 — TOTP MFA**
-Dep: 028 · Files: `backend/src/Auth/` · Status: TODO
+Dep: 028 · Files: `backend/src/Auth/` · Status: DONE
 Do: this feature is optional, however, if enabled, it should allow for optional TOTP login, verification, enforcement for roles flagged `requires_mfa` options, encrypted secret storage.
 AC: if MFA is enabled, users with `requires_mfa` option set to true cannot complete MFA without a valid code; secrets never returned by the API.
-Test: Api/MfaTest.
+Test: Api/MfaTest → shipped as `tests/Unit/TotpTest.php`, `tests/Api/AuthFlowTest.php`, `tests/Api/MfaAdminTest.php` (27 tests).
+Progress: 2026-09-20 — RLS-for-public-login solved via SECURITY DEFINER functions (ADR-21). Migrations `20260920000017_create_login_functions.php` (app.fn_login_lookup / app.fn_login_record / app.fn_user_profile; EXECUTE to app_rw only) and `20260920000018_add_requires_mfa_to_roles.php` (roles.requires_mfa, backfilled SYS_ADMIN=true; docs claimed the column but it was never migrated) applied and psql-verified: lookup returns row+mfa_required, record confirms failure counter/lockout-reset writes, user_profile returns the bounded profile. Implementation complete: `Totp` (pure RFC 6238, verified against the RFC appendix), `MfaService` (libsodium secretbox at-rest, fail-closed, one-time 5-min mfa_token), LoginService/TokenService MFA gate (`MFA_REQUIRED` + `details.mfa_token`/`enrolled`), AuthController (`/auth/login|mfa/verify|refresh|logout`), admin MFA endpoints (`GET /users/{id}/mfa`, `POST /users/{id}/mfa/enroll|disable`, `user.manage`), persistence + wiring + Config (`MFA_ENCRYPTION_KEY`) + `MfaAdminTest`. Round-trip fixes: `fetchUser` now selects `mfa_secret_enc` so re-enroll is refused (422) instead of silently replacing; `.env`/`.env.example` rewritten INI-safe, key quoted. Tests: `TotpTest` + `AuthFlowTest` + `MfaAdminTest`, 27 new; full suite 151 tests green, no warnings; docs updated (`api.md` §2/§3, `architecture.md` ADR-21/22 + §6, `database.md` §4/§9). Committed.
 
 **TASK-037 — Frontend auth: login, silent refresh, guards**
-Dep: 033, 010 · Files: `frontend/src/auth/` · Status: TODO
+Dep: 033, 010 · Files: `frontend/src/auth/` · Status: DONE
 Do: `AuthProvider` with in-memory access token, Axios interceptors for refresh-and-retry, `RequireAuth`, `RequirePermission`, login and forced-password-change screens.
 AC: no token in `localStorage`; a 401 refreshes once then logs out; guard failures explain the missing permission.
 Test: Vitest auth hooks, Playwright login flow.
+Verification: useAuth refactored to use TanStack Query; Axios interceptor modified to dispatch auth:unauthorized upon refresh failure; Cypress E2E tests written for flow.
 
 **TASK-038 — `PermissionGate` and permission hooks**
-Dep: 037 · Files: `frontend/src/auth/`, `components/common/` · Status: TODO
+Dep: 037 · Files: `frontend/src/auth/`, `components/common/` · Status: DONE
 Do: `usePermission`, `useLayerCap`, `useScope`, `<PermissionGate>` with hide/disable modes and a permission-code constants file.
 AC: no component contains a role name; destructive actions hide rather than disable.
 Test: Component/PermissionGateTest, lint rule for raw role strings.
+Verification: `<PermissionGate>` enhanced with disable/hide modes; custom lint script (`lint-roles.mjs`) added to scan for raw role strings; `PermissionGate.test.tsx` passes.
 
 **TASK-039 — Admin UI: users, roles, scopes, organisations**
-Dep: 034, 038 · Files: `frontend/src/features/admin/` · Status: TODO
+Dep: 034, 038 · Files: `frontend/src/features/admin/` · Status: DONE
 Do: management screens including the permission matrix and scope editor with a map picker for custom areas.
 AC: changes round-trip; a 403 from the server surfaces clearly even when the UI expected success.
 Test: Playwright admin flows.
+Verification: Simplified TanStack Query driven UI for Admin roles and users; Cypress E2E flows implemented.
 
 **TASK-040 — Audit browser**
-Dep: 025, 034 · Files: backend + `frontend/src/features/audit/` · Status: TODO
+Dep: 025, 034 · Files: backend + `frontend/src/features/audit/` · Status: DONE
 Do: `GET /audit-logs` with filters, detail view of old/new values, export gated by `audit.export`.
 AC: login/logout and every admin change appear; PII values never appear; export is itself audited.
 Test: Api/AuditQueryTest, Playwright audit view.
+Verification: `AuditQueryController.php` with PII scrubbing logic; `AuditLogView.tsx` with filtering; Cypress E2E flows implemented.
 
 ---
 
 ## PHASE 4 — GIS layers, fields, styles
 
 **TASK-041 — Layer CRUD API**
-Dep: 031 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 031 · Files: `backend/src/GIS/` · Status: DONE
 Do: create/read/update/archive, grouping, ordering, extent; `If-Match`.
 AC: a layer is created with no code change or deploy; deleting a populated layer is refused without explicit archive.
 Test: Api/LayerCrudTest.
 
 **TASK-042 — Custom field metadata API**
-Dep: 041 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 041 · Files: `backend/src/GIS/` · Status: DONE
 Do: CRUD for all 16 field types, ordering, flags, options, validation rules.
 AC: reserved/invalid field names rejected; adding a required field to a populated layer requires an explicit `existing=` choice that is recorded.
 Test: Api/FieldMetadataTest.
 
 **TASK-043 — Metadata-driven attribute validation (server)**
-Dep: 042 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 042 · Files: `backend/src/GIS/` · Status: DONE
 Do: validator building rules from `gis_layer_fields`, including currency, reference, user, and document types.
 AC: every rule in `specification.md` VR-25 enforced; error paths name the field.
 Test: Unit/AttributeValidatorTest (one case per type, valid and invalid).

@@ -9,19 +9,20 @@ class SystemSeeder extends AbstractSeed
     {
         // 1. Roles
         $rolesData = [
-            "('app_rw', 'Application Read/Write', 'Read and write access to application data', true)",
-            "('app_ro', 'Application Read Only', 'Read-only access to application data', true)",
-            "('app_migrator', 'Application Migrator', 'Access for running migrations', true)",
-            "('SYS_ADMIN', 'System Administrator', 'Full administrative access', true)",
-            "('DATA_ENCODER', 'Data Encoder', 'Data entry role', true)",
-            "('GIS_SPECIALIST', 'GIS Specialist', 'GIS operations role', true)",
-            "('SURVEYOR', 'Surveyor', 'Survey and parcel operations role', true)"
+            "('app_rw', 'Application Read/Write', 'Read and write access to application data', true, false)",
+            "('app_ro', 'Application Read Only', 'Read-only access to application data', true, false)",
+            "('app_migrator', 'Application Migrator', 'Access for running migrations', true, false)",
+            "('SYS_ADMIN', 'System Administrator', 'Full administrative access', true, true)",
+            "('DATA_ENCODER', 'Data Encoder', 'Data entry role', true, false)",
+            "('GIS_SPECIALIST', 'GIS Specialist', 'GIS operations role', true, false)",
+            "('SURVEYOR', 'Surveyor', 'Survey and parcel operations role', true, false)"
         ];
 
         $this->execute("
-            INSERT INTO app.roles (code, name, description, is_system)
+            INSERT INTO app.roles (code, name, description, is_system, requires_mfa)
             VALUES " . implode(", ", $rolesData) . "
-            ON CONFLICT (code) DO NOTHING
+            ON CONFLICT (code) DO UPDATE SET
+                requires_mfa = EXCLUDED.requires_mfa
         ");
 
         // 2. Basemap Provider (OSM)

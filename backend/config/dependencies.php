@@ -7,6 +7,11 @@ use App\Core\Http\Middleware\CorsMiddleware;
 use App\Core\Http\Middleware\CsrfMiddleware;
 use App\Core\Http\Middleware\RateLimitMiddleware;
 use App\Core\Http\Middleware\SecurityHeadersMiddleware;
+use App\Audit\AuditWriter;
+use App\Users\UserAdminService;
+use App\Auth\LoginService;
+use App\Auth\MfaService;
+use App\Auth\TokenService;
 use Psr\Container\ContainerInterface;
 use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -50,6 +55,27 @@ return [
     'jwtSecret' => function (ContainerInterface $c) {
         return $c->get(Config::class)->get('JWT_SECRET');
     },
+
+    'mfaEncryptionKey' => function (ContainerInterface $c) {
+        return $c->get(Config::class)->get('MFA_ENCRYPTION_KEY', '');
+    },
+
+    TokenService::class => \DI\autowire(TokenService::class)
+        ->constructorParameter('jwtSecret', \DI\get('jwtSecret')),
+
+    MfaService::class => \DI\autowire(MfaService::class)
+        ->constructorParameter('jwtSecret', \DI\get('jwtSecret'))
+        ->constructorParameter('encryptionKey', \DI\get('mfaEncryptionKey')),
+
+    LoginService::class => \DI\autowire(LoginService::class)
+        ->constructorParameter('mfaService', \DI\get(MfaService::class)),
+
+    UserAdminService::class => \DI\autowire(UserAdminService::class)
+        ->constructorParameter('mfaService', \DI\get(MfaService::class)),
+
+    // AuthController needs the JWT secret for its token reads.
+    \App\Auth\Http\AuthController::class => \DI\autowire(\App\Auth\Http\AuthController::class)
+        ->constructorParameter('jwtSecret', \DI\get('jwtSecret')),
 
     CacheInterface::class => function () {
         return new Psr16Cache(new ArrayAdapter());

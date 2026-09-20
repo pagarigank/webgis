@@ -15,6 +15,7 @@ use RuntimeException;
 final class TokenService
 {
     private const ALGO = 'HS256';
+    public const ACCESS_TTL = 900; // seconds, mirrors JWT_TTL
     private const JWT_TTL = 900; // 15 minutes
     private const REFRESH_TTL = 1209600; // 14 days
 
@@ -151,6 +152,26 @@ final class TokenService
             }
             throw $e;
         }
+    }
+
+    /**
+     * Revoke the whole family a refresh token belongs to (logout).
+     * A provided combined token that does not parse is a no-op: the session
+     * cookie is gone anyway, and re-validating would leak existence info.
+     */
+    public function revokeRefreshToken(string $combinedToken): void
+    {
+        $parts = explode(':', $combinedToken, 2);
+        if (count($parts) !== 2) {
+            return;
+        }
+
+        $stmt = $this->pdo->prepare("
+            UPDATE app.refresh_tokens
+            SET revoked_at = NOW(), revoked_reason = 'logout'
+            WHERE family_id = :family_id AND revoked_at IS NULL
+        ");
+        $stmt->execute([':family_id' => $parts[0]]);
     }
 
     private function createJwt(int $userId): string

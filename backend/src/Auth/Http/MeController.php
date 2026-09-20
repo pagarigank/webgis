@@ -3,6 +3,10 @@ declare(strict_types=1);
 
 namespace App\Auth\Http;
 
+use App\Auth\Hasher;
+use App\Auth\PasswordPolicy;
+use App\Core\Error\ApiError;
+use App\Core\Http\Request\JsonBodyParser;
 use App\Core\Http\Response\Envelope;
 use App\RBAC\DataScopeResolver;
 use App\RBAC\LayerCapabilityResolver;
@@ -15,6 +19,7 @@ final class MeController
 {
     public function __construct(
         private readonly PDO $pdo,
+        private readonly Hasher $hasher,
         private readonly PermissionResolver $permissionResolver,
         private readonly LayerCapabilityResolver $layerResolver,
         private readonly DataScopeResolver $scopeResolver
@@ -80,5 +85,59 @@ final class MeController
         ];
 
         return Envelope::success($response, $payload);
+    }
+
+    /** PUT /api/v1/me/password — self-service / forced password change. */
+    public function changePassword(Request $request, Response $response): Response
+    {
+        try {
+            $userId = (int) ($request->getAttribute('user_id') ?? 0);
+            if ($userId <= 0) {
+                throw new ApiError('AUTH_REQUIRED', 'Not authenticated.', 401);
+            }
+
+            $data = JsonBodyParser::parse($request);
+            $current = is_string($data['current_password'] ?? null) ? $data['current_password'] : '';
+            $next = is_string($data['new_password'] ?? null) ? $data['new_password'] : '';
+
+            if ($current === '' || $next === '') {
+                throw new ApiError('VALIDATION_FAILED', 'current_password and new_password are required.', 422, ['fields' => ['current_password', 'new_password']]);
+            }
+
+            $stmt = $this->pdo->prepare("SELECT username, password_hash FROM app.users WHERE id = :id AND deleted_at IS NULL");
+            $stmt->execute([':id' => $userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($row === false) {
+                throw new ApiError('AUTH_INVALID', 'User not found.', 401, []);
+            }
+            if (!$this->hasher->verify($current, (string) $row['password_hash'])) {
+                throw new ApiError('AUTH_INVALID', 'Current password is incorrect.', 401, []);
+            }
+
+            $violations = PasswordPolicy::validate($next, (string) $row['username']);
+            if ($violations !== []) {
+                throw new ApiError('VALIDATION_FAILED', 'New password does not meet the policy.', 422, ['field_errors' => ['new_password' => $violations]]);
+            }
+
+            // Bump version so permission caches and the SPA's /me key change.
+            $update = $this->pdo->prepare(
+                "UPDATE app.users
+                    SET password_hash = :hash,
+                        must_change_password = false,
+                        password_changed_at = CURRENT_TIMESTAMP,
+                        version = version + 1,
+                        updated_by = :uid
+                  WHERE id = :id AND deleted_at IS NULL"
+            );
+            $update->execute([':hash' => $this->hasher->hash($next), ':uid' => $userId, ':id' => $userId]);
+
+            // Revoke every existing session (password change invalidates refresh tokens).
+            $this->pdo->prepare('DELETE FROM app.refresh_tokens WHERE user_id = :id')->execute([':id' => $userId]);
+
+            return Envelope::success($response, ['must_change_password' => false]);
+        } catch (ApiError $e) {
+            return Envelope::error($response, $e->getErrorCode(), $e->getMessage(), $e->getDetails(), $e->getApiStatus());
+        }
     }
 }

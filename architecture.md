@@ -268,7 +268,7 @@ app.users(id PK, username UQ CI, email UQ CI, password_hash, full_name, position
           org_id FK, status, mfa_enabled, mfa_secret_enc, must_change_password,
           failed_login_count, locked_until, last_login_at, password_changed_at,
           version, created_by, created_at, updated_by, updated_at, deleted_at)
-app.roles(id PK, code UQ, name, description, is_system bool, created_at, updated_at)
+app.roles(id PK, code UQ, name, description, is_system bool, requires_mfa bool, created_at, updated_at)
 app.permissions(id PK, code UQ, module, description)      -- seeded, immutable set
 app.role_permissions(role_id FK, permission_id FK, PK(role_id, permission_id))
 app.user_roles(user_id FK, role_id FK, org_id FK NULL, granted_by, granted_at,
@@ -285,6 +285,8 @@ app.refresh_tokens(id PK, user_id FK, token_hash UQ, issued_at, expires_at,
 ```
 
 Indexes: `users(lower(username))`, `users(org_id)`, `data_scopes(user_id, scope_type)`, GIST on `data_scopes.geom`, `refresh_tokens(token_hash)`, `refresh_tokens(user_id) WHERE revoked_at IS NULL`.
+
+Because `app.users`, `app.roles`, and friends sit behind RLS, the authentication path — which must read a user row *before any actor identity exists* — uses three `SECURITY DEFINER` functions (`app.fn_login_lookup`, `app.fn_login_record`, `app.fn_user_profile`) owned by `app_migrator` and granted `EXECUTE` to `app_rw` only (§6.3). `mfa_secret_enc` is `text` storing a libsodium `secretbox` ciphertext (`nonce ‖ cipher`, base64) whose key is sha256 of `MFA_ENCRYPTION_KEY` (ADR-22).
 
 ### 3.5 ERD — GIS core
 
@@ -605,8 +607,20 @@ Tolerance values, the engine version, and the tolerance set used are all written
 - `SecurityHeadersMiddleware` stamps security headers on every response (HSTS, CSP without `unsafe-inline`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`). `CorsMiddleware` enforces the explicit `CORS_ALLOWED_ORIGINS` allow-list with exact origin reflection and credentials; unlisted origins receive no CORS headers.
 - The header decorators sit **outside** the error middleware, so 4xx/5xx responses (including rate-limit 429s) still carry security headers, CORS rules and `X-Request-Id`.
 - `scope_version` in the token forces re-authorization when a user's roles or scopes change — permission changes take effect within one access-token lifetime, and immediately for refresh.
-- Lockout after N failed attempts with exponential backoff; every attempt logged.
-- MFA (TOTP) supported for roles flagged `requires_mfa` (administrators, approvers).
+- Lockout after N failed attempts with exponential backoff; every attempt logged. The
+  counter/lockout/rehash state machine runs **in the database** (`app.fn_login_record`, §6.3)
+  so concurrent login attempts cannot race on the same counter and the rehash cannot be
+  dropped if the process dies.
+- **MFA (TOTP).** Accounts with MFA enabled, or holding any role flagged `requires_mfa`
+  (`app.roles.requires_mfa`; SYS_ADMIN is mandatory from seed), must pass an RFC 6238
+  one-time code on login (ADR-22). The flow returns 401 `MFA_REQUIRED` with a short-lived
+  single-use `mfa_token` authorising the pending login; only a valid code exchanges it for
+  the real token pair. Secrets are stored **encrypted at rest** (libsodium
+  `crypto_secretbox`, key = sha256 of `MFA_ENCRYPTION_KEY`); a missing/invalid key fails MFA
+  closed. `Totp` lives in `Auth/` as a pure, RFC-6238-reference-vector-tested value object
+  (SHA-1, 30 s period, 6 digits, ±1-step window, counter-derived per timestamp). Enrollment
+  and disable are `user.manage` admin operations that never expose the stored secret; the
+  base32 seed is returned in plaintext **only once**, at enrollment, for the QR scan.
 
 ### 6.2 Authorization — three independent layers
 
@@ -632,6 +646,11 @@ db role  app_ro         SELECT only (reporting, read replica)
 - The API connects as `app_rw`, which **cannot** UPDATE or DELETE anything in `audit`. Audit rows are append-only at the database privilege level, not merely by convention.
 - Per request: `SET LOCAL app.user_id`, `app.role_codes`, `app.scope_ids`, `app.request_id` inside the transaction. RLS policies read these via `current_setting('app.user_id', true)`.
 - RLS is applied to the tables where record-level exposure is a real risk: `parcels`, `gis_features`, `land_titles`, `parties`, `documents`, `technical_descriptions`. It is a **backstop**, not the primary mechanism — application authorization still runs, because RLS cannot produce good error messages or express workflow guards.
+- **Login runs through SECURITY DEFINER functions, not bare RLS reads.** Authentication happens *before* any actor id exists, so no `app.user_id` can be set and an RLS-guarded `SELECT` on `app.users` would return nothing. Three functions owned by `app_migrator` (the RLS-exempt table owner), each with `SET search_path = app, public`, `EXECUTE` revoked from `PUBLIC` and granted only to `app_rw`, bridge this without widening table grants (ADR-21):
+  - `app.fn_login_lookup(username)` — returns the login row (incl. `mfa_secret_enc`, `mfa_required` = `mfa_enabled OR any role.requires_mfa`), keyed by exact username, deleted rows excluded.
+  - `app.fn_login_record(user_id, succeeded, new_password_hash)` — `SELECT … FOR UPDATE` on the user row: applies the failure-counter/lockout state machine, resets on success, applies the Argon2id rehash when provided, returns the post-update row.
+  - `app.fn_user_profile(user_id)` — bounded profile read for `/me` and post-login responses, including MFA status but never exposing the secret.
+  The leak surface is deliberately narrow: a fixed column list, an exact-match key, and no free-form SQL.
 - Application RBAC and database privileges are deliberately separate concerns (master prompt §26) and are documented separately so nobody assumes one implies the other.
 
 ### 6.4 PII handling (RA 10173)
@@ -784,6 +803,9 @@ CI gate: lint + PHPStan L8 + unit + integration + build must pass before merge. 
 | ADR-18 | `parcel_courses` is a **view** over `technical_description_courses` | a second physical course table | one source of truth for course data; the view satisfies the prescribed table list without duplication |
 | ADR-19 | Basemaps are rows in `basemap_providers` with licence metadata; third-party keys are proxied server-side | hard-coded providers, keys in the SPA | licensing is a first-class, auditable concern (§16) |
 | ADR-20 | CAD data enters only through the validated import pipeline; no imagery is ever ingested from CAD-Earth or similar desktop tools | treating CAD-Earth as a tile source | licence compliance (§17); this is a hard prohibition, not a preference |
+| ADR-21 | Pre-authentication reads/writes on RLS-guarded tables run through SECURITY DEFINER functions owned by `app_migrator` (`fn_login_lookup`, `fn_login_record`, `fn_user_profile`), `search_path` pinned, EXECUTE limited to `app_rw` | bare RLS reads with a null `app.user_id`, or widening table grants | login must work before any actor id exists; SECURITY DEFINER keeps RLS intact while exposing only a fixed column list through exact-match keys |
+| ADR-22 | TOTP secrets and MFA state are stored **encrypted at rest** on `app.users` (libsodium `crypto_secretbox`, key = sha256 of `MFA_ENCRYPTION_KEY`), with a plaintext-secret-returned-once enrollment flow | storing the base32 seed as plaintext, pgcrypto raw-encrypt | a stolen `pg_dump` must not yield working second factors; enrollment needs the seed once for the QR scan — after that only ciphertext exists |
+| ADR-23 | **SPA session + CSRF double-submit transport**: the access token lives in SPA memory only (never `localStorage`/`sessionStorage`/indexedDB); the rotating refresh token stays in an HttpOnly, Secure, SameSite=Strict cookie pinned to `Path=/api/v1/auth`; the server issues the readable half of the double-submit pair — a non-HttpOnly `csrf_token` cookie (SameSite=Strict, `Path=/api/v1/auth`, Max-Age = refresh max age) **and** echoes it in the `X-CSRF-Token` response header — on login, MFA verify and refresh, and clears it on logout. The SPA sends the header from memory on refresh/logout; refresh reuses the incoming `csrf_token` cookie value when present, else issues a fresh one. A 401 mid-flight triggers **one** single-flight silent refresh (concurrent 401s share one in-flight promise) then retries the original request once; a failed refresh drops the session. Self-service password change (`PUT /me/password`) revokes the refresh family, ending the session deterministically | access token in `localStorage`/indexedDB; PHP session fallback; refresh on any app route; a refresh on every 401 without a queue | cookie-bound refresh forces a double-submit CSRF token; keeping the access token out of storage shrinks the XSS exfiltration surface to live memory; a single-flight queue prevents refresh stampedes; refresh token rotation plus reuse-revocation (ADR-05) means a stolen cookie dies on first replay |
 
 Any change to this table requires a documented reason and a corresponding update to `specification.md` and `frontend.md` (master prompt §48.7).
 

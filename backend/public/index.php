@@ -30,6 +30,7 @@ $app = AppFactory::create();
 
 // 5. Add Routing Middleware
 $app->addRoutingMiddleware();
+$app->addBodyParsingMiddleware();
 
 // 6. Error Middleware (catches routing/handler failures)
 $errorMiddleware = $app->addErrorMiddleware(

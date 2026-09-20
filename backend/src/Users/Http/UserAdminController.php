@@ -128,6 +128,41 @@ final class UserAdminController
         }
     }
 
+    public function getMfa(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $dto = $this->session($request);
+            $result = $this->users->getMfa((int) $args['id']);
+            return Envelope::success($response, $result);
+        } catch (ApiError $e) {
+            return Envelope::error($response, $e->getErrorCode(), $e->getMessage(), $e->getDetails(), $e->getApiStatus());
+        }
+    }
+
+    public function enrollMfa(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $data = $this->jsonBody($request, allowEmpty: true);
+            $dto = $this->session($request);
+            $result = $this->users->enrollMfa((int) $args['id'], $dto['user_id'], $dto['request_id'], $data['reason'] ?? null);
+            return Envelope::success($response, $result);
+        } catch (ApiError $e) {
+            return Envelope::error($response, $e->getErrorCode(), $e->getMessage(), $e->getDetails(), $e->getApiStatus());
+        }
+    }
+
+    public function disableMfa(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $data = $this->jsonBody($request, allowEmpty: true);
+            $dto = $this->session($request);
+            $result = $this->users->disableMfa((int) $args['id'], $dto['user_id'], $dto['request_id'], $data['reason'] ?? null);
+            return Envelope::success($response, $result);
+        } catch (ApiError $e) {
+            return Envelope::error($response, $e->getErrorCode(), $e->getMessage(), $e->getDetails(), $e->getApiStatus());
+        }
+    }
+
     public function effectiveAccess(Request $request, Response $response, array $args): Response
     {
         $params = $request->getQueryParams();

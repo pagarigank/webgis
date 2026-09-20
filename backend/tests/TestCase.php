@@ -27,6 +27,7 @@ class TestCase extends PHPUnitTestCase
         (require __DIR__ . '/../config/routes.php')($app);
         
         $app->addRoutingMiddleware();
+        $app->addBodyParsingMiddleware();
 
         $errorMiddleware = $app->addErrorMiddleware(true, true, true);
         $errorMiddleware->setDefaultErrorHandler(

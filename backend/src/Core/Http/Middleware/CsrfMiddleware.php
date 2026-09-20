@@ -43,6 +43,11 @@ final class CsrfMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
+        // Login establishes a new session and cannot require a CSRF token
+        if ($request->getUri()->getPath() === '/api/v1/auth/login') {
+            return $handler->handle($request);
+        }
+
         if (!$this->isSafeMethod($request->getMethod())) {
             if (!$this->originAllowed($request)) {
                 return $this->reject();

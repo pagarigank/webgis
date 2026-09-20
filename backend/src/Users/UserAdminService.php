@@ -5,7 +5,9 @@ namespace App\Users;
 
 use App\Audit\AuditWriter;
 use App\Auth\Hasher;
+use App\Auth\MfaService;
 use App\Auth\PasswordPolicy;
+use App\Auth\Totp;
 use App\Core\Db\DbTransaction;
 use App\Core\Error\ApiError;
 use DateTimeImmutable;
@@ -24,6 +26,7 @@ final class UserAdminService
         private readonly AuditWriter $audit,
         private readonly Hasher $hasher,
         private readonly DataScopeReader $scopeReader,
+        private readonly ?MfaService $mfaService = null,
     ) {}
 
     public function list(int $page, int $perPage, ?string $query, ?string $status): array
@@ -396,6 +399,102 @@ final class UserAdminService
         return ['temporary_password' => $temporary, 'must_change_password' => true];
     }
 
+    /** Read-only MFA status; the secret is never returned (AC 036). */
+    public function getMfa(int $id): array
+    {
+        $this->fetchUserOrFail($id);
+
+        $stmt = $this->pdo->prepare("
+            SELECT mfa_enabled, mfa_secret_enc FROM app.users WHERE id = :id
+        ");
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return [
+            'user_id'      => $id,
+            'mfa_enabled'  => (bool) $row['mfa_enabled'],
+            'mfa_secret_set' => $row['mfa_secret_enc'] !== null,
+        ];
+    }
+
+    /** Enroll a fresh TOTP secret and enable MFA for the user. */
+    public function enrollMfa(int $id, int $actorId, ?string $requestId, ?string $reason = null): array
+    {
+        $this->assertReason($reason);
+        $user = $this->fetchUserOrFail($id);
+        $mfa = $this->mfaService ?? throw new ApiError('CONFIGURATION_ERROR', 'MFA service is not configured.', 500);
+
+        if ($user['mfa_secret_enc'] !== null) {
+            throw new ApiError('VALIDATION_FAILED', 'MFA is already enrolled for this user; disable it first to re-enroll.', 422);
+        }
+
+        $secret = Totp::generateSecret();
+        $secretEnc = $mfa->encryptSecret($secret);
+
+        $tx = DbTransaction::begin($this->pdo);
+        try {
+            $stmt = $this->pdo->prepare("
+                UPDATE app.users
+                SET mfa_enabled = true, mfa_secret_enc = :secret,
+                    version = version + 1, updated_by = :actor, updated_at = now()
+                WHERE id = :id
+                RETURNING version
+            ");
+            $stmt->execute([':secret' => $secretEnc, ':actor' => $actorId, ':id' => $id]);
+            $version = (int) $stmt->fetchColumn();
+
+            $this->audit->write('UPDATE', 'app.users', (string) $id,
+                ['mfa_enabled' => false],
+                ['mfa_enabled' => true, 'mfa_secret_set' => true, 'version' => $version],
+                $actorId, $requestId, $reason);
+
+            DbTransaction::commit($this->pdo, $tx);
+        } catch (Throwable $e) {
+            DbTransaction::rollback($this->pdo, $tx, $e);
+        }
+
+        return [
+            'user_id'      => $id,
+            'mfa_enabled'  => true,
+            // Single-use plaintext: returned exactly once at enrollment so the
+            // user can scan the QR / enter the code into an authenticator app.
+            'secret'       => $secret,
+            'issuer'       => 'webgis',
+            'account'      => $user['username'],
+        ];
+    }
+
+    /** Disable MFA and wipe the stored secret. */
+    public function disableMfa(int $id, int $actorId, ?string $requestId, ?string $reason = null): array
+    {
+        $this->assertReason($reason);
+        $user = $this->fetchUserOrFail($id);
+
+        $tx = DbTransaction::begin($this->pdo);
+        try {
+            $stmt = $this->pdo->prepare("
+                UPDATE app.users
+                SET mfa_enabled = false, mfa_secret_enc = NULL,
+                    version = version + 1, updated_by = :actor, updated_at = now()
+                WHERE id = :id
+                RETURNING version
+            ");
+            $stmt->execute([':actor' => $actorId, ':id' => $id]);
+            $version = (int) $stmt->fetchColumn();
+
+            $this->audit->write('UPDATE', 'app.users', (string) $id,
+                ['mfa_enabled' => true, 'mfa_secret_set' => true],
+                ['mfa_enabled' => false, 'mfa_secret_set' => false, 'version' => $version],
+                $actorId, $requestId, $reason);
+
+            DbTransaction::commit($this->pdo, $tx);
+        } catch (Throwable $e) {
+            DbTransaction::rollback($this->pdo, $tx, $e);
+        }
+
+        return ['user_id' => $id, 'mfa_enabled' => false];
+    }
+
     public function effectiveAccess(int $id, ?string $entityType, ?string $entityId): array
     {
         $user = $this->fetchUserOrFail($id);
@@ -463,7 +562,7 @@ final class UserAdminService
     {
         $stmt = $this->pdo->prepare("
             SELECT id, username, email, full_name, position, org_id, status,
-                   mfa_enabled, must_change_password, version, created_at, updated_at, deleted_at
+                   mfa_enabled, mfa_secret_enc, must_change_password, version, created_at, updated_at, deleted_at
             FROM app.users WHERE id = :id
         ");
         $stmt->execute([':id' => $id]);
