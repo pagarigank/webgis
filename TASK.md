@@ -3,7 +3,7 @@
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
 **Current phase:** PHASE 3 — Authentication, RBAC, audit (M2 Identity)
-**Implementation status:** IN PROGRESS — foundation (001–026) shipped; Identity tasks 027–033 DONE; next up TASK-034
+**Implementation status:** IN PROGRESS — foundation (001–026) shipped; Identity tasks 027–034 DONE; next up TASK-035
 **Last updated:** 2026-09-20
 
 ---
@@ -51,9 +51,11 @@
 | 31 | TASK-031 | Layer capability resolver | 030,017 | DONE | per-layer view/create/update/delete/approve from `layer_permissions` |
 | 32 | TASK-032 | Data scope resolver | 030 | DONE | FR-016 resolution order; GLOBAL/REGION documented and DB-enforced (migration `20260920000014`) |
 | 33 | TASK-033 | `GET /me` with effective access | 031,032 | DONE | payload per `api.md` §2; changing a role bumps `scope_version` |
-| 34 | TASK-034 | User, role, permission, organisation, scope admin APIs | 033 | TODO | next up |
+| 34 | TASK-034 | User, role, permission, organisation, scope admin APIs | 033 | DONE | committed; 23 new integration tests; full suite 121 tests / 306 assertions |
 
 Nothing below TASK-034 is queued yet. The queue is extended one milestone at a time so it reflects reality rather than intention; the full ordered plan is in `todo.md`. TASK-028–033 shipped as code in `backend/src/Auth/`, `backend/src/RBAC/`, `backend/src/Core/Http/Middleware/`, and `backend/src/Audit/`. On 2026-09-20 the scope vocabularies were reconciled in a single migration (`20260920000014`): `data_scopes.scope_type` and `access_level` gained CHECK-enum constraints matching `database.md` §4 (`ORGANIZATION, PROVINCE, MUNICIPALITY, BARANGAY, REGION, CUSTOM_AREA, GLOBAL, PROJECT` — PROJECT reserved for a future project-scoped release), GLOBAL is exempt from the target check, and `app.fn_user_can_see`/`fn_user_can_edit` were rewritten from the legacy `'ORG'/'PSGC'/'WRITE'` vocabulary to the documented one (geographic prefix matching covers BARANGAY/MUNICIPALITY/PROVINCE/REGION; write maps to EDIT/APPROVE). The fixture seeder was corrected from `('PSGC','WRITE')` to `('PROVINCE','EDIT')`. Full suite: 98 tests / 228 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56).
+
+TASK-034 shipped the admin APIs: `UserAdminService` (CRUD, deactivate as soft delete, role/scope assignment, force-password-reset, `effective-access` explainer), `RoleAdminService`/`OrganizationAdminService` (system-role protection, If-Match versioning, deactivation guards), controllers, and rewritten `config/routes.php` with per-route `AuthorizeMiddleware` declarations. Full suite: 121 tests / 306 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56).
 
 ---
 

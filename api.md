@@ -143,6 +143,59 @@ POST             /crs/transform         explicit, logged coordinate transformati
 
 `GET /users/{id}/effective-access` answers "what can this user do to this record, and why", returning the decision plus the rule that produced it (FR-018) — the debugging tool that prevents permission guesswork.
 
+All administration routes require a permission; every mutation writes an audit row with the acting user and a `reason` (≤ 500 chars, VR-ADMIN-501). Role, scope and permission assignments require a `reason` and are refused without one.
+
+### 3.1 Users — `user.manage`
+
+```json
+POST /users
+{ "username":"j.mendoza", "email":"jm@denr.gov.ph", "password":"Str0ng!Pass123",
+  "full_name":"Jose Mendoza", "org_id":41, "position":"Survey Aide",
+  "roles":[{"code":"SURVEYOR"}], "must_change_password": true }
+→ 201 { "success":true, "data":{ "id":903, "username":"j.mendoza", "status":"ACTIVE",
+  "version":1, "org_id":41, "roles":[{"id":7,"code":"SURVEYOR","name":"Surveyor", "is_system":false}], "...":"..." } }
+```
+
+Validation: username/email unique (VR-USER-201/202) and well-formed (VR-USER-203), full name 2–160 (VR-USER-204), password meets the policy (VR-USER-205), role codes exist (VR-ROLE-305), org exists and is active (VR-ORG-507), status ∈ `ACTIVE|SUSPENDED|DISABLED` (VR-USER-208). Self-deactivation is forbidden (VR-USER-209).
+
+`PUT /users/{id}` uses optimistic locking: `If-Match: <version>` is required (missing → 428, stale → 409 `VERSION_CONFLICT` naming `current_version`). `POST /users/{id}/deactivate` sets status `DISABLED`, stamps `deleted_at`, bumps `version` and revokes refresh tokens (soft delete — never a hard delete).
+
+`PUT /users/{id}/roles` → `{ "roles":[{"code":"SURVEYOR"}], "reason":"…" }`. `PUT /users/{id}/scopes` → `{ "scopes":[{"type":"BARANGAY","ref_code":"037105001","access_level":"EDIT","valid_from":"2026-01-01","valid_to":"2026-12-31"}], "reason":"…" }` (requires `scope.manage`). Scope types: `ORGANIZATION|PROVINCE|MUNICIPALITY|BARANGAY|REGION|CUSTOM_AREA|GLOBAL`; access ∈ `NONE|VIEW|EDIT|APPROVE`; dates are `YYYY-MM-DD` and `valid_to ≥ valid_from` (VR-SCOPE-311/315); ref codes must exist (VR-SCOPE-310). `GET /users/{id}/scopes` returns the grants.
+
+`POST /users/{id}/force-password-reset` → `{ "id":903, "temporary_password":"Tmp!…", "must_change_password":true }` and revokes the user's tokens.
+
+`GET /users/{id}/effective-access?entity_type=parcel&entity_id=<uuid>` →
+
+```json
+{ "success":true, "data":{
+  "entity":{ "type":"parcel", "id":"…" },
+  "entity_access":{ "decision":"EDIT", "granted":true,
+    "rule":"highest positive grant (barangay scope)",
+    "matched_scopes":[ { "type":"BARANGAY","code":"037105001","name":"…","access":"EDIT" } ] } } }
+```
+
+Only `entity_type=parcel` is supported (VR-SCOPE-310). Priority (FR-016): BARANGAY > MUNICIPALITY > PROVINCE > REGION > ORGANIZATION > CUSTOM_AREA > GLOBAL; an explicit `NONE` grant denies regardless of position.
+
+### 3.2 Roles & permissions — `role.manage`
+
+```json
+POST /roles
+{ "code":"SURVEYOR", "name":"Surveyor", "description":"…", "reason":"…" }
+→ 201 { "success":true, "data":{ "id":7, "code":"SURVEYOR", "is_system":false, "permissions":[] } }
+```
+
+Code 3–50, uppercase letter first (VR-ROLE-301); name 2–160 (VR-ROLE-302). `PUT /roles/{id}/permissions` → `{ "permissions":["parcel.view","parcel.edit"], "reason":"…" }` (reason required); unknown codes are rejected (VR-ROLE-305). Permission changes bump the `version` of every user holding the role so cached permission results invalidate. `GET /permissions?module=&page=&per_page=` lists the catalogue (61 codes). System roles (`is_system`) cannot be deleted or have their code/permission set changed (VR-ROLE-303/304); a role assigned to users cannot be deleted (VR-ROLE-304).
+
+### 3.3 Organisations — `system.config`
+
+```json
+POST /organizations
+{ "code":"DENR-7", "name":"DENR Region 7", "org_type":"OFFICE", "parent_id":2 }
+→ 201 { "success":true, "data":{ "id":41, "code":"DENR-7", "status":"ACTIVE", "version":1 } }
+```
+
+org_type ∈ `GOVERNMENT|OFFICE|PRIVATE|NGOS|INGOS` (VR-ORG-503); code 2–40 uppercase letters/digits/underscore/hyphen starting with a letter (VR-ORG-501); name 2–160 (VR-ORG-502); parent must exist and not be self (VR-ORG-504); `psgc_code` validated (VR-ORG-507). `PUT /organizations/{id}` requires `If-Match` (428 missing, 409 stale). `POST /organizations/{id}/deactivate` → `{ id, status:"INACTIVE" }`, refused while active children or users are assigned (VR-ORG-506).
+
 ---
 
 ## 4. Layers, fields, styles

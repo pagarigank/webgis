@@ -231,42 +231,49 @@ Dep: 027 · Files: `backend/src/Auth/` · Status: DONE
 Do: access JWT (15 min), refresh cookie (14 d) hashed and family-tracked, rotation on use, reuse revokes the family; lockout with backoff.
 AC: a replayed refresh token revokes every session for the user; lockout triggers and expires correctly.
 Test: Api/AuthFlowTest, Api/RefreshReuseTest.
+Verification: full suite green on 2026-09-20 (98 tests / 228 assertions) including `TokenRotationTest`, `LoginLockoutTest`, `MeApiTest`; JWT `jti` added; `refresh_tokens.token_hash` stored as `bytea` via `decode(?, 'hex')`.
 
 **TASK-029 — Authenticate middleware and `SET LOCAL` DB session context**
 Dep: 028, 022 · Files: `backend/src/Core/Http/Middleware/` · Status: DONE
 Do: token verification, user resolution, `SET LOCAL app.user_id/role_codes/scope_ids/request_id` inside the transaction.
 AC: every authenticated request carries DB context; an unauthenticated request never opens a scoped transaction.
 Test: Integration/DbSessionContextTest.
+Verification: `DbSessionContextTest` green 2026-09-20. Wiring note: PHP-DI primitives need explicit `constructorParameter('jwtSecret', \DI\get('jwtSecret'))`; `autowire()`/`get()` must be called fully qualified in `config/dependencies.php`.
 
 **TASK-030 — Permission resolver and Authorize middleware**
 Dep: 029 · Files: `backend/src/RBAC/` · Status: DONE
 Do: effective permission computation with caching keyed by `scope_version`; route-level permission declarations.
 AC: a missing permission returns `PERMISSION_DENIED` naming the required code; cache invalidates on role change.
 Test: Api/PermissionMatrixTest (every route × every role).
+Verification: `PermissionMatrixTest` green 2026-09-20; `CacheInterface` bound to `Psr16Cache(new ArrayAdapter())` in DI.
 
 **TASK-031 — Layer capability resolver**
 Dep: 030, 017 · Files: `backend/src/RBAC/` · Status: DONE
 Do: per-layer view/create/update/delete/approve resolution from `layer_permissions`.
 AC: a role without `can_update` on a layer cannot update its features even holding `gis.feature.update`.
 Test: Api/LayerPermissionTest.
+Verification: `LayerPermissionTest` green 2026-09-20.
 
 **TASK-032 — Data scope resolver**
 Dep: 030 · Files: `backend/src/RBAC/` · Status: DONE
 Do: resolution order (explicit NONE → most specific grant → default deny), including custom-polygon scopes.
 AC: matches the truth table in `specification.md` FR-016; out-of-scope records return `NOT_FOUND`, never `PERMISSION_DENIED`.
 Test: Integration/ScopeResolutionTest.
+Verification: `ScopeResolutionTest` green 2026-09-20. Scope vocabularies reconciled: migration `20260920000014` adds `ck_scope_type`/`ck_scope_access` enum checks (`ORGANIZATION, PROVINCE, MUNICIPALITY, BARANGAY, REGION, CUSTOM_AREA, GLOBAL, PROJECT`, PROJECT reserved), GLOBAL exempt from `ck_scope_target`, and rewrites `app.fn_user_can_see/edit` from legacy `'ORG'/'PSGC'/'WRITE'` to the documented vocabulary (geographic types via PSGC-prefix, write = EDIT/APPROVE). `database.md` §4, `specification.md` FR-015, `FixtureSeeder`, `RlsTest` updated in lockstep.
 
 **TASK-033 — `GET /me` with effective access**
 Dep: 031, 032 · Files: `backend/src/Auth/` · Status: DONE
 Do: profile, roles, permissions, layer capabilities, scopes, `scope_version`.
 AC: payload matches `api.md` §2; changing a role changes `scope_version`.
 Test: Integration/MeApiTest.
+Verification: `MeApiTest` green 2026-09-20; `Envelope` lives at `App\Core\Http\Response\Envelope`.
 
 **TASK-034 — User, role, permission, organisation, scope admin APIs**
-Dep: 033 · Files: `backend/src/Users/`, `backend/src/RBAC/` · Status: TODO
+Dep: 033 · Files: `backend/src/Users/`, `backend/src/RBAC/` · Status: DONE
 Do: CRUD, role assignment, scope assignment, deactivation (never hard delete), `effective-access` explainer.
 AC: system roles cannot be deleted; every change is audited with actor and reason.
-Test: Api/UserAdminTest, Api/RoleAdminTest.
+Test: Integration/UserAdminTest, Integration/RoleAdminTest, Integration/OrganizationAdminTest.
+Verification: 23 new integration tests green 2026-09-20; full suite 121 tests / 306 assertions. JSON bodies parse via `App\Core\Http\Request\JsonBodyParser`; services use `App\Core\Db\DbTransaction` (AuthenticateMiddleware holds the request transaction).
 
 **TASK-035 — Rate limiting, CSRF, security headers, CORS**
 Dep: 029 · Files: `backend/src/Core/Http/Middleware/`, nginx config · Status: TODO

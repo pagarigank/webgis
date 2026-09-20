@@ -28,6 +28,8 @@ final class AuditWriter
      * @param array<string,mixed>|null  $newValues Snapshot after change (null for DELETEs)
      * @param int|null                  $userId    Authenticated user ID from app.user_id session var
      * @param string|null               $requestId Optional X-Request-ID header value
+     * @param string|null               $reason    Mandatory human-readable reason for permission/scope
+     *                                             changes (FR-017); nullable elsewhere
      */
     public function write(
         string $action,
@@ -37,6 +39,7 @@ final class AuditWriter
         ?array $newValues = null,
         ?int $userId = null,
         ?string $requestId = null,
+        ?string $reason = null,
     ): void {
         // Redact PII before persisting
         $oldValues = PiiPolicy::redact($table, $oldValues);
@@ -44,10 +47,10 @@ final class AuditWriter
 
         $stmt = $this->pdo->prepare("
             INSERT INTO audit.audit_logs
-                (user_id, action, entity_type, entity_id, old_values, new_values, request_id)
+                (user_id, action, entity_type, entity_id, old_values, new_values, reason, request_id)
             VALUES
                 (:user_id, :action, :entity_type, :entity_id,
-                 :old_values::jsonb, :new_values::jsonb, :request_id)
+                 :old_values::jsonb, :new_values::jsonb, :reason, :request_id)
         ");
 
         $stmt->execute([
@@ -57,6 +60,7 @@ final class AuditWriter
             ':entity_id'   => $entityId,
             ':old_values'  => $oldValues !== null ? json_encode($oldValues, JSON_THROW_ON_ERROR) : null,
             ':new_values'  => $newValues !== null ? json_encode($newValues, JSON_THROW_ON_ERROR) : null,
+            ':reason'      => $reason,
             ':request_id'  => $requestId,
         ]);
     }
@@ -72,10 +76,11 @@ final class AuditWriter
         ?array $oldValues = null,
         ?array $newValues = null,
         ?string $requestId = null,
+        ?string $reason = null,
     ): void {
         $row = $this->pdo->query("SELECT NULLIF(current_setting('app.user_id', true), '')::bigint AS uid")->fetch();
         $userId = isset($row['uid']) ? (int) $row['uid'] : null;
 
-        $this->write($action, $table, $entityId, $oldValues, $newValues, $userId, $requestId);
+        $this->write($action, $table, $entityId, $oldValues, $newValues, $userId, $requestId, $reason);
     }
 }
