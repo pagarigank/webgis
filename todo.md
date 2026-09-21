@@ -6,7 +6,7 @@ Test: Playwright CRUD from grid, Api/BulkUpdateTest.
 Verification: 2026-09-21 — `FeatureEditor.tsx` (NEW: react-hook-form modal, Controller wraps FieldRenderer per layer field, create/edit modes, saving+error states, layerApi.createFeature/updateFeature with If-Match version, Cancel/Close resets form), `AttributeTable.tsx` patched (Actions column with Edit/Delete/Zoom/Duplicate buttons gated by hasPermission, bulk-delete button in selection bar with confirm dialog, deleteFeature+duplicateFeature handlers calling layerApi), `FeatureGridPage.tsx` patched (imports FeatureEditor, toolbar +New Feature button for create, editor modal wired for create+edit, layer fields loaded via layerApi.getById, editorError/editorSaving state, handleFeaturesChanged refetch on save/delete, canCreate/canEdit/canDelete/canViewPII derived from permissions). Frontend tsc --noEmit clean, vitest 40/40 green.
 
 **TASK-067 — Grid export and filter-by-extent**
-Dep: 064 · Files: backend + frontend · Status: IN_PROGRESS
+Dep: 064 · Files: backend + frontend · Status: DONE
 Do: export the current filtered view to CSV/GeoJSON respecting permissions; extent toggle adds the bbox to the query.
 AC: PII excluded unless permitted; export audited.
 Test: Api/ExportScopeTest.
