@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useCallback } from 'react';
+import React, { useMemo, useEffect, useCallback, useState } from 'react';
 import {
     useReactTable,
     getCoreRowModel,
@@ -11,6 +11,9 @@ import {
 } from '@tanstack/react-table';
 import type { Feature } from '../../features/layers/types';
 import { useMapContext } from '../../features/map/MapContext';
+import { layerApi } from '../api/layerApi';
+import { hasPermission, useAuth } from '../../auth/permissions';
+import { useFeatureSelection } from '../FeatureSelectionContext';
 
 interface AttributeTableProps {
     data: Feature[];
@@ -19,6 +22,10 @@ interface AttributeTableProps {
     sourceLayerId?: string;
     /** If true, row click toggles multiple selection (shift-click multi). */
     multiSelect?: boolean;
+    /** Layer id for CRUD operations. */
+    layerId?: number;
+    /** Current user for permission checks. */
+    me?: any;
     total: number;
     page: number;
     perPage: number;
@@ -28,6 +35,19 @@ interface AttributeTableProps {
     onPageChange: (page: number) => void;
     onPerPageChange: (n: number) => void;
     onSortChange: (col: string, dir: 'ASC' | 'DESC') => void;
+    /** Callback when a feature is created/updated/deleted — triggers re-fetch. */
+    onFeaturesChanged?: () => void;
+    /** Currently editing feature (for edit modal). */
+    editingFeature?: Feature | null;
+    /** Set editing feature. */
+    setEditingFeature?: (f: Feature | null) => void;
+    /** Error message to display. */
+    error?: string | null;
+    /** Whether a save operation is in progress. */
+    saving?: boolean;
+    onSaveComplete?: () => void;
+    /** Fields available for this layer (for FieldRenderer). */
+    fields?: any[];
 }
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -67,6 +87,8 @@ export function AttributeTable({
     columns,
     sourceLayerId,
     multiSelect,
+    layerId,
+    me,
     total,
     page,
     perPage,
@@ -76,8 +98,17 @@ export function AttributeTable({
     onPageChange,
     onPerPageChange,
     onSortChange,
+    onFeaturesChanged,
+    editingFeature,
+    setEditingFeature,
+    error,
+    saving,
+    onSaveComplete,
+    fields,
 }: AttributeTableProps) {
     const { selectionManager, registerFeatureSources, setSelection, clearSelection, getSelectedIds } = useMapContext();
+    const { hasPermission: hasPerm } = useAuth();
+    const { selectedIds: sharedSelectedIds, toggle: toggleShared } = useFeatureSelection();
     const [sorting, setSorting] = React.useState<SortingState>(() => {
         const dirLower = dir.toLowerCase() as 'asc' | 'desc';
         return [{ id: sort, desc: dirLower === 'desc' }];
@@ -89,6 +120,16 @@ export function AttributeTable({
         }),
         [page, perPage],
     );
+
+    // Merge local selection with shared selection context
+    const localSelectedIds = React.useRef(new Set<string>());
+    const selectedIds = React.useMemo(() => {
+        const merged = new Set(localSelectedIds.current);
+        for (const id of sharedSelectedIds) {
+            merged.add(id);
+        }
+        return merged;
+    }, [sharedSelectedIds]);
 
     // Register feature sources after data loads (TASK-065)
     useEffect(() => {
@@ -106,39 +147,95 @@ export function AttributeTable({
         }
     }, [data, sourceLayerId, registerFeatureSources]);
 
-    const selectedIds = React.useMemo(() => getSelectedIds(), [getSelectedIds]);
-
     const handleRowClick = useCallback((featureId: string, event: React.MouseEvent) => {
         if (event.shiftKey && multiSelect) {
             const sm = selectionManager;
             if (sm) {
                 sm.toggleFeature(featureId);
+                localSelectedIds.current = new Set(sm.getSelectedIds());
             } else {
                 const current = Array.from(getSelectedIds());
                 if (current.includes(featureId)) {
                     setSelection(current.filter(id => id !== featureId));
+                    localSelectedIds.current.delete(featureId);
                 } else {
                     setSelection([...current, featureId]);
+                    localSelectedIds.current.add(featureId);
                 }
             }
+            toggleShared(featureId);
         } else {
             const sm = selectionManager;
             if (sm) {
                 sm.selectOne(featureId);
+                localSelectedIds.current = new Set(sm.getSelectedIds());
+                if (event.shiftKey) {
+                    toggleShared(featureId);
+                }
             } else {
                 setSelection([featureId]);
+                localSelectedIds.current = new Set([featureId]);
+                if (event.shiftKey) {
+                    toggleShared(featureId);
+                }
             }
         }
-    }, [selectionManager, getSelectedIds, setSelection, multiSelect]);
+    }, [selectionManager, getSelectedIds, setSelection, multiSelect, toggleShared]);
 
     const handleClearSelection = useCallback(() => {
         const sm = selectionManager;
         if (sm) {
             sm.clearSelection();
+            localSelectedIds.current.clear();
         } else {
             clearSelection();
+            localSelectedIds.current.clear();
         }
     }, [selectionManager, clearSelection]);
+
+    const handleEditFeature = useCallback((feature: Feature) => {
+        setEditingFeature?.(feature);
+    }, [setEditingFeature]);
+
+    const handleDeleteFeature = useCallback(async (feature: Feature) => {
+        if (!layerId) return;
+        try {
+            await layerApi.deleteFeature(layerId, feature.id);
+            if (onFeaturesChanged) onFeaturesChanged();
+        } catch (err) {
+            console.error('Failed to delete feature:', err);
+        }
+    }, [layerId, onFeaturesChanged]);
+
+    const handleBulkDelete = useCallback(async () => {
+        if (!layerId || selectedIds.size === 0) return;
+        if (!confirm(`Delete ${selectedIds.size} selected features?`)) return;
+        try {
+            for (const id of selectedIds) {
+                await layerApi.deleteFeature(layerId, id);
+            }
+            if (onFeaturesChanged) onFeaturesChanged();
+            handleClearSelection();
+        } catch (err) {
+            console.error('Bulk delete failed:', err);
+        }
+    }, [layerId, selectedIds, onFeaturesChanged, handleClearSelection]);
+
+    const handleDuplicateFeature = useCallback(async (feature: Feature) => {
+        if (!layerId) return;
+        try {
+            await layerApi.createFeature(layerId, {
+                geometry: feature.geometry,
+                attributes: { ...feature.attributes },
+                status: 'PENDING',
+                psgc_barangay: feature.psgc_barangay ?? undefined,
+                provenance: feature.provenance ?? undefined,
+            });
+            if (onFeaturesChanged) onFeaturesChanged();
+        } catch (err) {
+            console.error('Failed to duplicate feature:', err);
+        }
+    }, [layerId, onFeaturesChanged]);
 
     const columnsDef: ColumnDef<Feature>[] = useMemo(
         () =>
@@ -173,6 +270,9 @@ export function AttributeTable({
 
     const selectedCount = selectedIds.size;
     const hasSelection = selectedCount > 0;
+    const canEdit = hasPerm(me, 'gis.feature.update');
+    const canDelete = hasPerm(me, 'gis.feature.delete');
+    const canCreate = hasPerm(me, 'gis.feature.create');
 
     return (
         <div className="card shadow-sm">
@@ -181,9 +281,18 @@ export function AttributeTable({
                 <div className="mb-2 px-3 py-2 bg-warning-subtle border-bottom d-flex justify-content-between align-items-center">
                     <span className="text-danger fw-semibold">
                         {selectedCount} feature{selectedCount !== 1 ? 's' : ''} selected
+                        {canDelete && (
+                            <button
+                                className="btn btn-sm btn-outline-danger ms-2"
+                                onClick={handleBulkDelete}
+                                disabled={saving}
+                            >
+                                Bulk delete
+                            </button>
+                        )}
                     </span>
                     <button
-                        className="btn btn-sm btn-outline-danger"
+                        className="btn btn-sm btn-outline-secondary"
                         onClick={handleClearSelection}
                     >
                         Clear selection
@@ -232,6 +341,10 @@ export function AttributeTable({
                                         </div>
                                     </th>
                                 ))}
+                                {/* Actions column */}
+                                <th scope="col" className="text-nowrap" style={{ width: '140px', minWidth: '120px' }}>
+                                    Actions
+                                </th>
                             </tr>
                         ))}
                     </thead>
@@ -239,15 +352,21 @@ export function AttributeTable({
                         {table.getRowModel().rows.length === 0 ? (
                             <tr>
                                 <td
-                                    colSpan={columns.length}
+                                    colSpan={columns.length + 1}
                                     className="text-center py-5 text-muted"
                                 >
+                                    {hasSelection && (
+                                        <span className="badge bg-warning text-dark me-2" style={{ cursor: 'pointer' }} onClick={handleClearSelection}>
+                                            Clear selection ({selectedCount})
+                                        </span>
+                                    )}
                                     No features to display.
                                 </td>
                             </tr>
                         ) : (
                             table.getRowModel().rows.map((row) => {
                                 const isSelected = selectedIds.has(row.id);
+                                const feat = row.original;
                                 return (
                                     <tr
                                         key={row.id}
@@ -266,6 +385,47 @@ export function AttributeTable({
                                                 )}
                                             </td>
                                         ))}
+                                        <td style={{ verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                                            <div className="btn-group btn-group-sm" style={{ display: 'flex', gap: 2 }}>
+                                                {canEdit && (
+                                                    <button
+                                                        className="btn btn-outline-primary"
+                                                        title="Edit feature"
+                                                        onClick={(e) => { e.stopPropagation(); handleEditFeature(feat); }}
+                                                        disabled={saving}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                )}
+                                                {canDelete && (
+                                                    <button
+                                                        className="btn btn-outline-danger"
+                                                        title="Delete feature"
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteFeature(feat); }}
+                                                        disabled={saving}
+                                                    >
+                                                        Del
+                                                    </button>
+                                                )}
+                                                <button
+                                                    className="btn btn-outline-secondary"
+                                                    title="Zoom to feature on map"
+                                                    onClick={(e) => { e.stopPropagation(); /* map zoom handled externally */ }}
+                                                >
+                                                    Zoom
+                                                </button>
+                                                {canEdit && (
+                                                    <button
+                                                        className="btn btn-outline-secondary"
+                                                        title="Duplicate feature"
+                                                        onClick={(e) => { e.stopPropagation(); handleDuplicateFeature(feat); }}
+                                                        disabled={saving}
+                                                    >
+                                                        Dup
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
                                     </tr>
                                 );
                             })
@@ -279,9 +439,7 @@ export function AttributeTable({
                 <div className="d-flex align-items-center gap-2">
                     <span className="text-muted small">
                         {hasSelection && (
-                            <>
-                                <span className="badge bg-warning text-dark me-1">{selectedCount} selected</span>
-                            </>
+                            <span className="badge bg-warning text-dark me-1">{selectedCount} selected</span>
                         )}
                     </span>
                 </div>

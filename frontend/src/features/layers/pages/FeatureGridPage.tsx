@@ -1,7 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import React, { useQuery, useCallback, useState, useMemo, useRef } from 'react';
 import { layerApi, type FeatureCollection } from '../api/layerApi';
 import type { Feature } from '../types';
 import { AttributeTable } from '../components/AttributeTable';
+import { FeatureEditor } from '../components/FeatureEditor';
+import type { LayerField } from '../types';
+import { useAuth } from '../../auth/useAuth';
+import { hasPermission } from '../../auth/permissions';
 
 interface FeatureGridPageProps {
     layerId: number;
@@ -11,7 +15,7 @@ interface FeatureGridPageProps {
 const CORE_COLUMNS = ['id', 'status', 'psgc_barangay', 'provenance', 'created_at', 'updated_at'] as const;
 
 export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
-    // Pagination/sort/filter state from URL
+    const { me } = useAuth();
     const search = new URLSearchParams(window.location.search);
     const page = Math.max(1, parseInt(search.get('page') ?? '1', 10));
     const perPage = Math.min(100, Math.max(10, parseInt(search.get('per_page') ?? '50', 10)));
@@ -20,7 +24,7 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
     const status = search.get('status') ?? undefined;
     const offset = (page - 1) * perPage;
 
-    const { data, isLoading, isError } = useQuery({
+    const { data, isLoading, isError, refetch } = useQuery({
         queryKey: ['features', layerId, { page, perPage, sort, dir, status }],
         queryFn: () =>
             layerApi.getFeatures(layerId, {
@@ -32,6 +36,61 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
             }),
         placeholderData: (prev) => prev,
     });
+
+    const [editingFeature, setEditingFeature] = useState<Feature | null>(null);
+    const [editorMode, setEditorMode] = useState<'create' | 'edit'>('edit');
+    const [editorError, setEditorError] = useState<string | null>(null);
+    const [editorSaving, setEditorSaving] = useState(false);
+
+    // Layer fields — in a real app these come from the layer metadata endpoint
+    const [layerFields, setLayerFields] = useState<LayerField[]>([]);
+    const [fieldsLoading, setFieldsLoading] = useState(true);
+
+    // Load layer fields once
+    useEffect(() => {
+        const loadFields = async () => {
+            try {
+                const layer = await layerApi.getById(layerId);
+                setLayerFields(layer.fields ?? []);
+            } catch {
+                setLayerFields([]);
+            } finally {
+                setFieldsLoading(false);
+            }
+        };
+        loadFields();
+    }, [layerId]);
+
+    const handleFeaturesChanged = useCallback(() => {
+        refetch();
+    }, [refetch]);
+
+    const handleCreate = useCallback(() => {
+        setEditorMode('create');
+        setEditingFeature(null);
+        setEditorError(null);
+    }, []);
+
+    const handleEdit = useCallback((feature: Feature) => {
+        setEditorMode('edit');
+        setEditingFeature(feature);
+        setEditorError(null);
+    }, []);
+
+    const handleEditorSave = useCallback(() => {
+        setEditingFeature(null);
+        handleFeaturesChanged();
+    }, [handleFeaturesChanged]);
+
+    const handleEditorClose = useCallback(() => {
+        setEditingFeature(null);
+        setEditorError(null);
+    }, []);
+
+    const canCreate = hasPermission(me, 'gis.feature.create');
+    const canEdit = hasPermission(me, 'gis.feature.update');
+    const canDelete = hasPermission(me, 'gis.feature.delete');
+    const canViewPII = hasPermission(me, 'user.view.pii') || hasPermission(me, 'organization.view.pii');
 
     if (isError) {
         return (
@@ -55,6 +114,7 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
 
     return (
         <div className="container py-4">
+            {/* Toolbar */}
             <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
                 <div>
                     <h4 className="mb-1">
@@ -69,6 +129,15 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
                     </div>
                 </div>
                 <div className="d-flex gap-2 flex-wrap">
+                    {canCreate && (
+                        <button
+                            className="btn btn-primary btn-sm"
+                            onClick={handleCreate}
+                            disabled={editorSaving}
+                        >
+                            + New Feature
+                        </button>
+                    )}
                     <select
                         className="form-select form-select-sm"
                         style={{ width: 'auto' }}
@@ -106,6 +175,8 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
                 columns={CORE_COLUMNS}
                 sourceLayerId={`features-${layerId}`}
                 multiSelect={true}
+                layerId={layerId}
+                me={me}
                 total={collection.total}
                 page={page}
                 perPage={perPage}
@@ -131,7 +202,30 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
                     params.delete('page');
                     window.location.search = params.toString();
                 }}
+                onFeaturesChanged={handleFeaturesChanged}
+                editingFeature={editingFeature}
+                setEditingFeature={setEditingFeature}
+                error={editorError}
+                saving={editorSaving}
+                onSaveComplete={handleEditorSave}
             />
+
+            {/* Feature editor modal */}
+            {editingFeature || editorMode === 'create' ? (
+                <FeatureEditor
+                    open={true}
+                    onClose={handleEditorClose}
+                    onSave={handleEditorSave}
+                    mode={editorMode}
+                    feature={editingFeature}
+                    layerId={layerId}
+                    fields={layerFields}
+                    canViewPII={canViewPII}
+                    saving={editorSaving}
+                    error={editorError}
+                    setError={setEditorError}
+                />
+            ) : null}
 
             {/* Feature metadata footer */}
             <div className="mt-3 text-muted small">
