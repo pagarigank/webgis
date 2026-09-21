@@ -9,6 +9,14 @@ export interface DrawManagerOptions {
     onSave?: (feature: Feature) => void;
     onError?: (error: DrawError) => void;
     onCancel?: () => void;
+    /**
+     * Called instead of onError when a version_conflict occurs; gives the host a chance
+     * to show ConflictDialog. If omitted, falls back to onError.
+     */
+    onVersionConflict?: (
+        error: DrawError,
+        context: { layerId: number; featureId: string; yourVersion: Feature },
+    ) => void;
 }
 
 export interface DrawError {
@@ -148,7 +156,13 @@ export class DrawManager {
         layerId: number,
         featureId: string,
         currentVersion: number,
-        updates: Partial<{ geometry: GeoJSON.GeometryObject; attributes: Record<string, unknown>; status: string; psgc_barangay: string; provenance: string }>,
+        updates: Partial<{
+            geometry: GeoJSON.GeometryObject;
+            attributes: Record<string, unknown>;
+            status: string;
+            psgc_barangay: string;
+            provenance: string;
+        }>,
     ): Promise<Feature | null> {
         if (updates.geometry != null) {
             const validation = validateGeometry(updates.geometry);
@@ -162,20 +176,31 @@ export class DrawManager {
             }
         }
 
+        const yourVersion = this.getFirstFeature() ?? { id: featureId, version: currentVersion };
+
         try {
-            const saved = await layerApi.updateFeatureWithVersion(layerId, featureId, currentVersion, updates);
+            const saved = await layerApi.updateFeatureWithVersion(
+                layerId,
+                featureId,
+                currentVersion,
+                updates,
+            );
             this.options.onSave?.(saved);
             return saved;
         } catch (err: any) {
             const error = this.mapErrorToDrawError(err);
             if (error.type === 'version_conflict') {
-                const latest = await layerApi.getFeature(layerId, featureId);
-                try {
-                    return await layerApi.updateFeatureWithVersion(layerId, featureId, latest.version, updates);
-                } catch (retryErr: any) {
-                    this.options.onError?.(this.mapErrorToDrawError(retryErr));
-                    return null;
+                // TASK-061: surface conflict to host, do NOT auto-retry
+                if (this.options.onVersionConflict) {
+                    this.options.onVersionConflict(error, {
+                        layerId,
+                        featureId,
+                        yourVersion: yourVersion as Feature,
+                    });
+                } else {
+                    this.options.onError?.(error);
                 }
+                return null;
             }
             this.options.onError?.(error);
             return null;
@@ -225,7 +250,7 @@ export class DrawManager {
         return next;
     }
 
-    private async applyFeatureToDraw(feature: GeoJSON.Feature): Promise<void> {
+    async applyFeatureToDraw(feature: GeoJSON.Feature): Promise<void> {
         if (!this.draw) return;
         this.draw.deleteAll();
         const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [feature] };

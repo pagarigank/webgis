@@ -4,6 +4,7 @@ import * as maplibregl from 'maplibre-gl';
 import { LayerManager, InteractionManager, formatCoordinate } from './Managers';
 import { DrawManager } from './DrawManager';
 import type { DrawError } from './DrawManager';
+import { ConflictDialogHost } from './ConflictDialogHost';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 export type DrawMode = 'simple_select' | 'direct_select' | 'draw_polygon' | 'draw_point' | 'draw_line' | 'static';
@@ -42,6 +43,11 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const [hasPendingEdits, setHasPendingEdits] = useState(false);
     const layerManagerRef = useRef<LayerManager | null>(null);
     const drawChangeListenerRef = useRef<(() => void) | null>(null);
+    const conflictHostRef = useRef<((error: DrawError, ctx: {
+        layerId: number;
+        featureId: string;
+        yourVersion: any;
+    }) => void) | null>(null);
 
     // Initialize map
     useEffect(() => {
@@ -71,18 +77,25 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const im = new InteractionManager(map);
         layerManagerRef.current = lm;
 
-        // Draw manager (TASK-058)
-            const dm = new DrawManager({
-                map,
-                onSave: () => {
-                    if (savedFeatureCallback) savedFeatureCallback(null);
-                },
-                onError: (error) => {
-                    if (onError) onError(error);
-                },
-            });
+        // Draw manager (TASK-058/061)
+        const dm = new DrawManager({
+            map,
+            onSave: () => {
+                if (savedFeatureCallback) savedFeatureCallback(null);
+            },
+            onError: (error) => {
+                if (onError) onError(error);
+            },
+            onVersionConflict: (error, context) => {
+                conflictHostRef.current?.(error, context);
+            },
+        });
         drawManagerRef.current = dm;
         setDrawManager(dm);
+
+        const setConflictHost = useCallback((fn: typeof conflictHostRef.current) => {
+            conflictHostRef.current = fn;
+        }, []);
 
         // Coordinate readout display (TASK-056) — use a floating div
         const coordDiv = document.createElement('div');
@@ -100,41 +113,39 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         drawChangeListenerRef.current = unsubscribe;
 
         // Coordinate update on mousemove (handled by InteractionManager)
-            const coordUpdate = () => {
-                if (instance && map.getContainer()) {
-                    // Read coordinate from the injected div
-                    const el = document.getElementById('coordinate-display') as HTMLElement | null;
-                    if (el) setCoordinate(el.textContent || '');
-                }
-            };
-            instance.on('mousemove', coordUpdate);
+        const coordUpdate = () => {
+            if (instance && map.getContainer()) {
+                const el = document.getElementById('coordinate-display') as HTMLElement | null;
+                if (el) setCoordinate(el.textContent || '');
+            }
+        };
+        instance.on('mousemove', coordUpdate);
 
-            // ── Keyboard shortcuts for undo/redo (TASK-059) ─────────────────────
-            const handleKeyDown = (e: KeyboardEvent) => {
-                // Ignore when typing in an input
-                if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+        // Keyboard shortcuts for undo/redo (TASK-059)
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-                if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-                    e.preventDefault();
-                    if (e.shiftKey) {
-                        drawManagerRef.current?.redo().then(() => setHasPendingEdits(false));
-                    } else {
-                        drawManagerRef.current?.undo().then(() => setHasPendingEdits(false));
-                    }
-                } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-                    e.preventDefault();
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) {
                     drawManagerRef.current?.redo().then(() => setHasPendingEdits(false));
+                } else {
+                    drawManagerRef.current?.undo().then(() => setHasPendingEdits(false));
                 }
-            };
-            window.addEventListener('keydown', handleKeyDown);
+            } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+                e.preventDefault();
+                drawManagerRef.current?.redo().then(() => setHasPendingEdits(false));
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
 
-            return () => {
-                unsubscribe();
-                if (drawChangeListenerRef.current) drawChangeListenerRef.current();
-                coordDiv.remove();
-                window.removeEventListener('keydown', handleKeyDown);
-            };
-        }, [map, isLoaded]);
+        return () => {
+            unsubscribe();
+            if (drawChangeListenerRef.current) drawChangeListenerRef.current();
+            coordDiv.remove();
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [map, isLoaded]);
 
     // Draw mode setter
     const handleSetDrawMode = useCallback((mode: DrawMode) => {
@@ -177,28 +188,29 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, [map, isLoaded]);
 
     return (
-            <MapContext.Provider value={{
-                map,
-                isLoaded,
-                layerManager: managers.layerManager,
-                interactionMgr: managers.interactionMgr,
-                drawManager,
-                drawMode,
-                setDrawMode: handleSetDrawMode,
-                clearDraw: handleClearDraw,
-                undo: async () => { drawManagerRef.current?.undo().then(() => setHasPendingEdits(false)); },
-                redo: async () => { drawManagerRef.current?.redo().then(() => setHasPendingEdits(false)); },
-                canUndo: () => drawManagerRef.current?.canUndo() ?? false,
-                canRedo: () => drawManagerRef.current?.canRedo() ?? false,
-                hasUnsavedChanges: () => hasPendingEdits,
-                onError: (error) => { if (onError) onError(error); },
-                coordinate,
-                loadLayerFeatures: handleLoadLayerFeatures,
-            }}>
+        <MapContext.Provider value={{
+            map,
+            isLoaded,
+            layerManager: managers.layerManager,
+            interactionMgr: managers.interactionMgr,
+            drawManager,
+            drawMode,
+            setDrawMode: handleSetDrawMode,
+            clearDraw: handleClearDraw,
+            undo: async () => { drawManagerRef.current?.undo().then(() => setHasPendingEdits(false)); },
+            redo: async () => { drawManagerRef.current?.redo().then(() => setHasPendingEdits(false)); },
+            canUndo: () => drawManagerRef.current?.canUndo() ?? false,
+            canRedo: () => drawManagerRef.current?.canRedo() ?? false,
+            hasUnsavedChanges: () => hasPendingEdits,
+            onError: (error) => { if (onError) onError(error); },
+            coordinate,
+            loadLayerFeatures: handleLoadLayerFeatures,
+        }}>
             <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
                 <div ref={mapContainerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
                 <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
                     {children}
+                    <ConflictDialogHost />
                 </div>
             </div>
         </MapContext.Provider>
