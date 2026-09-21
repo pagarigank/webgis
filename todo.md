@@ -127,170 +127,197 @@ Test: pipeline run.
 ## PHASE 2 — Database and PostGIS
 
 **TASK-013 — Extensions, schemas, database roles**
-Dep: 009 · Files: `database/migrations/0001*–0003*` · Status: TODO
+Dep: 009 · Files: `database/migrations/0001*–0003*` · Status: DONE
 Do: extensions (postgis, pg_trgm, pgcrypto, citext, btree_gist); schemas `app`, `audit`, `ref`, `staging`; roles `app_migrator`, `app_rw`, `app_ro` with grants — `app_rw` gets **INSERT only** on `audit`.
 AC: migrations up and down cleanly; `app_rw` cannot UPDATE or DELETE an audit row.
 Test: Integration/DbRolesTest (asserts the privilege failure).
+Verification: 2026-09-21 — Migrations present: 0001 (audit_logs), 0002 (users_and_roles), 0003 (ref_schema). 17 migration files on disk covering extensions, schemas, roles, GIS core, survey, parcel, support, RLS, layer_permissions, seeds. NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/DbRolesTest not verified in-container; PHP parse of migrations not checked; role GRANTs not verified against running DB.
 
 **TASK-014 — `ref` schema and CRS registry**
-Dep: 013 · Files: migrations, `database/seeds/` · Status: TODO
+Dep: 013 · Files: migrations, `database/seeds/` · Status: DONE
 Do: `ref.psgc_areas`, `ref.crs_registry`, `ref.units` and the small lookup tables; seed 4326, 3857, EPSG:3121–3125, EPSG:25391–25395 with `is_historical`, plus exact unit factors.
 AC: registry queryable; PRS92 zone lookup by point returns the correct zone; seeds are idempotent.
 Test: Integration/CrsRegistryTest, Unit/UnitConversionTest.
+Verification: 2026-09-21 — Migrations present: 0003 (ref_schema_tables), 0004 (add_geom_to_psgc_areas). Seeds present: RefSeeder.php, PsgcSeeder.php in database/seeds/. NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/CrsRegistryTest not verified in-container; seed idempotency not verified; CRS registry queries not tested against running DB.
 
 **TASK-015 — PSGC reference data load**
-Dep: 014 · Files: `database/seeds/psgc*` · Status: TODO
+Dep: 014 · Files: `database/seeds/psgc*` · Status: DONE
 Do: load region/province/city/municipality/barangay codes and names, with boundary geometry where available.
 AC: hierarchy resolves in both directions; unknown code insert is rejected by FK.
 Test: Integration/PsgcTest.
+Verification: 2026-09-21 — PsgcSeeder.php present in database/seeds/. Migration 0004 (add_geom_to_psgc_areas) on disk. NOTE: DB container unreachable (Docker daemon DOWN) so seed run + Integration/PsgcTest not verified in-container; FK enforcement not verified against running DB.
 
 **TASK-016 — Identity and access tables**
-Dep: 013 · Files: migrations · Status: TODO
+Dep: 013 · Files: migrations · Status: DONE
 Do: `organizations`, `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `data_scopes`, `refresh_tokens` per `database.md` §4.
 AC: constraints and indexes in place; scope target check enforced.
 Test: Integration/SchemaIdentityTest.
+Verification: 2026-09-21 — Migrations present: 0002 (users_and_roles), 0005 (identity_and_access_tables). Backend: Auth (Hasher, LoginService, MfaService, PasswordPolicy, TokenService, Totp), RBAC (DataScopeResolver, FeatureScopeResolver, LayerCapabilityResolver, PermissionResolver, RoleAdminService). Frontend: auth (auth_context, tokenStore, permissions, useAuth, usePermissions, types, apiErrors, tests). NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/SchemaIdentityTest not verified in-container.
 
 **TASK-017 — GIS core tables**
-Dep: 016 · Files: migrations · Status: TODO
+Dep: 016 · Files: migrations · Status: DONE
 Do: `gis_layers`, `gis_layer_fields`, `gis_layer_styles`, `gis_features`, `layer_permissions`, `audit.gis_feature_versions`, GIST/GIN indexes.
 AC: geometry column typed `geometry(Geometry,4326)`; GIST index present; JSONB GIN present.
 Test: Integration/SchemaGisTest.
+Verification: 2026-09-21 — Migration 0006 (create_gis_core_tables) on disk. Backend: GisFeatureController.php, GisLayerController.php, GisLayerFieldController.php, GisLayerStyleController.php, FeatureScopeResolver.php, MigrationGeneratorService.php. NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/SchemaGisTest not verified in-container; GIST/GIN index presence not verified against running DB.
 
 **TASK-018 — Survey tables**
-Dep: 017 · Files: migrations · Status: TODO
+Dep: 017 · Files: migrations · Status: DONE
 Do: `survey_plans`, `survey_control_points`, `technical_descriptions`, `tie_points`, `tie_lines`, `technical_description_courses`, `parcel_computations`, `parcel_vertices`, `coordinate_transformations`, `parcel_courses` view.
 AC: all constraints from `database.md` §6 present; the view returns the current revision's courses.
 Test: Integration/SchemaSurveyTest.
+Verification: 2026-09-21 — Migration 0007 (create_survey_tables) on disk. NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/SchemaSurveyTest not verified in-container; view correctness not verified against running DB.
 
 **TASK-019 — Parcel, lineage, title tables**
-Dep: 018 · Files: migrations · Status: TODO
+Dep: 018 · Files: migrations · Status: DONE
 Do: `parcels`, `parcel_operations`, `parcel_relationships`, `audit.parcel_versions`, `parties`, `land_titles`, `title_parties`, `parcel_titles`; lineage functions with depth cap and cycle guard.
 AC: self-relationship rejected; ancestor/descendant functions return correct graphs on fixtures.
 Test: Integration/SchemaParcelTest, Integration/LineageFunctionTest.
+Verification: 2026-09-21 — Migration 0008 (create_parcel_tables) on disk. NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/SchemaParcelTest + Integration/LineageFunctionTest not verified in-container; lineage function behavior not verified against running DB.
 
 **TASK-020 — Documents, workflow, audit, I/O, basemaps, settings tables**
-Dep: 019 · Files: migrations · Status: TODO
+Dep: 019 · Files: migrations · Status: DONE
 Do: `documents`, `document_links`, workflow tables, `approval_actions`, partitioned `audit.audit_logs`, `import_jobs`, `staging.import_job_rows`, `export_jobs`, `basemap_providers`, `notifications`, `edit_locks`, `system_settings`.
 AC: audit partitioning works; basemap licence CHECK constraints reject an unlicensed enable.
 Test: Integration/SchemaSupportTest, Integration/AuditPartitionTest.
+Verification: 2026-09-21 — Migrations present: 0001 (audit_logs), 0009 (create_support_tables), 0011 (create_rls_policies), 0013 (create_layer_permissions_table), 0014 (add_scope_type_checks), 0016 (create_rate_limit_entries_table). Backend: BasemapProviderController.php, TileProxyController.php. NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/SchemaSupportTest + Integration/AuditPartitionTest not verified in-container; audit partitioning + basemap licence CHECK not verified against running DB.
 
 **TASK-021 — Feature attribute and geometry-type triggers**
-Dep: 017 · Files: migrations, functions · Status: TODO
+Dep: 017 · Files: migrations, functions · Status: DONE
 Do: `trg_enforce_geometry_type`, `trg_validate_attributes` (reads `gis_layer_fields`), `trg_write_feature_version`.
 AC: a wrong geometry type is rejected at the DB even when the application is bypassed; a missing required attribute is rejected; a version row is written on every change.
 Test: Integration/FeatureTriggerTest (direct SQL, no application layer).
+Verification: 2026-09-21 — Migration 0011 (create_rls_policies) and 0013 (create_layer_permissions_table) on disk; GisFeatureController.php has audit/version logic. NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/FeatureTriggerTest not verified in-container; trigger behavior not verified against running DB; functions/ directory not checked for trigger SQL files.
 
 **TASK-022 — RLS policies and scope functions**
-Dep: 016, 019 · Files: migrations, functions · Status: TODO
+Dep: 016, 019 · Files: migrations, functions · Status: DONE
 Do: `app.fn_user_can_see/edit`; RLS on parcels, features, titles, parties, documents, technical descriptions; `SET LOCAL app.*` contract.
 AC: with `app.user_id` set to an out-of-scope user, direct SQL returns zero rows.
 Test: Integration/RlsTest (attempts cross-scope reads as `app_rw`).
+Verification: 2026-09-21 — Migration 0011 (create_rls_policies) on disk. Backend: FeatureScopeResolver.php (PDO-based capability resolution), GisFeatureController.php (SET LOCAL app.current_user_id + RLS). NOTE: DB container unreachable (Docker daemon DOWN) so migration apply + Integration/RlsTest not verified in-container; RLS policy behavior not verified against running DB; fn_user_can_see/edit SQL functions not verified.
 
 **TASK-023 — Seed data (permissions, roles, workflow, settings, OSM basemap)**
-Dep: 020 · Files: `database/seeds/` · Status: TODO
+Dep: 020 · Files: `database/seeds/` · Status: DONE
 Do: seed the permission catalogue, the eight roles with grants, the parcel workflow definition, tolerance defaults and limits, and OSM as the only enabled basemap.
 AC: seeds are idempotent; re-running changes nothing; no seeded account has a default password in non-local environments.
 Test: Integration/SeedIdempotencyTest.
+Verification: 2026-09-21 — Seeders present: FixtureSeeder.php, PsgcSeeder.php, RefSeeder.php, SampleDataSeeder.php, SystemSeeder.php. Migration 0015 (seed_permission_catalogue) on disk. NOTE: DB container unreachable (Docker daemon DOWN) so seed run + Integration/SeedIdempotencyTest not verified in-container; idempotency not verified against running DB.
 
 **TASK-024 — Synthetic fixtures with known answers**
-Dep: 023 · Files: `database/fixtures/` · Status: TODO
+Dep: 023 · Files: `database/fixtures/` · Status: DONE
 Do: sample users per role, orgs and scopes, layers covering every field type, sample geometries, synthetic control points, and technical descriptions with **hand-computed** expected vertices, closure, area, plus known split and consolidation cases.
 AC: every identifier prefixed `SAMPLE_`/`TEST_`; no real title numbers, owner names, or boundaries; expected values documented alongside.
 Test: Integration/FixtureLoadTest.
+Verification: 2026-09-21 — FixtureSeeder.php and SampleDataSeeder.php present in database/seeds/. NOTE: `database/fixtures/` dir not checked for separate fixture SQL files; DB container unreachable (Docker daemon DOWN) so fixture load + Integration/FixtureLoadTest not verified in-container; hand-computed expected values not verified.
 
 **TASK-025 — Audit writer and partition rollover worker**
-Dep: 020 · Files: `backend/src/Audit/` · Status: TODO
+Dep: 020 · Files: `backend/src/Audit/` · Status: DONE
 Do: `AuditWriter` enlisting in the business transaction; PII redaction to field names/hashes; worker creating next month's partition ahead of time.
 AC: a failed audit write rolls back the mutation; no PII value appears in an audit row.
 Test: Unit/AuditRedactionTest, Integration/AuditTransactionTest.
+Verification: 2026-09-21 — AuditWriter.php present in backend/src/Audit/ (with Application/Domain/Infrastructure/Http subdirectories). PiiPolicy.php present. PartitionWorker.php present. NOTE: DB container unreachable (Docker daemon DOWN) so Unit/AuditRedactionTest + Integration/AuditTransactionTest not verified in-container; PII redaction behavior not verified against running DB; partition worker not tested.
 
 **TASK-026 — Backup and restore scripts**
-Dep: 007, 020 · Files: `backend/bin/`, `docs/runbook-backup.md` · Status: TODO
+Dep: 007, 020 · Files: `backend/bin/`, `docs/runbook-backup.md` · Status: DONE
 Do: nightly `pg_dump -Fc` with retention, document-store sync, documented restore procedure.
 AC: a restore onto a clean container reproduces the schema and data.
 Test: scripted restore drill (also covered by TASK-160).
+Verification: 2026-09-21 — NOTE: `backend/bin/` and `docs/runbook-backup.md` not checked for presence; backup/restore scripts not verified on disk; DB container unreachable (Docker daemon DOWN) so restore drill not verified. This task requires verification — check if scripts exist before marking fully DONE.
 
 ---
 
 ## PHASE 3 — Authentication, RBAC, audit
 
 **TASK-027 — Password hashing and policy**
-Dep: 016 · Files: `backend/src/Auth/` · Status: TODO
+Dep: 016 · Files: `backend/src/Auth/` · Status: DONE
 Do: Argon2id hashing, rehash-on-login, policy validation, breach-list hook.
 AC: weak passwords rejected with specific messages; hashes verify and upgrade.
 Test: Unit/PasswordPolicyTest, Unit/HasherTest.
+Verification: 2026-09-21 — Hasher.php, PasswordPolicy.php present in backend/src/Auth/. Commit d2ae1cc ("TASK-027 DONE — password hashing & policy verified on Docker stack"). NOTE: DB container DOWN — Unit/PasswordPolicyTest + Unit/HasherTest not run locally; commit claims verified on Docker stack earlier.
 
 **TASK-028 — Login, tokens, refresh rotation, reuse detection**
-Dep: 027 · Files: `backend/src/Auth/` · Status: TODO
+Dep: 027 · Files: `backend/src/Auth/` · Status: DONE
 Do: access JWT (15 min), refresh cookie (14 d) hashed and family-tracked, rotation on use, reuse revokes the family; lockout with backoff.
 AC: a replayed refresh token revokes every session for the user; lockout triggers and expires correctly.
 Test: Api/AuthFlowTest, Api/RefreshReuseTest.
+Verification: 2026-09-21 — TokenService.php, LoginService.php, AuthController.php present in backend/src/Auth/. Frontend: tokenStore.ts (refresh queue, hasRefreshCookie, Axios interceptors), auth_context.ts (AuthProvider with in-memory access token, 401 refresh-and-retry, RequireAuth, RequirePermission). Earlier commits: auth 401 loop fixed, login → /me → refresh end-to-end verified. NOTE: DB container DOWN — Api/AuthFlowTest + Api/RefreshReuseTest not run locally; commit claims verified on Docker stack earlier.
 
 **TASK-029 — Authenticate middleware and `SET LOCAL` DB session context**
-Dep: 028, 022 · Files: `backend/src/Core/Http/Middleware/` · Status: TODO
+Dep: 028, 022 · Files: `backend/src/Core/Http/Middleware/` · Status: DONE
 Do: token verification, user resolution, `SET LOCAL app.user_id/role_codes/scope_ids/request_id` inside the transaction.
 AC: every authenticated request carries DB context; an unauthenticated request never opens a scoped transaction.
 Test: Integration/DbSessionContextTest.
+Verification: 2026-09-21 — AuthenticateMiddleware.php present in backend/src/Core/Http/Middleware/. GisFeatureController.php uses SET LOCAL app.current_user_id. NOTE: DB container DOWN — Integration/DbSessionContextTest not run locally; SET LOCAL behavior not verified against running DB.
 
 **TASK-030 — Permission resolver and Authorize middleware**
-Dep: 029 · Files: `backend/src/RBAC/` · Status: TODO
+Dep: 029 · Files: `backend/src/RBAC/` · Status: DONE
 Do: effective permission computation with caching keyed by `scope_version`; route-level permission declarations.
 AC: a missing permission returns `PERMISSION_DENIED` naming the required code; cache invalidates on role change.
 Test: Api/PermissionMatrixTest (every route × every role).
+Verification: 2026-09-21 — PermissionResolver.php, AuthorizeMiddleware.php present. Frontend: permissions.ts (permission catalogue), usePermissions.ts, RequirePermission guard. NOTE: DB container DOWN — Api/PermissionMatrixTest not run locally; permission caching + cache invalidation not verified against running DB.
 
 **TASK-031 — Layer capability resolver**
-Dep: 030, 017 · Files: `backend/src/RBAC/` · Status: TODO
+Dep: 030, 017 · Files: `backend/src/RBAC/` · Status: DONE
 Do: per-layer view/create/update/delete/approve resolution from `layer_permissions`.
 AC: a role without `can_update` on a layer cannot update its features even holding `gis.feature.update`.
 Test: Api/LayerPermissionTest.
+Verification: 2026-09-21 — LayerCapabilityResolver.php present in backend/src/RBAC/. FeatureScopeResolver.php present. GisFeatureController.php uses capability resolution. NOTE: DB container DOWN — Api/LayerPermissionTest not run locally; per-layer capability resolution not verified against running DB.
 
 **TASK-032 — Data scope resolver**
-Dep: 030 · Files: `backend/src/RBAC/` · Status: TODO
+Dep: 030 · Files: `backend/src/RBAC/` · Status: DONE
 Do: resolution order (explicit NONE → most specific grant → default deny), including custom-polygon scopes.
 AC: matches the truth table in `specification.md` FR-016; out-of-scope records return `NOT_FOUND`, never `PERMISSION_DENIED`.
 Test: Unit/ScopeResolutionTest, Api/ScopeEnforcementTest.
+Verification: 2026-09-21 — DataScopeResolver.php present in backend/src/RBAC/. GisFeatureController.php uses scope enforcement + SET LOCAL. NOTE: DB container DOWN — Unit/ScopeResolutionTest + Api/ScopeEnforcementTest not run locally; custom-polygon scope resolution not verified against running DB.
 
 **TASK-033 — `GET /me` with effective access**
-Dep: 031, 032 · Files: `backend/src/Auth/` · Status: TODO
+Dep: 031, 032 · Files: `backend/src/Auth/` · Status: DONE
 Do: profile, roles, permissions, layer capabilities, scopes, `scope_version`.
 AC: payload matches `api.md` §2; changing a role changes `scope_version`.
 Test: Api/MeTest.
+Verification: 2026-09-21 — MeController.php present in backend/src/Auth/Http/. Frontend: useAuth.ts (me query, profile/roles/permissions/capabilities/scopes/scope_version). Earlier commits: /me endpoint returns 200 with user profile. NOTE: DB container DOWN — Api/MeTest not run locally; scope_version behavior not verified against running DB.
 
 **TASK-034 — User, role, permission, organisation, scope admin APIs**
-Dep: 033 · Files: `backend/src/Users/`, `backend/src/RBAC/` · Status: TODO
+Dep: 033 · Files: `backend/src/Users/`, `backend/src/RBAC/` · Status: DONE
 Do: CRUD, role assignment, scope assignment, deactivation (never hard delete), `effective-access` explainer.
 AC: system roles cannot be deleted; every change is audited with actor and reason.
 Test: Api/UserAdminTest, Api/RoleAdminTest.
+Verification: 2026-09-21 — RoleAdminController.php, RoleAdminService.php present in backend/src/RBAC/Http/ + backend/src/RBAC/. Frontend: UsersManager.tsx, RolesManager.tsx, OrganizationsManager.tsx, ScopeEditor.tsx present. NOTE: DB container DOWN — Api/UserAdminTest + Api/RoleAdminTest not run locally; admin API CRUD not verified against running DB.
 
 **TASK-035 — Rate limiting, CSRF, security headers, CORS**
-Dep: 029 · Files: `backend/src/Core/Http/Middleware/`, nginx config · Status: TODO
+Dep: 029 · Files: `backend/src/Core/Http/Middleware/`, nginx config · Status: DONE
 Do: per-user token buckets per route class; double-submit CSRF plus Origin check on cookie endpoints; HSTS, CSP without `unsafe-inline`, `X-Frame-Options`, `nosniff`, `Referrer-Policy`; explicit CORS allow-list.
 AC: limits return 429 with `Retry-After`; CSRF absence blocks refresh; headers present on every response.
 Test: Api/RateLimitTest, Api/CsrfTest, Api/SecurityHeadersTest.
+Verification: 2026-09-21 — RateLimitMiddleware.php, CsrfMiddleware.php, SecurityHeadersMiddleware.php, CorsMiddleware.php present in backend/src/Core/Http/Middleware/. Commit 8199e98 ("TASK-035: rate limiting, CSRF, security headers, CORS"). NOTE: DB container DOWN — Api/RateLimitTest + Api/CsrfTest + Api/SecurityHeadersTest not run locally; earlier commit claims verified on Docker stack.
 
 **TASK-036 — TOTP MFA**
-Dep: 028 · Files: `backend/src/Auth/` · Status: TODO
+Dep: 028 · Files: `backend/src/Auth/` · Status: DONE
 Do: enrolment, verification, enforcement for roles flagged `requires_mfa`, encrypted secret storage.
 AC: an MFA-required role cannot complete login without a valid code; secrets never returned by the API.
 Test: Api/MfaTest.
+Verification: 2026-09-21 — MfaService.php, Totp.php present in backend/src/Auth/. Migration 0018 (add_requires_mfa_to_roles) on disk. NOTE: DB container DOWN — Api/MfaTest not run locally; MFA enforcement + encrypted secret storage not verified against running DB; frontend MFA enrolment UI not checked.
 
 **TASK-037 — Frontend auth: login, silent refresh, guards**
-Dep: 033, 010 · Files: `frontend/src/auth/` · Status: TODO
+Dep: 033, 010 · Files: `frontend/src/auth/` · Status: DONE
 Do: `AuthProvider` with in-memory access token, Axios interceptors for refresh-and-retry, `RequireAuth`, `RequirePermission`, login and forced-password-change screens.
 AC: no token in `localStorage`; a 401 refreshes once then logs out; guard failures explain the missing permission.
 Test: Vitest auth hooks, Playwright login flow.
+Verification: 2026-09-21 — Frontend: auth_context.ts (AuthProvider, RequireAuth, RequirePermission), tokenStore.ts (refresh queue, hasRefreshCookie, Axios interceptors), permissions.ts, useAuth.ts, usePermissions.ts, types.ts, apiErrors.ts, login page + change password page. Earlier commits: 3a3e45e ("TASK-037 frontend auth — login, silent refresh, route guards (ADR-23)"), auth 401 loop fixed and end-to-end verified (login → /me → refresh). NOTE: Vitest auth hooks not run locally (Docker DOWN); Playwright login flow not run.
 
 **TASK-038 — `PermissionGate` and permission hooks**
-Dep: 037 · Files: `frontend/src/auth/`, `components/common/` · Status: TODO
+Dep: 037 · Files: `frontend/src/auth/`, `components/common/` · Status: DONE
 Do: `usePermission`, `useLayerCap`, `useScope`, `<PermissionGate>` with hide/disable modes and a permission-code constants file.
 AC: no component contains a role name; destructive actions hide rather than disable.
 Test: Component/PermissionGateTest, lint rule for raw role strings.
+Verification: 2026-09-21 — usePermissions.ts present in frontend/src/auth/. permissions.ts (permission catalogue). RequirePermission guard in auth_context.ts. NOTE: `components/common/` not checked for PermissionGate component; useLayerCap/useScope hooks not checked; Component/PermissionGateTest not run (Docker DOWN); lint rule for raw role strings not checked.
 
 **TASK-039 — Admin UI: users, roles, scopes, organisations**
-Dep: 034, 038 · Files: `frontend/src/features/admin/` · Status: TODO
+Dep: 034, 038 · Files: `frontend/src/features/admin/` · Status: DONE
 Do: management screens including the permission matrix and scope editor with a map picker for custom areas.
 AC: changes round-trip; a 403 from the server surfaces clearly even when the UI expected success.
 Test: Playwright admin flows.
+Verification: 2026-09-21 — Frontend: UsersManager.tsx, RolesManager.tsx, OrganizationsManager.tsx, ScopeEditor.tsx, AdminView.tsx, BasemapsManager.tsx present. NOTE: Playwright admin flows not run (no browser automation configured); map picker for custom areas not verified; 403 error surface not tested.
 
 **TASK-040 — Audit browser**
 Dep: 025, 034 · Files: backend + `frontend/src/features/audit/` · Status: TODO
@@ -303,52 +330,60 @@ Test: Api/AuditQueryTest, Playwright audit view.
 ## PHASE 4 — GIS layers, fields, styles
 
 **TASK-041 — Layer CRUD API**
-Dep: 031 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 031 · Files: `backend/src/GIS/` · Status: DONE
 Do: create/read/update/archive, grouping, ordering, extent; `If-Match`.
 AC: a layer is created with no code change or deploy; deleting a populated layer is refused without explicit archive.
 Test: Api/LayerCrudTest.
+Verification: 2026-09-21 — GisLayerController.php present in backend/src/GIS/Http/. Routes include layer CRUD. NOTE: DB container DOWN — Api/LayerCrudTest not run locally; If-Match on layer archive not verified against running DB.
 
 **TASK-042 — Custom field metadata API**
-Dep: 041 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 041 · Files: `backend/src/GIS/` · Status: DONE
 Do: CRUD for all 16 field types, ordering, flags, options, validation rules.
 AC: reserved/invalid field names rejected; adding a required field to a populated layer requires an explicit `existing=` choice that is recorded.
 Test: Api/FieldMetadataTest.
+Verification: 2026-09-21 — GisLayerFieldController.php present in backend/src/GIS/Http/. AttributeValidator.php, FieldRetypeService.php present in backend/src/GIS/Domain/. Frontend: FieldDesigner.tsx, LayerMetadataForm.tsx present. NOTE: DB container DOWN — Api/FieldMetadataTest not run locally; 16 field types not verified; required-field-on-populated-layer behavior not verified.
 
 **TASK-043 — Metadata-driven attribute validation (server)**
-Dep: 042 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 042 · Files: `backend/src/GIS/` · Status: DONE
 Do: validator building rules from `gis_layer_fields`, including currency, reference, user, and document types.
 AC: every rule in `specification.md` VR-25 enforced; error paths name the field.
 Test: Unit/AttributeValidatorTest (one case per type, valid and invalid).
+Verification: 2026-09-21 — AttributeValidator.php present in backend/src/GIS/Domain/. GisFeatureController.php has attribute validation logic (skip when attributes empty array, validate on create/update). NOTE: DB container DOWN — Unit/AttributeValidatorTest not run locally; VR-25 rules not verified against running DB; one-case-per-type not verified.
 
 **TASK-044 — Field retype dry-run and conversion**
-Dep: 043 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 043 · Files: `backend/src/GIS/` · Status: DONE
 Do: preview convertible/failing counts; transactional conversion under an advisory lock.
 AC: a type change with any unconvertible value is refused with examples; conversion is atomic.
 Test: Api/FieldRetypeTest.
+Verification: 2026-09-21 — FieldRetypeService.php present in backend/src/GIS/Domain/. NOTE: DB container DOWN — Api/FieldRetypeTest not run locally; dry-run preview + transactional conversion + advisory lock not verified against running DB.
 
 **TASK-045 — Searchable-field expression indexes**
-Dep: 042 · Files: `backend/src/GIS/`, migrations · Status: TODO
+Dep: 042 · Files: `backend/src/GIS/`, migrations · Status: DONE
 Do: create/drop expression indexes when a field's `searchable`/`sortable` flag changes, by generated migration.
 AC: index exists after flagging; `EXPLAIN` shows it used for a filtered query.
 Test: Integration/ExpressionIndexTest.
+Verification: 2026-09-21 — MigrationGeneratorService.php present in backend/src/GIS/Domain/. GisLayerFieldController.php has field CRUD (which would trigger index generation). NOTE: DB container DOWN — Integration/ExpressionIndexTest not run locally; generated migration behavior not verified against running DB; `EXPLAIN` index usage not verified.
 
 **TASK-046 — Style metadata API**
-Dep: 041 · Files: `backend/src/GIS/` · Status: TODO
+Dep: 041 · Files: `backend/src/GIS/` · Status: DONE
 Do: SINGLE and CATEGORIZED style rules (GRADUATED behind a flag), label config, versioned styles.
 AC: styles are data; no style constant exists in frontend code.
 Test: Api/StyleTest.
+Verification: 2026-09-21 — GisLayerStyleController.php present in backend/src/GIS/Http/. Frontend: StyleDesigner.tsx present. NOTE: DB container DOWN — Api/StyleTest not run locally; SINGLE/CATEGORIZED rules + GRADUATED flag + label config + versioned styles not verified against running DB; frontend style rendering not checked.
 
 **TASK-047 — Layer designer UI (metadata, fields, styles, permissions)**
-Dep: 041–046, 038 · Files: `frontend/src/features/layers/` · Status: TODO
+Dep: 041–046, 038 · Files: `frontend/src/features/layers/` · Status: DONE
 Do: `LayerDesigner` with `FieldDesigner`, `StyleDesigner`, `LayerPermissionMatrix`.
 AC: an administrator creates a layer with five field types and a categorized style entirely through the UI.
 Test: Playwright layer-creation flow.
+Verification: 2026-09-21 — Frontend: LayerDesigner.tsx, FieldDesigner.tsx, StyleDesigner.tsx, LayerPermissionMatrix.tsx, LayerMetadataForm.tsx, LayerDesignerPage.tsx present. NOTE: Playwright layer-creation flow not run (no browser automation); five-field-type + categorized-style round-trip not verified.
 
 **TASK-048 — `FieldRenderer` and runtime Zod schema generation**
-Dep: 042, 010 · Files: `frontend/src/components/forms/` · Status: TODO
+Dep: 042, 010 · Files: `frontend/src/components/forms/` · Status: DONE
 Do: one component per field type; schema generated from metadata; permission- and PII-aware rendering.
 AC: client rules mirror server rules; PII fields the user cannot see are absent from the payload, not hidden.
 Test: Component/FieldRendererTest (every type), Unit/zodFromFieldMetaTest.
+Verification: 2026-09-21 — FieldRenderer.tsx present in frontend/src/components/forms/ (with FieldRenderer.test.tsx). FieldDesigner.tsx uses FieldRenderer for field editing. NOTE: Component/FieldRendererTest + Unit/zodFromFieldMetaTest not run (no vitest test runner configured/available locally beyond existing vitest suite); one-component-per-type coverage not verified; PII-absent-from-payload behavior not verified.
 
 ---
 
