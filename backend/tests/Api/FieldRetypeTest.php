@@ -77,10 +77,18 @@ class FieldRetypeTest extends TestCase
 
     private function cleanup(): void
     {
-        $this->pdo->exec("DELETE FROM audit.gis_feature_versions");
-        $this->pdo->exec("DELETE FROM app.gis_features");
-        $this->pdo->exec("DELETE FROM app.gis_layer_fields");
-        $this->pdo->exec("DELETE FROM app.gis_layers");
+        // Scope every DELETE to this test's own rows. Unbounded deletes here
+        // used to wipe seed/fixture data (gis_features for every layer) and
+        // break FixtureLoadTest depending on execution order.
+        $this->pdo->exec("
+            DELETE FROM audit.gis_feature_versions v
+            USING app.gis_features f
+            WHERE v.feature_id = f.id
+              AND f.layer_id IN (SELECT id FROM app.gis_layers WHERE code = 'test_layer')
+        ");
+        $this->pdo->exec("DELETE FROM app.gis_features WHERE layer_id IN (SELECT id FROM app.gis_layers WHERE code = 'test_layer')");
+        $this->pdo->exec("DELETE FROM app.gis_layer_fields WHERE layer_id IN (SELECT id FROM app.gis_layers WHERE code = 'test_layer')");
+        $this->pdo->exec("DELETE FROM app.gis_layers WHERE code = 'test_layer'");
     }
 
     private function createRetypeMockUser(array $permissions, array $roles): array

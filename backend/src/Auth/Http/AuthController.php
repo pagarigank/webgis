@@ -243,7 +243,10 @@ final class AuthController
 
     private function cookieFlagString(): string
     {
-        $parts = ['HttpOnly', $this->cookieSameSite()];
+        // The attribute name must be explicit: a bare `Lax`/`Strict` token is
+        // not a valid cookie attribute and browsers ignore it, falling back
+        // to their default — which silently defeats the Strict-in-prod policy.
+        $parts = ['HttpOnly', 'SameSite=' . $this->cookieSameSite()];
         if ($this->isProduction()) {
             $parts[] = 'Secure';
         }
@@ -271,14 +274,22 @@ final class AuthController
         );
     }
 
-    /** JS-readable half of the double-submit CSRF pair (ADR-23). */
+    /**
+     * JS-readable half of the double-submit CSRF pair (ADR-23). Deliberately
+     * NOT HttpOnly: the SPA must be able to read this cookie and echo it back
+     * in the X-CSRF-Token header on refresh/logout.
+     */
     private function csrfCookieHeader(string $csrfToken): string
     {
+        $flags = ['SameSite=' . $this->cookieSameSite()];
+        if ($this->isProduction()) {
+            $flags[] = 'Secure';
+        }
         return sprintf(
             '%s=%s; %s; Path=/; Max-Age=%d',
             self::CSRF_COOKIE,
             $csrfToken,
-            $this->cookieFlagString(),
+            implode('; ', $flags),
             self::REFRESH_MAX_AGE
         );
     }
@@ -286,10 +297,10 @@ final class AuthController
     private function clearCsrfCookie(): string
     {
         return sprintf(
-            '%s=%s; %s; Path=/; Max-Age=0',
+            '%s=%s; SameSite=%s; Path=/; Max-Age=0',
             self::CSRF_COOKIE,
             '',
-            $this->cookieFlagString()
+            $this->cookieSameSite()
         );
     }
 

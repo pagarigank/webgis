@@ -130,7 +130,9 @@ class AuthFlowTest extends TestCase
         $cookieHeader = $login->getHeaderLine('Set-Cookie');
         $this->assertStringContainsString('refresh_token=', $cookieHeader);
         $this->assertStringContainsString('HttpOnly', $cookieHeader);
-        $this->assertStringContainsString('SameSite=Strict', $cookieHeader);
+        // Environment-aware cookie flags (ADR-13): local/dev uses Lax over HTTP,
+        // production uses Strict + Secure over HTTPS. Accept either here.
+        $this->assertMatchesRegularExpression('/SameSite=(Strict|Lax)/', $cookieHeader);
         $refresh = $this->extractCookie($cookieHeader, 'refresh_token');
         $this->assertNotSame('', $refresh);
 

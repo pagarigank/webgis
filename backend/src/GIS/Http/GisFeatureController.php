@@ -232,6 +232,7 @@ class GisFeatureController
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $features = array_map(function ($r) {
+            $r = $this->decodePayloadFields($r);
             return [
                 'type'       => 'Feature',
                 'id'         => $r['id'],
@@ -617,10 +618,11 @@ class GisFeatureController
         if ($fields === null) {
             return $this->formatFeature($row);
         }
+        $row = $this->decodePayloadFields($row);
         $out = [];
         foreach ($fields as $col => $_) {
             if (array_key_exists($col, $row)) {
-                $out[$col] = $col === 'geometry' ? $row['geometry'] : $row[$col];
+                $out[$col] = $row[$col];
             }
         }
         return $out;
@@ -628,6 +630,7 @@ class GisFeatureController
 
     private function formatFeature(array $row): array
     {
+        $row = $this->decodePayloadFields($row);
         return [
             'id'             => $row['id'],
             'status'         => $row['status'],
@@ -641,6 +644,24 @@ class GisFeatureController
             'attributes'     => $row['attributes'],
             'geometry'       => $row['geometry'],
         ];
+    }
+
+    /**
+     * PDO returns ST_AsGeoJSON(...)::json and jsonb columns as strings; the
+     * API contract (api.md) requires real objects/arrays. Decode geometry and
+     * attributes so clients can consume them without re-parsing.
+     */
+    private function decodePayloadFields(array $row): array
+    {
+        if (isset($row['geometry']) && is_string($row['geometry'])) {
+            $decoded = json_decode($row['geometry'], true);
+            $row['geometry'] = (is_array($decoded) && $decoded !== []) ? $decoded : throw new ApiError('INTERNAL_ERROR', 'Stored geometry is not valid GeoJSON', 500);
+        }
+        if (isset($row['attributes']) && is_string($row['attributes'])) {
+            $decoded = json_decode($row['attributes'], true);
+            $row['attributes'] = is_array($decoded) ? $decoded : [];
+        }
+        return $row;
     }
 
     private function stripGeometry(array $row): array

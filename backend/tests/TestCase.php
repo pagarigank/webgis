@@ -13,6 +13,46 @@ use App\Core\Config\Config;
 
 class TestCase extends PHPUnitTestCase
 {
+    private ?App $cachedApp = null;
+    private ?\Psr\Container\ContainerInterface $cachedContainer = null;
+    private ?\PDO $cachedPdo = null;
+
+    /** Shared container so a test class reuses one DI build. */
+    protected function container(): \Psr\Container\ContainerInterface
+    {
+        if ($this->cachedContainer === null) {
+            $this->app(); // forces the build through getAppInstance()
+        }
+        return $this->cachedContainer;
+    }
+
+    /** The test database handle from the app's own DI wiring. */
+    protected function pdo(): \PDO
+    {
+        return $this->cachedPdo ??= $this->container()->get(\PDO::class);
+    }
+
+    /**
+     * Create (or reuse) a user with SYS_ADMIN role and mint a valid bearer
+     * token the AuthenticateMiddleware will accept.
+     */
+    protected function authToken(string $username = 'proxytest', string $roleCode = 'SYS_ADMIN', string $roleName = 'System Administrator'): array
+    {
+        $userId = $this->ensureUser($username, 'Str0ng!Pass123', $roleCode, $roleName);
+
+        $token = \Firebase\JWT\JWT::encode([
+            'sub' => (string) $userId, 'v' => 1, 'exp' => time() + 3600,
+        ], getenv('JWT_SECRET') ?: 'dummy_secret', 'HS256');
+
+        return ['id' => $userId, 'token' => $token];
+    }
+
+    /** Shared app instance so a test class hits the same routes/pipeline. */
+    protected function app(): App
+    {
+        return $this->cachedApp ??= $this->getAppInstance();
+    }
+
     protected function getAppInstance(): App
     {
         $containerBuilder = new ContainerBuilder();
@@ -22,6 +62,7 @@ class TestCase extends PHPUnitTestCase
         $container = $containerBuilder->build();
         
         AppFactory::setContainer($container);
+        $this->cachedContainer = $container;
         $app = AppFactory::create();
         
         (require __DIR__ . '/../config/routes.php')($app);
@@ -74,6 +115,85 @@ class TestCase extends PHPUnitTestCase
         return ['id' => $userId, 'token' => $token];
     }
 
+    /**
+     * Build a JSON request with optional headers in one call.
+     */
+    protected function jsonRequest(string $method, string $path, ?array $data = null, array $headers = []): ServerRequestInterface
+    {
+        $request = $this->createRequest($method, $path)
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Accept', 'application/json');
+
+        if ($data !== null) {
+            $request = $request->withParsedBody($data);
+        }
+
+        foreach ($headers as $name => $value) {
+            $request = $request->withHeader($name, $value);
+        }
+
+        return $request;
+    }
+
+    /**
+     * Dispatch a request through the app (shared instance).
+     */
+    protected function handle(ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+    {
+        return $this->app()->handle($request);
+    }
+
+    /**
+     * Log a user in through the real /auth/login endpoint and return the
+     * response payload (access_token, user, ...). The account is created
+     * first (idempotently) with the given role.
+     */
+    protected function loginViaApi(string $username, string $password = 'Str0ng!Pass123', string $roleCode = 'SYS_ADMIN', string $roleName = 'System Administrator'): array
+    {
+        $this->ensureUser($username, $password, $roleCode, $roleName);
+
+        $response = $this->handle(
+            $this->jsonRequest('POST', '/api/v1/auth/login', ['username' => $username, 'password' => $password])
+        );
+
+        if ($response->getStatusCode() !== 200) {
+            $this->fail(sprintf('Login failed for %s (%d): %s', $username, $response->getStatusCode(), (string) $response->getBody()));
+        }
+
+        return json_decode((string) $response->getBody(), true)['data'];
+    }
+
+    /**
+     * Idempotently create an ACTIVE user with a role + Argon2id password hash.
+     */
+    protected function ensureUser(string $username, string $password, string $roleCode, string $roleName): int
+    {
+        $hasherClass = class_exists(\App\Auth\Hasher::class)
+            ? \App\Auth\Hasher::class
+            : \App\Core\Auth\PasswordHasher::class;
+        $hash = (new $hasherClass())->hash($password);
+
+        $this->pdo()->exec("INSERT INTO app.organizations (code, name, org_type, status) VALUES ('TESTORG', 'Test Org', 'GOVERNMENT', 'ACTIVE') ON CONFLICT (code) DO NOTHING");
+        $orgId = (int) $this->pdo()->query("SELECT id FROM app.organizations WHERE code = 'TESTORG'")->fetchColumn();
+
+        $this->pdo()->exec("DELETE FROM app.users WHERE username = '$username'");
+        $this->pdo()->exec("INSERT INTO app.users (username, email, password_hash, full_name, org_id, status, version, must_change_password) VALUES ('$username', '$username@example.com', '{$hash}', 'Test User', $orgId, 'ACTIVE', 1, false)");
+        $userId = (int) $this->pdo()->query("SELECT id FROM app.users WHERE username = '$username'")->fetchColumn();
+
+        $this->pdo()->exec("INSERT INTO app.roles (code, name, is_system) VALUES ('$roleCode', '$roleName', false) ON CONFLICT (code) DO NOTHING");
+        $roleId = (int) $this->pdo()->query("SELECT id FROM app.roles WHERE code = '$roleCode'")->fetchColumn();
+        $this->pdo()->exec("INSERT INTO app.user_roles (user_id, role_id) VALUES ($userId, $roleId) ON CONFLICT DO NOTHING");
+
+        return $userId;
+    }
+
+    /**
+     * Delete rows created by the shared helpers (call in tearDown when used).
+     */
+    protected function cleanupSharedUsers(): void
+    {
+        $this->pdo()->exec("DELETE FROM app.users WHERE username = 'proxytest'");
+    }
     protected function createRequest(string $method, string $path): ServerRequestInterface
     {
         $factory = new ServerRequestFactory();

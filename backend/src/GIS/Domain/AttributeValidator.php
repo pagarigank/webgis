@@ -149,7 +149,7 @@ class AttributeValidator
             if (isset($rules['max']) && (float)$value > (float)$rules['max']) {
                 return 'Value must be at most ' . $rules['max'] . '.';
             }
-        } elseif (in_array($type, ['text', 'long_text'])) {
+        } elseif (in_array($type, ['text', 'long_text', 'string'])) {
             if (isset($rules['min']) && mb_strlen((string)$value) < (int)$rules['min']) {
                 return 'String length must be at least ' . $rules['min'] . ' characters.';
             }
