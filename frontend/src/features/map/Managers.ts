@@ -356,6 +356,7 @@ export class LayerManager {
         sourceLayerId: string,
         bbox?: [number, number, number, number],
         status?: string,
+        signal?: AbortSignal,
     ): Promise<GeoJSON.FeatureCollection> {
         const sourceId = `source-${sourceLayerId}`;
         try {
@@ -369,9 +370,11 @@ export class LayerManager {
             const response = await apiClient.get(`/layers/${layerId}/features.geojson`, {
                 params,
                 responseType: 'json',
+                // TASK-053: rapid panning cancels the stale request.
+                signal,
             });
 
-            const geojson = response.data as GeoJSON.FeatureCollection;
+            const geojson = response as GeoJSON.FeatureCollection;
 
             if (this.map.getSource(sourceId)) {
                 (this.map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojson);

@@ -28,6 +28,10 @@ export interface MapContextState {
     onError: (error: DrawError) => void;
     coordinate: string;
     loadLayerFeatures: (layerId: number, sourceLayerId: string, bbox?: [number, number, number, number], status?: string) => Promise<GeoJSON.FeatureCollection>;
+    /** TASK-053: register a layer for viewport (moveend) bbox auto-reload. */
+    registerViewportLayer: (layerId: number, sourceLayerId: string, status?: string) => void;
+    /** TASK-059: unsaved-changes guard — call from a beforeunload/blocked-nav UI. */
+    confirmDiscardPendingEdits: () => boolean;
     selectionManager: FeatureSelectionManager | null;
     registerFeatureSources: (features: GeoJSON.FeatureCollection, sourceId: string) => void;
     setSelection: (ids: string[]) => void;
@@ -40,6 +44,7 @@ const MapContext = createContext<MapContextState | undefined>(undefined);
 
 export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const mapContainerRef = useRef<HTMLDivElement>(null);
+    const mapCreatedRef = useRef(false);
     const [map, setMap] = useState<maplibregl.Map | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [drawMode, setDrawMode] = useState<DrawMode>('simple_select');
@@ -64,10 +69,17 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const watchedSourceIdsRef = useRef<Set<string>>(new Set());
     // Track sourceId -> layerId mapping for feature state
     const sourceLayerMapRef = useRef<Map<string, string>>(new Map());
+    // ── TASK-053: viewport (moveend) bbox loading with debounce + abort ──
+    const viewportLayersRef = useRef<Array<{ layerId: number; sourceLayerId: string; status?: string }>>([]);
+    const moveendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const inflightRef = useRef<AbortController | null>(null);
 
-    // Initialize map
+    // Initialize map. The ref flag (not the `map` state) guards against React
+    // StrictMode's double-invoked effects, which would otherwise create two
+    // MapLibre instances (and two canvases) inside the same container.
     useEffect(() => {
-        if (mapContainerRef.current && !map) {
+        if (mapContainerRef.current && !mapCreatedRef.current) {
+            mapCreatedRef.current = true;
             const instance = new maplibregl.Map({
                 container: mapContainerRef.current,
                 style: 'https://demotiles.maplibre.org/style.json',
@@ -185,12 +197,45 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             map.off('click', handleMapClick);
         };
 
+        // ── TASK-053: debounced moveend reload with AbortController ────────
+        // Every registered layer is re-fetched against the current viewport
+        // bbox; a newer moveend cancels the previous in-flight request.
+        const scheduleViewportReload = () => {
+            if (moveendTimerRef.current) clearTimeout(moveendTimerRef.current);
+            moveendTimerRef.current = setTimeout(async () => {
+                const layers = viewportLayersRef.current;
+                if (layers.length === 0) return;
+                const b = map.getBounds();
+                const bbox: [number, number, number, number] = [
+                    b.getWest(), b.getSouth(), b.getEast(), b.getNorth(),
+                ];
+                // No unbounded request: every fetch carries the viewport bbox.
+                inflightRef.current?.abort();
+                const controller = new AbortController();
+                inflightRef.current = controller;
+                for (const l of layers) {
+                    try {
+                        await lm.loadLayerFeatures(l.layerId, l.sourceLayerId, bbox, l.status, controller.signal);
+                    } catch (err: any) {
+                        if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') {
+                            return; // superseded by a newer moveend
+                        }
+                        console.warn('[MapContext] viewport reload failed:', err);
+                    }
+                }
+            }, 300);
+        };
+        map.on('moveend', scheduleViewportReload);
+
         return () => {
             unsubscribe();
             if (drawChangeListenerRef.current) drawChangeListenerRef.current();
             coordDiv.remove();
             window.removeEventListener('keydown', handleKeyDown);
             unregisterClick();
+            map.off('moveend', scheduleViewportReload);
+            if (moveendTimerRef.current) clearTimeout(moveendTimerRef.current);
+            inflightRef.current?.abort();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [map, isLoaded]);
@@ -267,12 +312,38 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
          conflictHostRef.current = fn;
      }, []);
 
+     // ── TASK-053: register a layer for viewport-driven bbox reload ──
+     const registerViewportLayer = useCallback((layerId: number, sourceLayerId: string, status?: string) => {
+         const exists = viewportLayersRef.current.some((l) => l.sourceLayerId === sourceLayerId);
+         if (!exists) {
+             viewportLayersRef.current.push({ layerId, sourceLayerId, status });
+         }
+     }, []);
+
+     // ── TASK-059: unsaved-changes guard for route/nav away ──
+     const confirmDiscardPendingEdits = useCallback(() => {
+         if (!hasPendingEdits) return true;
+         return window.confirm('You have unsaved drawing edits. Leave and discard them?');
+     }, [hasPendingEdits]);
+
      const managers = useMemo(() => {
          if (!map || !isLoaded) return { interactionMgr: null };
          return {
              interactionMgr: new InteractionManager(map),
          };
      }, [map, isLoaded]);
+
+     // Dev/E2E affordance: publish a minimal handle so Playwright specs can
+     // drive draw/conflict paths deterministically (harmless in production).
+     useEffect(() => {
+         (window as unknown as { __mapCtx?: object }).__mapCtx = {
+             drawManager: drawManagerRef.current,
+             registerViewportLayer,
+         };
+         return () => {
+             delete (window as unknown as { __mapCtx?: object }).__mapCtx;
+         };
+     }, [drawManager, registerViewportLayer]);
 
      return (
          <MapContext.Provider value={{
@@ -292,6 +363,8 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
              onError: (error) => { if (onError) onError(error); },
              coordinate,
              loadLayerFeatures: handleLoadLayerFeatures,
+             registerViewportLayer,
+             confirmDiscardPendingEdits,
              selectionManager,
              registerFeatureSources,
              setSelection,

@@ -144,10 +144,17 @@ function ringHasSelfIntersection(ring: [number, number][]): boolean {
     if (n < 4) return false; // triangle can't self-intersect
 
     for (let i = 0; i < n - 1; i++) {
-        for (let j = i + 2; j < n - 1; j++) {
-            // Skip adjacent segments (they share a vertex)
-            if (j === i + 1) continue;
-            if (segmentsIntersect(ring[i], ring[i + 1], ring[j], ring[j + 1])) {
+        const a = ring[i];
+        const b = ring[i + 1];
+        if (samePoint(a, b)) continue; // degenerate (zero-length) segment
+        for (let j = i + 1; j < n - 1; j++) {
+            const c = ring[j];
+            const d = ring[j + 1];
+            if (samePoint(c, d)) continue;
+            // Adjacent segments (including the first/last wrap-around pair)
+            // legitimately share a vertex — that is not a crossing.
+            if (sharesEndpoint(a, b, c, d)) continue;
+            if (segmentsIntersect(a, b, c, d)) {
                 return true;
             }
         }
@@ -155,9 +162,25 @@ function ringHasSelfIntersection(ring: [number, number][]): boolean {
     return false;
 }
 
+/** Two coordinates are the same vertex within ~0.1 mm. */
+function samePoint(a: [number, number], b: [number, number]): boolean {
+    return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
+}
+
+/** True if any endpoint is shared between segments AB and CD. */
+function sharesEndpoint(
+    a: [number, number],
+    b: [number, number],
+    c: [number, number],
+    d: [number, number],
+): boolean {
+    return samePoint(a, c) || samePoint(a, d) || samePoint(b, c) || samePoint(b, d);
+}
+
 /**
- * Check if two line segments AB and CD intersect (proper intersection,
- * excluding shared endpoints).
+ * Check if two line segments AB and CD cross properly. Shared endpoints and
+ * collinear/touching configurations are excluded — only a true transversal
+ * crossing counts.
  */
 function segmentsIntersect(
     a: [number, number],
@@ -170,10 +193,10 @@ function segmentsIntersect(
     const o3 = orientation(c, d, a);
     const o4 = orientation(c, d, b);
 
-    // General case: opposite orientations
-    if (o1 !== o2 && o3 !== o4) return true;
+    // Collinear/touching cases are not proper crossings.
+    if (o1 === 0 || o2 === 0 || o3 === 0 || o4 === 0) return false;
 
-    return false;
+    return o1 !== o2 && o3 !== o4;
 }
 
 function orientation(

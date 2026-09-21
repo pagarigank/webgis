@@ -17,12 +17,11 @@ export type MeasureResult = MeasureDistanceResult | MeasureAreaResult;
 
 export const spatialApi = {
     measure: async (type: 'distance' | 'area', geometry: GeoJSON.GeometryObject, srid?: number): Promise<MeasureResult> => {
-        const response = await apiClient.post('/spatial/measure', {
+        return await apiClient.post('/spatial/measure', {
             type,
             geometry,
             srid: srid ?? 32651,
         });
-        return response.data.data;
     },
 
     identify: async (lng: number, lat: number, layerId: number, featureId: string = '', srid?: number): Promise<{
@@ -42,8 +41,7 @@ export const spatialApi = {
             srid: (srid ?? 32651).toString(),
         });
         if (featureId) params.set('feature_id', featureId);
-        const response = await apiClient.get(`/spatial/identify?${params}`);
-        return response.data.data;
+        return await apiClient.get(`/spatial/identify?${params}`);
     },
 
     identifyNearby: async (lng: number, lat: number, srid?: number): Promise<{
@@ -62,8 +60,7 @@ export const spatialApi = {
             lat: lat.toString(),
             srid: (srid ?? 32651).toString(),
         });
-        const response = await apiClient.get(`/spatial/identify-nearby?${params}`);
-        return response.data.data;
+        return await apiClient.get(`/spatial/identify-nearby?${params}`);
     },
 };
 

@@ -25,7 +25,7 @@ export const spatialQueryApi = {
             buffer_m?: number;
         },
     ): Promise<SpatialQueryResult> => {
-        const response = await apiClient.post('/spatial/query', {
+        return await apiClient.post('/spatial/query', {
             operation,
             layer_id: layerId,
             geometry,
@@ -35,7 +35,6 @@ export const spatialQueryApi = {
             distance_m: options?.distance_m,
             buffer_m: options?.buffer_m,
         });
-        return response.data.data;
     },
 
     /**
@@ -59,8 +58,7 @@ export const spatialQueryApi = {
             limit: (options?.limit ?? 100).toString(),
             offset: (options?.offset ?? 0).toString(),
         });
-        const response = await apiClient.get(`/spatial/query/bbox?${params}`);
-        return response.data.data;
+        return await apiClient.get(`/spatial/query/bbox?${params}`);
     },
 };
 

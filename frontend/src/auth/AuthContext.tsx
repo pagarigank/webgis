@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../lib/apiClient';
-import { tokenStore, hasRefreshCookie } from './tokenStore';
+import { tokenStore } from './tokenStore';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 import type { AuthStatus, MePayload } from './types';
@@ -16,27 +16,19 @@ import type { AuthStatus, MePayload } from './types';
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
-  // On mount, check whether a refresh cookie exists before firing the me
-  // query. Without this guard a hard-refreshed page fires GET /me immediately,
-  // gets 401, triggers a refresh that fails because the refresh cookie was
-  // never stored (or was rejected), dispatches auth:unauthorized, and loops
-  // back to /login. When there is no refresh cookie the session is dead and
-  // we should go straight to unauthenticated.
-  const [initialCheck, setInitialCheck] = useState<'checking' | 'has-cookie' | 'no-cookie'>('checking');
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    (async () => {
-      const hasCookie = typeof document !== 'undefined' && hasRefreshCookie();
-      setInitialCheck(hasCookie ? 'has-cookie' : 'no-cookie');
-    })();
-  }, []);
-
+  // On mount always attempt to restore the session via GET /me. With a valid
+  // (HttpOnly) refresh cookie the 401 that /me produces without an in-memory
+  // bearer token is turned into a silent refresh by the apiClient interceptor,
+  // which resends the cookie and retries the request. With no cookie at all the
+  // refresh fails, `refreshFailed` latches, and the UI settles on
+  // 'unauthenticated' → /login. This avoids the previous guard that tried to
+  // sniff the HttpOnly refresh cookie through document.cookie (always empty)
+  // and permanently wedged the app on a hard reload.
   const meQuery = useQuery<MePayload>({
     queryKey: ['me'],
     queryFn: async () => {
       return await apiClient.get('/me');
     },
-    enabled: initialCheck === 'has-cookie',
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -44,11 +36,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Derived auth status from TanStack Query
   const status: AuthStatus = useMemo(() => {
     if (meQuery.isSuccess && meQuery.data) return 'authenticated';
-    if (initialCheck === 'checking') return 'loading';
-    if (initialCheck === 'no-cookie') return 'unauthenticated';
     if (meQuery.isPending) return 'loading';
     return 'unauthenticated';
-  }, [initialCheck, meQuery.isPending, meQuery.isSuccess, meQuery.data]);
+  }, [meQuery.isPending, meQuery.isSuccess, meQuery.data]);
 
   // Eviction listener for unauthorized events from apiClient interceptor
   useEffect(() => {

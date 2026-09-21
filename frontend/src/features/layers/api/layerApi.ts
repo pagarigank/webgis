@@ -27,18 +27,15 @@ export interface FeatureCollection {
 
 export const layerApi = {
     getAll: async (): Promise<Layer[]> => {
-        const response = await apiClient.get('/layers');
-        return response.data.data;
+        return await apiClient.get('/layers');
     },
 
     getById: async (id: number): Promise<Layer> => {
-        const response = await apiClient.get(`/layers/${id}`);
-        return response.data.data;
+        return await apiClient.get(`/layers/${id}`);
     },
 
     create: async (data: Partial<Layer>): Promise<{id: number}> => {
-        const response = await apiClient.post('/layers', data);
-        return response.data.data;
+        return await apiClient.post('/layers', data);
     },
 
     update: async (id: number, data: Partial<Layer> & { version?: number }): Promise<{id: number; version: number}> => {
@@ -46,8 +43,7 @@ export const layerApi = {
         if (data.version != null) {
             headers['If-Match'] = String(data.version);
         }
-        const response = await apiClient.put(`/layers/${id}`, data, { headers });
-        return response.data.data;
+        return await apiClient.put(`/layers/${id}`, data, { headers });
     },
 
     delete: async (id: number): Promise<void> => {
@@ -78,13 +74,11 @@ export const layerApi = {
             }
         }
         const q = qs.toString();
-        const response = await apiClient.get(`/layers/${layerId}/features${q ? '?' + q : ''}`);
-        return response.data.data;
+        return await apiClient.get(`/layers/${layerId}/features${q ? '?' + q : ''}`);
     },
 
     getFeature: async (layerId: number, featureId: string): Promise<Feature> => {
-        const response = await apiClient.get(`/layers/${layerId}/features/${featureId}`);
-        return response.data.data;
+        return await apiClient.get(`/layers/${layerId}/features/${featureId}`);
     },
 
     createFeature: async (layerId: number, data: {
@@ -94,8 +88,7 @@ export const layerApi = {
         provenance?: string;
         status?: string;
     }): Promise<Feature> => {
-        const response = await apiClient.post(`/layers/${layerId}/features`, data);
-        return response.data.data;
+        return await apiClient.post(`/layers/${layerId}/features`, data);
     },
 
     updateFeature: async (layerId: number, featureId: string, data: Partial<{
@@ -109,8 +102,7 @@ export const layerApi = {
         if (version != null) {
             headers['If-Match'] = String(version);
         }
-        const response = await apiClient.patch(`/layers/${layerId}/features/${featureId}`, data, { headers });
-        return response.data.data;
+        return await apiClient.patch(`/layers/${layerId}/features/${featureId}`, data, { headers });
     },
 
     updateFeatureWithVersion: async (layerId: number, featureId: string, version: number, data: Partial<{
@@ -124,8 +116,7 @@ export const layerApi = {
     },
 
     deleteFeature: async (layerId: number, featureId: string): Promise<{id: string; deleted: boolean}> => {
-        const response = await apiClient.delete(`/layers/${layerId}/features/${featureId}`);
-        return response.data.data;
+        return await apiClient.delete(`/layers/${layerId}/features/${featureId}`);
     },
 
     getGeoJSON: async (layerId: number, params?: { bbox?: string; status?: string }): Promise<GeoJSON.FeatureCollection> => {
@@ -133,9 +124,8 @@ export const layerApi = {
         if (params?.bbox) qs.set('bbox', params.bbox);
         if (params?.status) qs.set('status', params.status);
         const q = qs.toString();
-        const response = await apiClient.get(`/layers/${layerId}/features.geojson${q ? '?' + q : ''}`, {
+        return await apiClient.get(`/layers/${layerId}/features.geojson${q ? '?' + q : ''}`, {
             responseType: 'json',
         });
-        return response.data;
     },
 };
