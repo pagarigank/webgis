@@ -5,6 +5,7 @@ import { LayerManager, InteractionManager, formatCoordinate } from './Managers';
 import { DrawManager } from './DrawManager';
 import type { DrawError } from './DrawManager';
 import { ConflictDialogHost } from './ConflictDialogHost';
+import { FeatureSelectionManager } from './FeatureSelectionManager';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 export type DrawMode = 'simple_select' | 'direct_select' | 'draw_polygon' | 'draw_point' | 'draw_line' | 'static';
@@ -26,6 +27,12 @@ export interface MapContextState {
     onError: (error: DrawError) => void;
     coordinate: string;
     loadLayerFeatures: (layerId: number, sourceLayerId: string, bbox?: [number, number, number, number], status?: string) => Promise<GeoJSON.FeatureCollection>;
+    // TASK-065: feature selection manager (map↔table sync)
+    selectionManager: FeatureSelectionManager | null;
+    registerFeatureSources: (features: GeoJSON.FeatureCollection, sourceId: string) => void;
+    setSelection: (ids: string[]) => void;
+    clearSelection: () => void;
+    getSelectedIds: () => ReadonlySet<string>;
 }
 
 const MapContext = createContext<MapContextState | undefined>(undefined);
@@ -48,6 +55,11 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         featureId: string;
         yourVersion: any;
     }) => void) | null>(null);
+    const selectionManagerRef = useRef<FeatureSelectionManager | null>(null);
+    // Track which source ids have GeoJSON feature layers (for queryRenderedFeatures)
+    const watchedSourceIdsRef = useRef<Set<string>>(new Set());
+    // Track sourceId -> layerId mapping for feature state
+    const sourceLayerMapRef = useRef<Map<string, string>>(new Map());
 
     // Initialize map
     useEffect(() => {
@@ -139,11 +151,40 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
         window.addEventListener('keydown', handleKeyDown);
 
+        // ── TASK-065: map click → table selection ──────────────────────────
+        // When user clicks on a GeoJSON feature on the map, toggle selection
+        // and notify the table via the onMapFeatureClick callback.
+        const handleMapClick = useCallback((e: maplibregl.MapMouseEvent) => {
+            const sel = selectionManagerRef.current;
+            if (!sel) return;
+            // Query rendered features from all watched sources
+            for (const srcId of watchedSourceIdsRef.current) {
+                const features = map.queryRenderedFeatures(e.point, { layers: [srcId] });
+                if (features.length > 0) {
+                    const feat = features[0];
+                    if (feat.id != null) {
+                        const fid = String(feat.id);
+                        sel.toggleFeature(fid);
+                        // Notify table side via the exposed callback
+                        onMapFeatureClick(fid, srcId, sourceLayerMapRef.current.get(srcId) ?? '');
+                    }
+                    break;
+                }
+            }
+        }, [map]);
+
+        map.on('click', handleMapClick);
+
+        const unregisterClick = () => {
+            map.off('click', handleMapClick);
+        };
+
         return () => {
             unsubscribe();
             if (drawChangeListenerRef.current) drawChangeListenerRef.current();
             coordDiv.remove();
             window.removeEventListener('keydown', handleKeyDown);
+            unregisterClick();
         };
     }, [map, isLoaded]);
 
@@ -179,6 +220,57 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return layerManagerRef.current.loadLayerFeatures(layerId, sourceLayerId, bbox, status);
     }, []);
 
+    // ── TASK-065: selection manager ────────────────────────────────────────
+    const getOrCreateSelectionManager = useCallback(() => {
+        if (!map || !isLoaded) return null;
+        if (selectionManagerRef.current) return selectionManagerRef.current;
+
+        const watched = Array.from(watchedSourceIdsRef.current);
+        const sm = new FeatureSelectionManager({
+            map,
+            sourceId: '',
+            layerId: 'feature-selection',
+            querySourceIds: watched,
+        });
+        selectionManagerRef.current = sm;
+        return sm;
+    }, [map, isLoaded]);
+
+    const registerFeatureSources = useCallback((features: GeoJSON.FeatureCollection, sourceId: string) => {
+        watchedSourceIdsRef.current.add(sourceId);
+        const sm = selectionManagerRef.current;
+        if (sm) {
+            sm.registerFeatures(features, sourceId);
+        }
+    }, []);
+
+    const setSelection = useCallback((ids: string[]) => {
+        const sm = selectionManagerRef.current;
+        if (sm) {
+            sm.selectOne(ids[0] ?? '');
+        }
+    }, []);
+
+    const clearSelection = useCallback(() => {
+        const sm = selectionManagerRef.current;
+        if (sm) {
+            sm.clearSelection();
+        }
+    }, []);
+
+    const getSelectedIds = useCallback(() => {
+        const sm = selectionManagerRef.current;
+        return sm ? sm.getSelectedIds() : new Set<string>();
+    }, []);
+
+    const onMapFeatureClick = useCallback((featureId: string, sourceId: string, layerId: number) => {
+        // This is called from the map click handler; table components can
+        // subscribe to selection changes via a separate context/callback.
+        // For now, selection state lives in the manager; table reads via getSelectedIds.
+        void layerId;
+        void sourceId;
+    }, []);
+
     const managers = useMemo(() => {
         if (!map || !isLoaded) return { layerManager: null, interactionMgr: null };
         return {
@@ -205,6 +297,11 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             onError: (error) => { if (onError) onError(error); },
             coordinate,
             loadLayerFeatures: handleLoadLayerFeatures,
+            selectionManager: selectionManagerRef.current,
+            registerFeatureSources,
+            setSelection,
+            clearSelection,
+            getSelectedIds,
         }}>
             <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
                 <div ref={mapContainerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />

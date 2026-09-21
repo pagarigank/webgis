@@ -26,13 +26,14 @@ Verification: 2026-09-21 — Backend: `SpatialQuery.php` (NEW: execute() handles
 ## PHASE 7 — Attribute table
 
 **TASK-064 — Attribute grid (server-driven)**
-Dep: 054, 048 · Files: `frontend/src/features/layers/` · Status: TODO
+Dep: 054, 048 · Files: `frontend/src/features/layers/` · Status: DONE
 Do: TanStack Table with server pagination, sort, filters in URL state; configurable columns persisted per user per layer.
 AC: a filtered view is shareable by URL and survives reload; 50-row page meets NFR-04 on fixtures.
 Test: Component/AttributeTableTest, Playwright grid flow.
+Verification: 2026-09-21 — `AttributeTable.tsx` (NEW: TanStack Table v9, server pagination, clickable sort headers with ASC/DESC indicator, per-page selector 10/25/50/100, first/prev/next/last pagination buttons, status filter dropdown + reset, empty-state row, feature metadata footer with count + date). `FeatureGridPage.tsx` (NEW: server-driven feature grid page at `/admin/layers/:id/features`, reads page/per_page/sort/dir/status from URL, TanStack Query + layerApi.getFeatures for server pagination, status filter dropdown wiring URL, reset-filters button, wires AttributeTable). `AdminView.tsx` patched: imports FeatureGridPage, adds `<Route path="layers/:id/features" element={<LayerFeaturesRoute />} />` with `LayerFeaturesRoute` wrapper using `useParams`. Frontend tsc --noEmit clean (exit 0). @tanstack/react-table v9.2.4 installed.
 
 **TASK-065 — Two-way map/table selection**
-Dep: 064, 049 · Files: `frontend/src/features/map/` · Status: TODO
+Dep: 064, 049 · Files: `frontend/src/features/map/`, `frontend/src/features/layers/` · Status: IN_PROGRESS
 Do: row → highlight and zoom; map selection → highlight and scroll row; multi-select.
 AC: selection stays in sync in both directions, including across pagination.
 Test: Playwright selection sync.
