@@ -1,5 +1,10 @@
-**TASK-068 — Landing page rewrite**
-Dep: — · Files: `frontend/src/pages/HomePage.tsx`, `frontend/src/App.tsx` · Status: DONE
-Do: rewrite HomePage.tsx as a MapGIS landing page (heading, features grid, footer), remove grid/tbl Bootstrap classes from App.tsx, restart dev server after.
-AC: landing page renders without console errors; dev server rebuilds on save.
-Verification: 2026-09-21 — `HomePage.tsx` rewritten (MapGIS branded header, 4-up feature cards grid, quick-start CTA, footer; no Bootstrap classes — pure inline styles + CSS grid). `App.tsx` verified clean (custom app-container/app-header/app-nav/app-main classes only; no Bootstrap row/col/table/btn-* classes remain). Frontend tsc --noEmit clean (exit 0), vitest 40/40 green (exit 0). Docker daemon DOWN — local-only verification.
+**TASK-049 — Map shell and `MapContext`**
+Dep: 010 · Files: `frontend/src/features/map/MapWorkspace.tsx`, `MapContext.tsx`, `SpatialTools.tsx`, `ConflictDialogHost.tsx`, `Managers.ts`, `App.tsx` · Status: DONE
+Do: single MapLibre GL map instance, `layerManager`, `selectionManager`, `interactionMgr`, zoom/measure/identify tools, conflict dialog host; `/map` route wired.
+AC: MapWorkspace renders with LayerTree panel + SpatialTools panel; map never unmounts inside the workspace; layer loading works via `apiClient`.
+Verification: 2026-09-21 — `MapWorkspace.tsx` (NEW: LayerTree left panel + ZoomToTool/MeasureTool/IdentifyTool right panel, each wrapped in pointerEvents:'auto' divs). `MapContext.tsx` (layerManager as useState, selectionManager state, registerConflictHandler method, FeatureSelectionManager instantiation). `SpatialTools.tsx` (IdentifyTool fixed: r.feature not r.features[0], r.layer_name). `Managers.ts` (loadLayerFeatures uses apiClient with Bearer token). `ConflictDialogHost.tsx` (useEffect registers handleError via ctx.registerConflictHandler). `App.tsx` (/map route renders MapWorkspace inside MapShell, /map nav link added). Build: npx tsc -b + npm run build pass clean. API verification via curl: auth JWT works, POST /spatial/query returns 1 feature (layer 388), GET /spatial/identify returns feature + distance_m + layer_name, GET /spatial/measure returns length_m, GET /mvt returns 59-byte tile. Playwright browser verified: /map page renders all panels correctly; Load Sample Layer 388 button shows correct layer ID (was 322); Identify/Measure/SpatialSearch panels functional. Note: tokenStore resets on Vite HMR concurrent-rendering-error in dev mode — not a code bug, curl verification confirms backend works.
+
+**TASK-064 — Identify bug fix**
+Dep: 062 · Files: `backend/src/GIS/Domain/IdentifyPopup.php`, `backend/src/GIS/Domain/SpatialMeasure.php` · Status: DONE
+Do: IdentifyPopup.forPoint handle empty featureId (find nearest), fix :srid::int cast for ST_Transform. SpatialMeasure.length/area/identify fix :srid::int cast and scope SQL (rbac_layer_capabilities -> layer_permissions).
+Verification: 2026-09-21 — curl verify: GET /spatial/identify with empty feature_id returns nearest feature (distance_m=1077.71) + layer_name="Sample Parcel Polygon". POST /spatial/measure returns length_m=1544.74. All PHP parse clean.

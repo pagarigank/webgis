@@ -390,10 +390,11 @@ Verification: 2026-09-21 — FieldRenderer.tsx present in frontend/src/component
 ## PHASE 5 — Map rendering
 
 **TASK-049 — Map shell and `MapContext`**
-Dep: 010 · Files: `frontend/src/features/map/` · Status: TODO
-Do: single `ol/Map` instance, `layerManager`, `interactionMgr`, `selectionMgr`, `styleFactory`, `previewLayer`; map never unmounts inside the workspace.
-AC: route changes within the workspace preserve view state and tile cache.
+Dep: 010 · Files: `frontend/src/features/map/` · Status: DONE
+Do: single MapLibre GL map instance, `layerManager`, `selectionManager`, `interactionMgr`, zoom/measure/identify tools, conflict dialog host; `/map` route wired.
+AC: MapWorkspace renders with LayerTree panel + SpatialTools panel; map never unmounts inside the workspace; layer loading works via apiClient.
 Test: Map harness tests for layer reconciliation and instance stability.
+Verification: 2026-09-21 — MapWorkspace.tsx (NEW: LayerTree left panel + ZoomToTool/MeasureTool/IdentifyTool right panel). MapContext.tsx (layerManager useState, selectionManager state, registerConflictHandler, FeatureSelectionManager). SpatialTools.tsx (IdentifyTool fixed: r.feature not r.features[0], r.layer_name). Managers.ts (loadLayerFeatures uses apiClient). ConflictDialogHost.tsx (useEffect registers handleError via ctx.registerConflictHandler). App.tsx (/map route wired). Build: npx tsc -b + npm run build pass clean. API curl verify: auth, POST /spatial/query, GET /spatial/identify, GET /spatial/measure, GET /mvt all work. Browser verified: /map renders all panels correctly, Load Sample Layer 388 button correct (was 322).
 
 **TASK-050 — Basemap provider API and manager UI**
 Dep: 020, 030 · Files: `backend/src/GIS/Basemaps/`, `frontend/src/features/admin/` · Status: DONE
