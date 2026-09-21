@@ -106,4 +106,10 @@ return [
 
     \App\GIS\Http\GisFeatureController::class => \DI\autowire(\App\GIS\Http\GisFeatureController::class)
         ->constructorParameter('audit', \DI\get(AuditWriter::class)),
+
+    \App\GIS\Domain\SpatialMeasure::class => \DI\autowire(\App\GIS\Domain\SpatialMeasure::class),
+    \App\GIS\Domain\IdentifyPopup::class => \DI\autowire(\App\GIS\Domain\IdentifyPopup::class),
+    \App\GIS\Http\SpatialToolController::class => \DI\autowire(\App\GIS\Http\SpatialToolController::class)
+        ->constructorParameter('measure', \DI\get(\App\GIS\Domain\SpatialMeasure::class))
+        ->constructorParameter('identifyPopup', \DI\get(\App\GIS\Domain\IdentifyPopup::class)),
 ];

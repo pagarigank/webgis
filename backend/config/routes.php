@@ -89,7 +89,15 @@ return function (App $app) {
         $group->get('/layers/{layer_id:[0-9]+}/features.geojson', \App\GIS\Http\GisFeatureController::class . ':geojson')
               ->add(AuthenticateMiddleware::class);
         $group->get('/layers/{layer_id:[0-9]+}/mvt/{z:\d+}/{x:\d+}/{y:\d+}.mvt', \App\GIS\Http\GisFeatureController::class . ':mvt')
-              ->add(AuthenticateMiddleware::class);
+                      ->add(AuthenticateMiddleware::class);
+
+                // ---- Spatial tools (TASK-062) ----
+                $group->post('/spatial/measure', \App\GIS\Http\SpatialToolController::class . ':measure')
+                      ->add(AuthenticateMiddleware::class);
+                $group->get('/spatial/identify', \App\GIS\Http\SpatialToolController::class . ':identify')
+                      ->add(AuthenticateMiddleware::class);
+                $group->get('/spatial/identify-nearby', \App\GIS\Http\SpatialToolController::class . ':identifyNearby')
+                      ->add(AuthenticateMiddleware::class);
 
         $group->post('/users', \App\Users\Http\UserAdminController::class . ':create')
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
