@@ -1,4 +1,4 @@
-import type { Layer, LayerField, LayerStyle, LayerStyleRule, LayerPermission } from '../types';
+export type { Layer, LayerField, LayerStyle, LayerStyleRule, LayerPermission } from '../types';
 
 export interface Feature {
     id: string;

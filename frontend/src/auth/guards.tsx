@@ -13,10 +13,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { status, user } = useAuth();
   const location = useLocation();
 
+  console.log('RequireAuth render:', { status, user, location: location.pathname });
   if (status === 'loading') {
     return null;
   }
   if (status === 'unauthenticated' || user === null) {
+    console.log('RequireAuth redirecting to /login');
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
   if (user.must_change_password) {

@@ -50,21 +50,30 @@ class SpatialQuery
 
         $geom = $params['geometry'] ?? null;
 
-        // Extract the user id from session
-        $userId = (int) $this->pdo->query("SELECT current_setting('app.current_user_id', true)")->fetchColumn();
+        // Extract the user id from session. Middleware sets app.user_id; controllers
+        // also SET LOCAL app.current_user_id for the RLS read helpers. Accept either.
+        $userId = (int) $this->pdo->query("
+            SELECT COALESCE(
+                NULLIF(current_setting('app.current_user_id', true), '')::int,
+                NULLIF(current_setting('app.user_id', true), '')::int,
+                0
+            )
+        ")->fetchColumn();
         $userId = $userId ?: 0;
 
-        // Scope-predicate: user can see this layer's features
+        // Scope-predicate: user can view this layer's features (FR-014 / SR-03).
         $scopeWhere = $this->scopeSql($layerId, $userId);
 
         // Geometry filter for the operation
-        $geomFilter = $this->operationSql($operation, $geom, $srid);
+        $distanceM = isset($params['distance_m']) ? (float) $params['distance_m'] : 500;
+        $bufferM   = isset($params['buffer_m']) ? (float) $params['buffer_m'] : 100;
+        $geomFilter = $this->operationSql($operation, $geom, $srid, $distanceM, $bufferM);
         if ($geomFilter === null) {
             throw new ApiError('VALIDATION_FAILED', "Geometry required for operation: {$operation}", 400);
         }
 
-        $where = ["f.layer_id = :lid", "f.deleted_at IS NULL", $scopeWhere, $geomFilter];
-        $paramsList = [':lid' => $layerId];
+        $where = ["f.layer_id = :lid", "f.deleted_at IS NULL", $scopeWhere, $geomFilter['sql']];
+        $paramsList = [':lid' => $layerId, ':uid' => $userId];
 
         // Bind geometry params
         foreach ($geomFilter['params'] as $k => $v) {
@@ -77,18 +86,27 @@ class SpatialQuery
         $countSql = "SELECT COUNT(*) FROM app.gis_features f {$whereSql}";
         $cntStmt = $this->pdo->prepare($countSql);
         foreach ($paramsList as $k => $v) {
-            $cntStmt->bindValue($k, $v);
+            // Only bind params referenced by the count SQL (geometry/scope filters
+            // like :gj, :srid are selected-only and unused in COUNT, which breaks
+            // native prepared statements if bound).
+            if (str_contains($whereSql, $k)) {
+                $cntStmt->bindValue($k, $v);
+            }
         }
         $cntStmt->execute();
         $total = (int) $cntStmt->fetchColumn();
 
         // Data
         $sel = 'f.id, f.status, f.psgc_barangay, f.provenance, f.attributes, ST_AsGeoJSON(f.geom)::json AS geometry';
-        if ($operation === 'nearest' || $operation === 'within_distance') {
-            $sel .= ', ST_Distance(ST_Transform(f.geom, :srid), ST_Transform(ST_GeomFromGeoJSON(:gj_query)::geometry, :srid)) AS dist_m';
+        $hasDist = false;
+        if ($operation === 'nearest' || $operation === 'within_distance' || $operation === 'buffer') {
+            $sel .= ', ST_Distance(ST_Transform(f.geom, :srid::int), ST_Transform(ST_GeomFromGeoJSON(:gj_query)::geometry, :srid::int)) AS dist_m';
             $paramsList[':srid'] = $srid;
+            $paramsList[':gj_query'] = $geom !== null ? json_encode($geom) : 'null';
+            $hasDist = true;
         }
-        $dataSql = "SELECT {$sel} FROM app.gis_features f {$whereSql} ORDER BY dist_m ASC LIMIT :lim OFFSET :off";
+        $orderBy = $hasDist ? 'dist_m ASC' : 'f.created_at DESC';
+        $dataSql = "SELECT {$sel} FROM app.gis_features f {$whereSql} ORDER BY {$orderBy} LIMIT :lim OFFSET :off";
         $dataStmt = $this->pdo->prepare($dataSql);
         foreach ($paramsList as $k => $v) {
             $dataStmt->bindValue($k, $v);
@@ -102,7 +120,7 @@ class SpatialQuery
             $out = [
                 'type'       => 'Feature',
                 'id'         => $r['id'],
-                'geometry'   => $r['geometry'],
+                'geometry'   => json_decode($r['geometry'], true) ?? ['type' => 'Point', 'coordinates' => [0, 0]],
                 'properties' => [
                     'status'        => $r['status'],
                     'psgc_barangay' => $r['psgc_barangay'],
@@ -133,7 +151,7 @@ class SpatialQuery
      * @param array|null $geom GeoJSON geometry (or null for bbox which takes a string)
      * @return array{sql: string, params: array}|null
      */
-    private function operationSql(string $operation, ?array $geom, int $srid): ?array
+    private function operationSql(string $operation, ?array $geom, int $srid, float $distanceM = 500, float $bufferM = 100): ?array
     {
         $gj = $geom !== null ? json_encode($geom) : null;
         if ($gj === false && $geom !== null) {
@@ -146,8 +164,8 @@ class SpatialQuery
             'within'      => $this->withinSql($gj, $srid),
             'contains'     => $this->containsSql($gj, $srid),
             'nearest'      => $this->nearestSql($gj, $srid),
-            'within_distance' => $this->withinDistanceSql($gj, $srid),
-            'buffer'       => $this->bufferSql($gj, $srid),
+            'within_distance' => $this->withinDistanceSql($gj, $srid, $distanceM),
+            'buffer'       => $this->bufferSql($gj, $srid, $bufferM),
             default => null,
         };
     }
@@ -180,7 +198,7 @@ class SpatialQuery
     {
         if ($gj === null) return ['sql' => 'true', 'params' => []];
         return [
-            'sql' => 'ST_Intersects(ST_Transform(f.geom, :srid), ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid))',
+            'sql' => 'ST_Intersects(ST_Transform(f.geom, :srid::int), ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid::int))',
             'params' => [':gj' => $gj, ':srid' => $srid],
         ];
     }
@@ -189,7 +207,7 @@ class SpatialQuery
     {
         if ($gj === null) return ['sql' => 'true', 'params' => []];
         return [
-            'sql' => 'ST_Within(ST_Transform(f.geom, :srid), ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid))',
+            'sql' => 'ST_Within(ST_Transform(f.geom, :srid::int), ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid::int))',
             'params' => [':gj' => $gj, ':srid' => $srid],
         ];
     }
@@ -198,7 +216,7 @@ class SpatialQuery
     {
         if ($gj === null) return ['sql' => 'true', 'params' => []];
         return [
-            'sql' => 'ST_Contains(ST_Transform(f.geom, :srid), ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid))',
+            'sql' => 'ST_Contains(ST_Transform(f.geom, :srid::int), ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid::int))',
             'params' => [':gj' => $gj, ':srid' => $srid],
         ];
     }
@@ -213,28 +231,33 @@ class SpatialQuery
         ];
     }
 
-    private function withinDistanceSql(?string $gj, int $srid): array
+    private function withinDistanceSql(?string $gj, int $srid, float $distanceM): array
     {
         if ($gj === null) return ['sql' => 'true', 'params' => []];
-        $dist = (float) ($_POST['distance_m'] ?? 500);
         return [
-            'sql' => 'ST_DWithin(ST_Transform(f.geom, :srid), ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid), :dist)',
-            'params' => [':gj' => $gj, ':srid' => $srid, ':dist' => $dist],
+            'sql' => 'ST_DWithin(ST_Transform(f.geom, :srid::int), ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid::int), :dist::float8)',
+            // ':gj' feeds ST_DWithin (WHERE); ':gj_query' feeds ST_Distance (SELECT).
+            'params' => [':gj' => $gj, ':gj_query' => $gj, ':srid' => $srid, ':dist' => $distanceM],
         ];
     }
 
-    private function bufferSql(?string $gj, int $srid): array
+    private function bufferSql(?string $gj, int $srid, float $bufferM): array
     {
         if ($gj === null) return ['sql' => 'true', 'params' => []];
-        $bufferM = (float) ($_POST['buffer_m'] ?? 100);
         return [
-            'sql' => 'ST_Intersects(ST_Transform(f.geom, :srid), ST_Buffer(ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid), :buffer))',
+            'sql' => 'ST_Intersects(ST_Transform(f.geom, :srid::int), ST_Buffer(ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid::int), :buffer::float8))',
             'params' => [':gj' => $gj, ':srid' => $srid, ':buffer' => $bufferM],
         ];
     }
 
     /**
      * Build the scope WHERE clause for the given layer + user.
+     *
+     * Layer-level capability is the authoritative gate (FR-014 / SR-03) and is
+     * resolved exactly like FeatureScopeResolver: an explicit can_view grant in
+     * app.layer_permissions via one of the user's roles. Row-level data scopes
+     * (region/province/barangay) are enforced by the gis_features RLS policies,
+     * not here.
      */
     private function scopeSql(int $layerId, int $userId): string
     {
@@ -243,16 +266,12 @@ class SpatialQuery
         }
         return <<<'SQL'
 EXISTS (
-    SELECT 1 FROM app.rbac_layer_capabilities c
-    WHERE c.layer_id = :lid
-      AND c.user_id = :uid
-      AND c.can_view = true
-)
-OR EXISTS (
-    SELECT 1 FROM app.organization_members om
-    JOIN app.gis_layers l ON l.organization_id = om.organization_id
-    WHERE l.id = :lid
-      AND om.user_id = :uid
+    SELECT 1
+    FROM app.layer_permissions lp
+    JOIN app.user_roles ur ON ur.role_id = lp.role_id
+    WHERE lp.layer_id = :lid
+      AND ur.user_id = :uid
+      AND lp.can_view = true
 )
 SQL;
     }

@@ -28,12 +28,12 @@ export function validateGeometry(geom: GeoJSON.GeometryObject): GeometryValidati
     };
 
     // ── Coordinate bounds (WGS84 sanity) ──────────────────────────────────
-    if (!coordinatesInWgs84Range(geom.coordinates, type)) {
+    if (!coordinatesInWgs84Range((geom as any).coordinates, type)) {
         errors.push('Coordinates are outside WGS84 range (longitude [-180,180], latitude [-90,90])');
     }
 
     // ── Minimum vertices ───────────────────────────────────────────────────
-    const coordLeafCount = countCoordinateLeaves(geom.coordinates, type);
+    const coordLeafCount = countCoordinateLeaves((geom as any).coordinates, type);
     const min = minVertices[type] ?? 1;
     if (coordLeafCount < min) {
         errors.push(`Too few coordinates for ${type} (need at least ${min})`);
@@ -41,10 +41,10 @@ export function validateGeometry(geom: GeoJSON.GeometryObject): GeometryValidati
 
     // ── Ring closure (Polygon rings must close) ────────────────────────────
     if (type === 'Polygon' || type === 'MultiPolygon') {
-        const rings = type === 'Polygon' ? geom.coordinates : geom.coordinates.flatMap(r => r);
+        const rings = type === 'Polygon' ? (geom as any).coordinates : (geom as any).coordinates.flatMap((r: any) => r);
         for (let i = 0; i < rings.length; i++) {
             const ring = rings[i];
-            if (!ringClosed(ring)) {
+            if (!ringClosed(ring as [number, number][])) {
                 errors.push(`Polygon ring ${i + 1} is not closed (first !== last vertex)`);
             }
         }
@@ -52,9 +52,9 @@ export function validateGeometry(geom: GeoJSON.GeometryObject): GeometryValidati
 
     // ── Self-intersection heuristic (Polygon rings) ────────────────────────
     if (type === 'Polygon' || type === 'MultiPolygon') {
-        const rings = type === 'Polygon' ? geom.coordinates : geom.coordinates.flatMap(r => r);
+        const rings = type === 'Polygon' ? (geom as any).coordinates : (geom as any).coordinates.flatMap((r: any) => r);
         for (let i = 0; i < rings.length; i++) {
-            if (ringHasSelfIntersection(rings[i])) {
+            if (ringHasSelfIntersection(rings[i] as [number, number][])) {
                 errors.push(`Polygon ring ${i + 1} appears to self-intersect`);
             }
         }
@@ -62,7 +62,7 @@ export function validateGeometry(geom: GeoJSON.GeometryObject): GeometryValidati
 
     // ── LineString minimum length ──────────────────────────────────────────
     if (type === 'LineString') {
-        const pts = geom.coordinates as [number, number][];
+        const pts = (geom as any).coordinates as [number, number][];
         if (pts.length >= 2) {
             let total = 0;
             for (let i = 1; i < pts.length; i++) {
@@ -96,7 +96,7 @@ function coordinatesInWgs84Range(coords: any, type: string): boolean {
 /**
  * Collect every [lng, lat] leaf pair from a GeoJSON coordinate tree.
  */
-function collectLngLatPairs(coords: any, type: string): [number, number][] {
+function collectLngLatPairs(coords: any, _type: string): [number, number][] {
     const result: [number, number][] = [];
 
     function walk(c: any): void {

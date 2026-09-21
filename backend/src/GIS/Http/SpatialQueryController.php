@@ -137,7 +137,7 @@ class SpatialQueryController
             'operation' => 'bbox',
             'layer_id' => $layerId,
             'geometry' => [$west, $south, $east, $north],
-            'srid' => isset($q['srid']) && is_int($q['srid']) ? (int) $q['srid'] : 32651,
+            'srid' => isset($q['srid']) && is_numeric($q['srid']) ? (int) $q['srid'] : 32651,
             'limit' => isset($q['limit']) ? (int) $q['limit'] : 100,
             'offset' => isset($q['offset']) ? (int) $q['offset'] : 0,
         ]);

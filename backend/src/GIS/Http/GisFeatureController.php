@@ -5,6 +5,7 @@ namespace App\GIS\Http;
 
 use App\Core\Error\ApiError;
 use App\Core\Http\Response\Envelope;
+use App\Audit\AuditWriter;
 use App\RBAC\FeatureScopeResolver;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -13,9 +14,9 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 class GisFeatureController
 {
     private PDO $pdo;
-    private App\Audit\AuditWriter $audit;
+    private AuditWriter $audit;
 
-    public function __construct(PDO $pdo, App\Audit\AuditWriter $audit)
+    public function __construct(PDO $pdo, AuditWriter $audit)
     {
         $this->pdo = $pdo;
         $this->audit = $audit;
@@ -494,13 +495,16 @@ class GisFeatureController
             throw new ApiError('VALIDATION_FAILED', 'Invalid tile coordinates', 400);
         }
 
-        // MV tile query using ST_TileEnvelope + ST_AsMVTGeom + ST_AsMVT (PostGIS 3.4).
+        // MVT tile query using ST_TileEnvelope + ST_AsMVTGeom + ST_AsMVT (PostGIS 3.4).
         // Layer ID is bound via PDO parameter; tile coords are safe ints via sprintf.
+        // fid must be an integer column for ST_AsMVT; the feature's real id is a
+        // UUID so we derive a stable-per-tile integer via ROW_NUMBER.
         $sql = sprintf(
-            "SELECT ST_AsMVT(sub, 'layer_%d', 4096, 'geom', 'fid') FROM (" .
-            "SELECT id AS fid, ST_AsMVTGeom(geom, ST_TileEnvelope(%d, %d, %d), 4096, 0) AS geom, attributes " .
+            "SELECT encode(ST_AsMVT(sub, 'layer_%d', 4096, 'geom', 'fid'), 'base64') FROM (" .
+            "SELECT ROW_NUMBER() OVER (ORDER BY id) AS fid, " .
+            "ST_AsMVTGeom(ST_Transform(geom, 3857), ST_TileEnvelope(%d, %d, %d), 4096, 0, true) AS geom, attributes " .
             "FROM app.gis_features " .
-            "WHERE layer_id = :lid AND deleted_at IS NULL AND geom && ST_TileEnvelope(%d, %d, %d)" .
+            "WHERE layer_id = :lid AND deleted_at IS NULL AND ST_Transform(geom, 3857) && ST_TileEnvelope(%d, %d, %d)" .
             ") AS sub",
             $lid,
             $z, $x, $y,
@@ -512,15 +516,28 @@ class GisFeatureController
         $stmt->execute();
         $mvt = $stmt->fetchColumn();
 
-        if ($mvt === false || $mvt === null) {
-            $mvt = '';
-        }
+        // pdo_pgsql can hand ST_AsMVT (bytea) back as a stream resource; base64
+        // encode in SQL avoids the driver quirk entirely.
+        $mvt = ($mvt === false || $mvt === null) ? '' : (string) base64_decode((string) $mvt);
+
+        // TASK-055: scope-aware caching. MVT output is filtered by RLS on
+        // app.current_user_id (set above via setUserInSession). A user with any
+        // data-scopes sees a per-user subset, so a shared/public cache could leak
+        // one scope's features to another. Restricted (scoped) requests are
+        // private; only unscoped/global requests may use a public cache.
+        $scopeIds = $request->getAttribute('scope_ids') ?? [];
+        $cacheControl = !empty($scopeIds)
+            ? 'private, max-age=300'
+            : 'public, max-age=300';
+
+        $response
+            ->getBody()
+            ->write((string) $mvt);
 
         return $response
             ->withHeader('Content-Type', 'application/vnd.mapbox-vector-tile')
-            ->withHeader('Cache-Control', 'public, max-age=300')
-            ->withStatus(200)
-            ->getBody()->write($mvt);
+            ->withHeader('Cache-Control', $cacheControl)
+            ->withStatus(200);
     }
 
     // ── validation ───────────────────────────────────────────────────────────

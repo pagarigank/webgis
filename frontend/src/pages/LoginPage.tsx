@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { toApiError } from '../auth/apiErrors';
 
@@ -13,9 +13,13 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 const LoginPage: React.FC = () => {
-  const { login, verifyMfa } = useAuth();
+  const { login, verifyMfa, status } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  if (status === 'authenticated') {
+    return <Navigate to="/" replace />;
+  }
 
   const [step, setStep] = useState<LoginStep>('credentials');
   const [username, setUsername] = useState('');

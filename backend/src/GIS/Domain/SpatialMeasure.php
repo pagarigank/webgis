@@ -37,7 +37,7 @@ class SpatialMeasure
         }
 
         // ST_Transform from 4326 → target CRS, then ST_Length in that CRS.
-        $sql = "SELECT ST_Length(ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid)) AS len";
+        $sql = "SELECT ST_Length(ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid::int)) AS len";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':gj' => $gj, ':srid' => $srid]);
         $len = (float) $stmt->fetchColumn();
@@ -65,7 +65,7 @@ class SpatialMeasure
             throw new ApiError('VALIDATION_FAILED', 'geometry is not valid JSON', 400);
         }
 
-        $sql = "SELECT ST_Area(ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid)) AS a";
+        $sql = "SELECT ST_Area(ST_Transform(ST_GeomFromGeoJSON(:gj)::geometry, :srid::int)) AS a";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':gj' => $gj, ':srid' => $srid]);
         $area = (float) $stmt->fetchColumn();
@@ -100,26 +100,20 @@ SELECT
     f.psgc_barangay,
     f.attributes,
     ST_Distance(
-        ST_Transform(f.geom, :srid),
-        ST_Transform(ST_GeomFromText(:point, 4326), :srid)
+        ST_Transform(f.geom, :srid::int),
+        ST_Transform(ST_GeomFromText(:point, 4326), :srid::int)
     ) AS dist_m
 FROM app.gis_features f
+JOIN app.layer_permissions lp ON lp.layer_id = f.layer_id
+JOIN app.roles r ON r.id = lp.role_id
 JOIN app.gis_layers l ON l.id = f.layer_id
 WHERE f.deleted_at IS NULL
-  AND f.layer_id IN (
-      SELECT DISTINCT layer_id
-      FROM app.rbac_layer_capabilities
-      WHERE user_id = current_setting('app.current_user_id', true)::int
-         OR EXISTS (
-             SELECT 1 FROM app.organization_members om
-             WHERE om.user_id = current_setting('app.current_user_id', true)::int
-               AND om.organization_id = l.organization_id
-         )
-  )
+  AND lp.can_view = true
+  AND r.code = ANY(string_to_array(current_setting('app.role_codes', true), ','))
   AND ST_DWithin(
-        ST_Transform(f.geom, :srid),
-        ST_Transform(ST_GeomFromText(:point, 4326), :srid),
-        500  -- 500 m search radius in the target CRS
+        ST_Transform(f.geom, :srid::int),
+        ST_Transform(ST_GeomFromText(:point, 4326), :srid::int),
+        500
       )
 ORDER BY dist_m ASC
 LIMIT 10

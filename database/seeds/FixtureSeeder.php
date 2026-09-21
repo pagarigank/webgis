@@ -36,11 +36,23 @@ class FixtureSeeder extends AbstractSeed
             ON CONFLICT (code) DO NOTHING;
         ");
 
-        // 3. Fictional Users per role
-        $roles = ['app_admin', 'lra_encoder', 'denr_geodetic_eng', 'dar_officer', 'assessor', 'surveyor', 'public_user', 'system_api'];
-        foreach ($roles as $idx => $roleCode) {
+        // 3. Fictional Users per role.
+        // The username is kept stable (LoginService recognises sample_app_admin and
+        // injects SYS_ADMIN); the role code must reference a role created by
+        // SystemSeeder, otherwise user_roles silently inserts nothing and the user
+        // ends up with no permissions at all.
+        $users = [
+            ['sample_app_admin',         'SYS_ADMIN'],
+            ['sample_lra_encoder',       'DATA_ENCODER'],
+            ['sample_denr_geodetic_eng', 'GIS_SPECIALIST'],
+            ['sample_dar_officer',       'GIS_SPECIALIST'],
+            ['sample_assessor',          'DATA_ENCODER'],
+            ['sample_surveyor',          'SURVEYOR'],
+            ['sample_public_user',       'app_ro'],
+            ['sample_system_api',        'app_migrator'],
+        ];
+        foreach ($users as $idx => [$username, $roleCode]) {
             $uid = 900 + $idx;
-            $username = "sample_{$roleCode}";
             $this->execute("
                 INSERT INTO app.users (id, username, email, password_hash, full_name, org_id)
                 VALUES ($uid, '$username', '$username@sample.local', 'hash', 'Sample $roleCode', 999)
@@ -53,12 +65,29 @@ class FixtureSeeder extends AbstractSeed
                 ON CONFLICT DO NOTHING;
             ");
 
+            // Idempotent: data_scopes has no unique key, so a plain INSERT
+            // duplicates on every re-run. Guard with NOT EXISTS.
             $this->execute("
                 INSERT INTO app.data_scopes (user_id, scope_type, scope_ref_code, access_level)
-                VALUES ($uid, 'PROVINCE', '990000000', 'EDIT')
-                ON CONFLICT DO NOTHING;
+                SELECT $uid, 'PROVINCE', '990000000', 'EDIT'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM app.data_scopes
+                    WHERE user_id = $uid AND scope_type = 'PROVINCE'
+                      AND scope_ref_code = '990000000' AND access_level = 'EDIT'
+                );
             ");
         }
+
+        // Clean up the duplicate scope rows left by earlier non-idempotent runs.
+        $this->execute("
+            DELETE FROM app.data_scopes a
+            USING app.data_scopes b
+            WHERE a.ctid < b.ctid
+              AND a.user_id = b.user_id
+              AND a.scope_type = b.scope_type
+              AND COALESCE(a.scope_ref_code, '') = COALESCE(b.scope_ref_code, '')
+              AND a.access_level = b.access_level;
+        ");
 
         // 4. 100 Parcels & 30 Titles
         for ($i = 1; $i <= 100; $i++) {
@@ -144,6 +173,36 @@ class FixtureSeeder extends AbstractSeed
             FROM app.gis_layers l
             WHERE l.code = 'SAMPLE_PARCEL_POLYGON'
             ON CONFLICT (id) DO NOTHING;
+        ");
+
+        // 9. Layer permissions for the fixture layer.
+        // FR-014 / SR-03: capability resolution reads app.layer_permissions, which
+        // no other seeder populates — without these rows every layer is invisible
+        // to every user, including SYS_ADMIN, and GIS endpoints return 403.
+        // SYS_ADMIN is the system administrator role (full catalogue per
+        // migration 0015) and receives every capability on the layer.
+        $this->execute("
+            INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve)
+            SELECT l.id, r.id, true, true, true, true, true
+            FROM app.gis_layers l
+            JOIN app.roles r ON r.code = 'SYS_ADMIN'
+            WHERE l.code = 'SAMPLE_PARCEL_POLYGON'
+            ON CONFLICT (layer_id, role_id) DO UPDATE SET
+                can_view = EXCLUDED.can_view,
+                can_create = EXCLUDED.can_create,
+                can_update = EXCLUDED.can_update,
+                can_delete = EXCLUDED.can_delete,
+                can_approve = EXCLUDED.can_approve;
+        ");
+
+        // Functional roles get read access so the sample data can be exercised.
+        $this->execute("
+            INSERT INTO app.layer_permissions (layer_id, role_id, can_view)
+            SELECT l.id, r.id, true
+            FROM app.gis_layers l
+            JOIN app.roles r ON r.code IN ('GIS_SPECIALIST', 'DATA_ENCODER', 'SURVEYOR', 'app_rw', 'app_ro')
+            WHERE l.code = 'SAMPLE_PARCEL_POLYGON'
+            ON CONFLICT (layer_id, role_id) DO UPDATE SET can_view = true;
         ");
     }
 }

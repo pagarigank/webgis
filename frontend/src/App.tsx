@@ -10,6 +10,7 @@ import HealthView from './pages/HealthView';
 import { AdminView } from './features/admin/AdminView';
 import { AuditLogView } from './features/audit/AuditLogView';
 import { MapShell } from './features/map/MapShell';
+import { MapWorkspace } from './features/map/MapWorkspace';
 import { HomePage } from './pages/HomePage';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -17,7 +18,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
 
   const mainStyle: React.CSSProperties = location.pathname === '/'
-    ? { padding: 0, maxWidth: '100%', pointerEvents: 'none' as const }
+    ? { padding: 0, maxWidth: '100%', pointerEvents: 'auto' as const }
     : { backgroundColor: '#fff', pointerEvents: 'auto' as const, minHeight: 'calc(100vh - 60px)' };
 
   return (
@@ -28,6 +29,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
         <nav className="app-nav">
           <Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link>
+          <Link to="/map" className={location.pathname === '/map' ? 'active' : ''}>Map</Link>
           {hasPermission(_me, 'user.manage') && (
             <Link to="/admin" className={location.pathname.startsWith('/admin') ? 'active' : ''}>Admin</Link>
           )}
@@ -75,15 +77,15 @@ function App() {
             </RequirePermission>
           }
         />
-        <Route
-          path="/map"
-          element={
-            <RequireAuth>
-              <MapShell>
-                <HomePage />
-              </MapShell>
-            </RequireAuth>
-          }
+          <Route
+            path="/map"
+            element={
+                <RequireAuth>
+                    <MapShell>
+                        <MapWorkspace />
+                    </MapShell>
+                </RequireAuth>
+            }
         />
         <Route
           path="/*"

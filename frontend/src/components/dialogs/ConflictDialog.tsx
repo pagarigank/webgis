@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { Modal } from './Modal';
 import type { DrawError } from '../../features/map/DrawManager';

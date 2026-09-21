@@ -1,8 +1,8 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../lib/apiClient';
-import { tokenStore } from './tokenStore';
+import { tokenStore, hasRefreshCookie } from './tokenStore';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 import type { AuthStatus, MePayload } from './types';
@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     (async () => {
-      const hasCookie = typeof document !== 'undefined' && tokenStore.hasRefreshCookie();
+      const hasCookie = typeof document !== 'undefined' && hasRefreshCookie();
       setInitialCheck(hasCookie ? 'has-cookie' : 'no-cookie');
     })();
   }, []);
@@ -43,8 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Derived auth status from TanStack Query
   const status: AuthStatus = useMemo(() => {
-    if (initialCheck === 'checking' || meQuery.isPending) return 'loading';
     if (meQuery.isSuccess && meQuery.data) return 'authenticated';
+    if (initialCheck === 'checking') return 'loading';
+    if (initialCheck === 'no-cookie') return 'unauthenticated';
+    if (meQuery.isPending) return 'loading';
     return 'unauthenticated';
   }, [initialCheck, meQuery.isPending, meQuery.isSuccess, meQuery.data]);
 

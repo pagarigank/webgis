@@ -6,6 +6,7 @@ namespace Tests\Integration;
 use PDO;
 use Exception;
 use App\Core\Http\Middleware\AuthenticateMiddleware;
+use App\RBAC\FeatureScopeResolver;
 use Firebase\JWT\JWT;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -36,7 +37,7 @@ class DbSessionContextTest extends TestCase
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
 
-        $this->middleware = new AuthenticateMiddleware($this->pdo, $this->jwtSecret);
+        $this->middleware = new AuthenticateMiddleware($this->pdo, $this->jwtSecret, new FeatureScopeResolver($this->pdo));
 
         // Reset any existing connection state
         $this->pdo->exec("RESET ALL");

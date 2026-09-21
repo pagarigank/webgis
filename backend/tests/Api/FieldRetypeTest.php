@@ -55,7 +55,7 @@ class FieldRetypeTest extends TestCase
 
         $this->cleanup();
 
-        $this->adminUser = $this->createMockUser(['layer.manage'], ['SYS_ADMIN']);
+        $this->adminUser = $this->createRetypeMockUser(['layer.manage'], ['SYS_ADMIN']);
         
         $stmt = $this->pdo->prepare("INSERT INTO app.gis_layers (code, name, geometry_type, srid) VALUES ('test_layer', 'Test Layer', 'POINT', 4326) RETURNING id");
         $stmt->execute();
@@ -83,7 +83,7 @@ class FieldRetypeTest extends TestCase
         $this->pdo->exec("DELETE FROM app.gis_layers");
     }
 
-    private function createMockUser(array $permissions, array $roles): array
+    private function createRetypeMockUser(array $permissions, array $roles): array
     {
         // Organization
         $this->pdo->exec("INSERT INTO app.organizations (code, name, org_type, status) VALUES ('TESTORG', 'Test Org', 'GOVERNMENT', 'ACTIVE') ON CONFLICT DO NOTHING");

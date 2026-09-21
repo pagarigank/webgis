@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useMapContext } from '../../features/map/MapContext';
 import { spatialQueryApi, type SpatialOperation, type SpatialQueryResult } from './spatialQueryApi';
 import { DrawManager } from '../../features/map/DrawManager';
+import * as maplibregl from 'maplibre-gl';
 
 const OPERATIONS: { value: SpatialOperation; label: string; description: string }[] = [
     { value: 'bbox', label: 'Bounding box', description: 'Features inside a rectangle' },
@@ -159,7 +160,6 @@ export const SearchPanel: React.FC = () => {
     }, [map, handleMapClick]);
 
     // Draw-a-polygon: when drawMode is set, use a temporary MapboxDraw
-    const drawContainerRef = React.useRef<HTMLDivElement>(null);
     const [drawResult, setDrawResult] = useState<GeoJSON.FeatureCollection | null>(null);
 
     React.useEffect(() => {
@@ -179,9 +179,9 @@ export const SearchPanel: React.FC = () => {
                 },
                 defaultMode: drawMode === 'point' ? 'draw_point' : 'draw_polygon',
             });
-            map.addControl(draw);
+            map.addControl(draw as any);
 
-            draw.on('draw.create', () => {
+            (map as any).on('draw.create', () => {
                 const features = draw.getAll();
                 if (features && features.features && features.features.length > 0) {
                     setDrawResult(features);
@@ -191,7 +191,7 @@ export const SearchPanel: React.FC = () => {
             drawManagerRef.current = draw as any;
 
             return () => {
-                map.removeControl(draw);
+                map.removeControl(draw as any);
                 drawManagerRef.current = null;
             };
         });
@@ -346,12 +346,12 @@ export const SearchPanel: React.FC = () => {
                             <span style={{ fontFamily: 'monospace', color: '#1d4ed8' }}>{f.id}</span>
                             {' '}
                             <span style={{ color: '#6b7280' }}>
-                                {f.properties.status}
-                                {f.properties.psgc_barangay ? ` · ${f.properties.psgc_barangay}` : ''}
+                                {f.properties?.status}
+                                {f.properties?.psgc_barangay ? ` · ${f.properties.psgc_barangay}` : ''}
                             </span>
-                            {('distance_m' in f.properties) && (
+                            {f.properties && ('distance_m' in f.properties) && (
                                 <span style={{ color: '#10b981', marginLeft: 8 }}>
-                                    {f.properties.distance_m.toFixed(2)} m
+                                    {(f.properties as any).distance_m.toFixed(2)} m
                                 </span>
                             )}
                         </div>

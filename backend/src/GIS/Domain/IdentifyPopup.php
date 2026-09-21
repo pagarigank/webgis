@@ -33,6 +33,10 @@ class IdentifyPopup
             throw new ApiError('VALIDATION_FAILED', 'invalid map point', 400);
         }
 
+        $hasFeature = $featureId !== '';
+        $fidCond = $hasFeature ? 'f.id = :fid' : 'true';
+        $sridCast = (int) $srid;
+
         $sql = <<<'SQL'
 SELECT
     f.id,
@@ -46,18 +50,27 @@ SELECT
     ) AS dist_m
 FROM app.gis_features f
 JOIN app.gis_layers l ON l.id = f.layer_id
-WHERE f.id = :fid
+WHERE {#COND}
   AND f.layer_id = :lid
   AND f.deleted_at IS NULL
+ORDER BY dist_m ASC
+LIMIT 1
 SQL;
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            ':fid'  => $featureId,
+        $sql = str_replace('{#COND}', $fidCond, $sql);
+        $sql = str_replace(':srid', ':srid::int', $sql);
+
+        $params = [
             ':lid'  => $layerId,
             ':srid' => $srid,
             ':pt'   => $gj,
-        ]);
+        ];
+        if ($hasFeature) {
+            $params[':fid'] = $featureId;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row === false) {

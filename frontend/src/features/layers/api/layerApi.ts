@@ -1,4 +1,4 @@
-import { apiClient } from '../../../lib/apiClient';
+import apiClient from '../../../lib/apiClient';
 import type { Layer } from '../types';
 
 export interface Feature {

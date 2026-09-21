@@ -91,7 +91,19 @@ return function (App $app) {
         $group->get('/layers/{layer_id:[0-9]+}/mvt/{z:\d+}/{x:\d+}/{y:\d+}.mvt', \App\GIS\Http\GisFeatureController::class . ':mvt')
                       ->add(AuthenticateMiddleware::class);
 
-                // ---- Spatial tools (TASK-062) ----
+                // ---- Spatial queries (TASK-063) ----
+        $group->post('/spatial/query', \App\GIS\Http\SpatialQueryController::class . ':query')
+              ->add(AuthenticateMiddleware::class);
+        $group->get('/spatial/query/bbox', \App\GIS\Http\SpatialQueryController::class . ':bbox')
+              ->add(AuthenticateMiddleware::class);
+
+        // ---- CRS registry (TASK-014/056) ----
+        $group->get('/crs', \App\GIS\Http\CrsController::class . ':list')
+              ->add(AuthenticateMiddleware::class);
+        $group->get('/crs/{id:[0-9]+}', \App\GIS\Http\CrsController::class . ':get')
+              ->add(AuthenticateMiddleware::class);
+
+        // ---- Spatial tools (TASK-062) ----
                 $group->post('/spatial/measure', \App\GIS\Http\SpatialToolController::class . ':measure')
                       ->add(AuthenticateMiddleware::class);
                 $group->get('/spatial/identify', \App\GIS\Http\SpatialToolController::class . ':identify')

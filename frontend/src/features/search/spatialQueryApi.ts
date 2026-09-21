@@ -1,4 +1,4 @@
-import { apiClient } from '../../lib/apiClient';
+import apiClient from '../../lib/apiClient';
 
 export type SpatialOperation = 'bbox' | 'intersects' | 'within' | 'contains' | 'nearest' | 'within_distance' | 'buffer';
 
@@ -64,4 +64,3 @@ export const spatialQueryApi = {
     },
 };
 
-export type { SpatialOperation, SpatialQueryResult };

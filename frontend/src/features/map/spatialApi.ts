@@ -1,4 +1,4 @@
-import { apiClient } from '../../lib/apiClient';
+import apiClient from '../../lib/apiClient';
 
 export interface MeasureDistanceResult {
     length_m: number;
@@ -67,4 +67,3 @@ export const spatialApi = {
     },
 };
 
-export type { MeasureDistanceResult, MeasureAreaResult };

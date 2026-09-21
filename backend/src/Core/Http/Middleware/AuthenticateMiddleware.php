@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Core\Http\Middleware;
 
+use App\RBAC\FeatureScopeResolver;
 use PDO;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
@@ -19,8 +20,16 @@ final class AuthenticateMiddleware implements MiddlewareInterface
 
     public function __construct(
         private readonly PDO $pdo,
-        private readonly string $jwtSecret
-    ) {}
+        private readonly string $jwtSecret,
+        FeatureScopeResolver $featureScopeResolver
+    ) {
+        // Attach the resolver object for GIS controllers via a request attribute.
+        // Kept on the instance but not typed as readonly because the attribute is
+        // applied per-request; the resolver itself is stateless (holds only PDO).
+        $this->featureScopeResolver = $featureScopeResolver;
+    }
+
+    private readonly FeatureScopeResolver $featureScopeResolver;
 
     public function process(Request $request, RequestHandler $handler): Response
     {
@@ -94,7 +103,8 @@ final class AuthenticateMiddleware implements MiddlewareInterface
             $request = $request->withAttribute('user_id', $userId)
                                ->withAttribute('user_version', $userVersion)
                                ->withAttribute('role_codes', $roles)
-                               ->withAttribute('scope_ids', $scopes);
+                               ->withAttribute('scope_ids', $scopes)
+                               ->withAttribute('feature_scope_resolver', $this->featureScopeResolver);
 
             // Execute the next middleware or route handler
             $response = $handler->handle($request);
