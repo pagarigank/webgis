@@ -1,4 +1,4 @@
-import React, { useQuery, useCallback, useState, useMemo, useRef } from 'react';
+import React, { useQuery, useCallback, useState, useEffect } from 'react';
 import { layerApi, type FeatureCollection } from '../api/layerApi';
 import type { Feature } from '../types';
 import { AttributeTable } from '../components/AttributeTable';
@@ -11,7 +11,6 @@ interface FeatureGridPageProps {
     layerId: number;
 }
 
-/** Columns that are always shown: core identity + status. */
 const CORE_COLUMNS = ['id', 'status', 'psgc_barangay', 'provenance', 'created_at', 'updated_at'] as const;
 
 export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
@@ -27,13 +26,7 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
     const { data, isLoading, isError, refetch } = useQuery({
         queryKey: ['features', layerId, { page, perPage, sort, dir, status }],
         queryFn: () =>
-            layerApi.getFeatures(layerId, {
-                limit: perPage,
-                offset,
-                sort,
-                dir,
-                status,
-            }),
+            layerApi.getFeatures(layerId, { limit: perPage, offset, sort, dir, status }),
         placeholderData: (prev) => prev,
     });
 
@@ -42,13 +35,16 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
     const [editorError, setEditorError] = useState<string | null>(null);
     const [editorSaving, setEditorSaving] = useState(false);
 
-    // Layer fields — in a real app these come from the layer metadata endpoint
+    // TASK-067: export + extent filter
+    const [exportFormat, setExportFormat] = useState('');
+    const [filterByExtent, setFilterByExtent] = useState(false);
+    const [loadingExport, setLoadingExport] = useState(false);
+
     const [layerFields, setLayerFields] = useState<LayerField[]>([]);
     const [fieldsLoading, setFieldsLoading] = useState(true);
 
-    // Load layer fields once
     useEffect(() => {
-        const loadFields = async () => {
+        const load = async () => {
             try {
                 const layer = await layerApi.getById(layerId);
                 setLayerFields(layer.fields ?? []);
@@ -58,12 +54,13 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
                 setFieldsLoading(false);
             }
         };
-        loadFields();
+        load();
     }, [layerId]);
 
-    const handleFeaturesChanged = useCallback(() => {
-        refetch();
-    }, [refetch]);
+    // Map extent (from map context, if available)
+    const [mapBbox, setMapBbox] = useState<string | null>(null);
+
+    const handleFeaturesChanged = useCallback(() => refetch(), [refetch]);
 
     const handleCreate = useCallback(() => {
         setEditorMode('create');
@@ -71,9 +68,9 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
         setEditorError(null);
     }, []);
 
-    const handleEdit = useCallback((feature: Feature) => {
+    const handleEdit = useCallback((f: Feature) => {
         setEditorMode('edit');
-        setEditingFeature(feature);
+        setEditingFeature(f);
         setEditorError(null);
     }, []);
 
@@ -90,7 +87,53 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
     const canCreate = hasPermission(me, 'gis.feature.create');
     const canEdit = hasPermission(me, 'gis.feature.update');
     const canDelete = hasPermission(me, 'gis.feature.delete');
+    const canExport = hasPermission(me, 'gis.feature.export') || hasPermission(me, 'document.download');
     const canViewPII = hasPermission(me, 'user.view.pii') || hasPermission(me, 'organization.view.pii');
+
+    // TASK-067: export handler
+    const handleExport = useCallback(async () => {
+        if (!exportFormat) return;
+        setLoadingExport(true);
+        try {
+            const params = new URLSearchParams();
+            params.set('limit', String(collection.total));
+            params.set('offset', '0');
+            if (exportFormat === 'geojson') {
+                const url = `/api/v1/layers/${layerId}/features.csv${params.toString() ? '?' + params.toString() : ''}`;
+                const res = await fetch(url, { headers: { Accept: 'text/csv' } });
+                if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+                const blob = await res.blob();
+                const url2 = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url2;
+                a.download = `layer_${layerId}_features.csv`;
+                a.click();
+                URL.revokeObjectURL(url2);
+            } else {
+                // GeoJSON
+                const q = new URLSearchParams();
+                q.set('limit', String(collection.total));
+                q.set('offset', '0');
+                if (filterByExtent && mapBbox) {
+                    q.set('bbox', mapBbox);
+                }
+                const url2 = `/api/v1/layers/${layerId}/features.geojson${q.toString() ? '?' + q.toString() : ''}`;
+                const res = await fetch(url2);
+                if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+                const blob = await res.blob();
+                const url3 = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url3;
+                a.download = `layer_${layerId}_features.geojson`;
+                a.click();
+                URL.revokeObjectURL(url3);
+            }
+        } catch (err: any) {
+            console.error('Export failed:', err);
+        } finally {
+            setLoadingExport(false);
+        }
+    }, [exportFormat, filterByExtent, mapBbox, layerId, collection]);
 
     if (isError) {
         return (
@@ -103,11 +146,7 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
     const collection: FeatureCollection | undefined = data;
 
     if (isLoading || !collection) {
-        return (
-            <div className="container py-4">
-                <div>Loading features...</div>
-            </div>
-        );
+        return <div className="container py-4"><div>Loading features...</div></div>;
     }
 
     const totalPages = Math.max(1, Math.ceil(collection.total / perPage));
@@ -130,43 +169,60 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
                 </div>
                 <div className="d-flex gap-2 flex-wrap">
                     {canCreate && (
-                        <button
-                            className="btn btn-primary btn-sm"
-                            onClick={handleCreate}
-                            disabled={editorSaving}
-                        >
+                        <button className="btn btn-primary btn-sm" onClick={handleCreate} disabled={editorSaving}>
                             + New Feature
                         </button>
                     )}
-                    <select
-                        className="form-select form-select-sm"
-                        style={{ width: 'auto' }}
-                        value={status ?? ''}
-                        onChange={(e) => {
-                            const params = new URLSearchParams(window.location.search);
-                            if (e.target.value) {
-                                params.set('status', e.target.value);
-                            } else {
-                                params.delete('status');
-                            }
-                            params.delete('page');
-                            window.location.search = params.toString();
-                        }}
-                    >
-                        <option value="">All statuses</option>
-                        <option value="ACTIVE">Active</option>
-                        <option value="PENDING">Pending</option>
-                        <option value="REJECTED">Rejected</option>
-                        <option value="ARCHIVED">Archived</option>
-                    </select>
-                    <button
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => {
-                            window.location.search = `layer_id=${layerId}`;
-                        }}
-                    >
-                        Reset filters
-                    </button>
+                    <div className="d-flex gap-1">
+                        <select
+                            className="form-select form-select-sm"
+                            style={{ width: 'auto' }}
+                            value={status ?? ''}
+                            onChange={(e) => {
+                                const params = new URLSearchParams(window.location.search);
+                                if (e.target.value) { params.set('status', e.target.value); } else { params.delete('status'); }
+                                params.delete('page');
+                                window.location.search = params.toString();
+                            }}
+                        >
+                            <option value="">All statuses</option>
+                            <option value="ACTIVE">Active</option>
+                            <option value="PENDING">Pending</option>
+                            <option value="REJECTED">Rejected</option>
+                            <option value="ARCHIVED">Archived</option>
+                        </select>
+                        <button className="btn btn-outline-secondary btn-sm" onClick={() => { window.location.search = `layer_id=${layerId}`; }}>
+                            Reset filters
+                        </button>
+                    </div>
+                    <div className="d-flex gap-1 align-items-end" style={{ marginTop: 4 }}>
+                        <span className="text-muted small" style={{ whiteSpace: 'nowrap' }}>
+                            {canExport ? 'Export:' : ''}
+                        </span>
+                        {canExport && (
+                            <select className="form-select form-select-sm" style={{ width: 'auto' }} value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
+                                <option value="">—</option>
+                                <option value="csv">CSV</option>
+                                <option value="geojson">GeoJSON</option>
+                            </select>
+                        )}
+                        <button
+                            className="btn btn-outline-success btn-sm"
+                            onClick={handleExport}
+                            disabled={!exportFormat || loadingExport}
+                            title="Download filtered view"
+                        >
+                            {loadingExport ? 'Exporting…' : exportFormat === 'csv' ? 'CSV' : 'GeoJSON'}
+                        </button>
+                        {canExport && (
+                            <label className="form-check form-check-inline d-flex align-items-center gap-1" style={{ marginTop: 4 }}>
+                                <input type="checkbox" className="form-check-input" checked={filterByExtent} onChange={(e) => setFilterByExtent(e.target.checked)} />
+                                <span className="form-check-label text-muted small" style={{ marginBottom: 0 }}>
+                                    Filter by map extent
+                                </span>
+                            </label>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -210,7 +266,6 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
                 onSaveComplete={handleEditorSave}
             />
 
-            {/* Feature editor modal */}
             {editingFeature || editorMode === 'create' ? (
                 <FeatureEditor
                     open={true}
@@ -227,15 +282,11 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
                 />
             ) : null}
 
-            {/* Feature metadata footer */}
             <div className="mt-3 text-muted small">
-                {collection.data.length === 0 && (
-                    <span>No features match the current filters.</span>
-                )}
+                {collection.data.length === 0 && <span>No features match the current filters.</span>}
                 {collection.total > 0 && (
                     <span>
-                        Data as of {new Date().toISOString().slice(0, 10)} ·
-                        page {page} of {totalPages}
+                        Data as of {new Date().toISOString().slice(0, 10)} · page {page} of {totalPages}
                     </span>
                 )}
             </div>
