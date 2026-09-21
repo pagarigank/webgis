@@ -3,6 +3,7 @@ import { MapProvider, useMapContext } from './MapContext';
 import apiClient from '../../lib/apiClient';
 import type { BasemapProvider } from './types';
 import { useAuth } from '../../auth/useAuth';
+import { SearchPanel } from '../search/SearchPanel';
 
 // Child component that manages fetching basemaps and applying the default one
 const BasemapLoader: React.FC = () => {
@@ -75,6 +76,7 @@ export const MapShell: React.FC<{ children?: React.ReactNode }> = ({ children })
         <MapProvider>
             <BasemapLoader />
             {children}
+            <SearchPanel />
         </MapProvider>
     );
 };

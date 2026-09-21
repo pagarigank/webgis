@@ -112,4 +112,8 @@ return [
     \App\GIS\Http\SpatialToolController::class => \DI\autowire(\App\GIS\Http\SpatialToolController::class)
         ->constructorParameter('measure', \DI\get(\App\GIS\Domain\SpatialMeasure::class))
         ->constructorParameter('identifyPopup', \DI\get(\App\GIS\Domain\IdentifyPopup::class)),
+
+    \App\GIS\Domain\SpatialQuery::class => \DI\autowire(\App\GIS\Domain\SpatialQuery::class),
+    \App\GIS\Http\SpatialQueryController::class => \DI\autowire(\App\GIS\Http\SpatialQueryController::class)
+        ->constructorParameter('query', \DI\get(\App\GIS\Domain\SpatialQuery::class)),
 ];
