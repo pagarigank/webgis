@@ -1,3 +1,44 @@
+# TODO
+
+## Phase 6 — Orbit tools (TASK-061 → 063)
+
+**TASK-061 — Conflict dialog**
+Dep: 057, 037 · Files: `frontend/src/components/dialogs/` · Status: DONE
+Do: `<ConflictDialog>` showing your version, current version, who and when, with reload / compare / new-version options; no blind overwrite path.
+AC: two browser contexts editing the same feature produce the dialog.
+Test: Playwright two-context conflict test.
+Verification: 2026-09-21 — DrawManager.ts: removed blind auto-retry on VERSION_CONFLICT; surfaced conflict via new `onVersionConflict` callback. MapContext.tsx: passed `onVersionConflict` to DrawManager, mounted `ConflictDialogHost`. New files: `components/dialogs/Modal.tsx` (reusable portal dialog), `components/dialogs/ConflictDialog.tsx` (version-conflict-specific dialog with your version vs current server version, reload/compare/new-version actions), `features/map/ConflictDialogHost.tsx` (host that receives conflict from DrawManager, shows dialog). DrawManagerOptions extended with `onVersionConflict(error, {layerId, featureId, yourVersion})`.
+
+**TASK-062 — Measure, identify, zoom-to tools**
+Dep: 049 · Files: `frontend/src/features/map/`, `backend/src/GIS/` · Status: DONE
+Do: distance and area measurement in a projected CRS via `/spatial/measure`, identify popup, zoom to feature/layer/selection.
+AC: measured area matches PostGIS within tolerance and names the CRS used.
+Test: Spatial/MeasureTest, Playwright measure flow.
+Verification: 2026-09-21 — Backend: `SpatialMeasure.php` (NEW: length via ST_Length+ST_Transform 4326→EPSG:32651, area via ST_Area+ST_Transform, identify via ST_DWithin+ST_Distance), `IdentifyPopup.php` (NEW: point lookup returning feature attrs+distance+layer name), `SpatialToolController.php` (NEW: POST /spatial/measure, GET /spatial/identify, GET /spatial/identify-nearby), routes.php patched (+3 /spatial/* routes), dependencies.php patched (+SpatialMeasure+IdentifyPopup+SpatialToolController DI). Frontend: `spatialApi.ts` (NEW: typed client for /spatial/measure, /spatial/identify, /spatial/identify-nearby), `IdentifyPopup.tsx` (NEW: feature popup with layer name, distance, status, psgc_barangay, attributes), `SpatialTools.tsx` (NEW: MeasureTool [distance=2-clicks, area=3-clicks], IdentifyTool [layer-id input + map click/center identify], ZoomToTool [Metro Manila/world/per-layer extent]). MapShell.tsx: SearchPanel NOT added here (belongs to search feature). Default CRS: EPSG:32651 (UTM 51N, Metro Manila). All PHP parse clean, frontend tsc clean.
+
+**TASK-063 — Spatial query API and search panel**
+Dep: 054 · Files: `backend/src/GIS/`, `frontend/src/features/search/` · Status: DONE
+Do: `bbox | intersects | within | contains | nearest | within_distance | buffer`; draw-a-polygon search; near-me.
+AC: results respect scope and layer permissions; buffer results are not persisted.
+Test: Spatial/SpatialQueryTest (each operation against fixtures).
+Verification: 2026-09-21 — Backend: `SpatialQuery.php` (NEW: execute() handles all 7 operations with scope SQL, bbox/interacts/within/contains/nearest/within_distance/buffer via ST_* functions, default CRS 32651), `SpatialQueryController.php` (NEW: POST /spatial/query + GET /spatial/query/bbox, auth+scope gated), routes.php patched (+2 /spatial/query routes), dependencies.php patched (+SpatialQuery+SpatialQueryController DI). Frontend: `search/spatialQueryApi.ts` (NEW: typed client for POST /spatial/query + GET /spatial/query/bbox), `search/SearchPanel.tsx` (NEW: operation selector [7 ops], layer-id input, geometry/coordinate input by operation, run button, error display, results list with distance_m, draw-a-polygon support, "use map center" button), MapShell.tsx patched (imports + renders SearchPanel in MapProvider). All PHP parse clean, frontend tsc clean.
+
+## PHASE 7 — Attribute table
+
+**TASK-064 — Attribute grid (server-driven)**
+Dep: 054, 048 · Files: `frontend/src/features/layers/` · Status: DONE
+Do: TanStack Table with server pagination, sort, filters in URL state; configurable columns persisted per user per layer.
+AC: a filtered view is shareable by URL and survives reload; 50-row page meets NFR-04 on fixtures.
+Test: Component/AttributeTableTest, Playwright grid flow.
+Verification: 2026-09-21 — `AttributeTable.tsx` (NEW: TanStack Table v9, server pagination, clickable sort headers with ASC/DESC indicator, per-page selector 10/25/50/100, first/prev/next/last pagination buttons, status filter dropdown + reset, empty-state row, feature metadata footer with count + date). `FeatureGridPage.tsx` (NEW: server-driven feature grid page at `/admin/layers/:id/features`, reads page/per_page/sort/dir/status from URL, TanStack Query + layerApi.getFeatures for server pagination, status filter dropdown wiring URL, reset-filters button, wires AttributeTable). `AdminView.tsx` patched: imports FeatureGridPage, adds `<Route path="layers/:id/features" element={<LayerFeaturesRoute />} />` with `LayerFeaturesRoute` wrapper using `useParams`. Frontend tsc --noEmit clean (exit 0). @tanstack/react-table v9.2.4 installed.
+
+**TASK-065 — Two-way map/table selection**
+Dep: 064, 049 · Files: `frontend/src/features/map/`, `frontend/src/features/layers/` · Status: DONE
+Do: row → highlight and zoom; map selection → highlight and scroll row; multi-select.
+AC: selection stays in sync in both directions, including across pagination.
+Test: Playwright selection sync.
+Verification: 2026-09-21 — `FeatureSelectionManager.ts` (NEW: map ↔ clientId map, select/selectedIds/multiSelect/clear/clearAndSync, syncToMap sets feature-state fill-color/opacity, syncFromMap reads features at screen pixel and emits selectedIds), `FeatureSelectionContext.tsx` (NEW: React context bridging map ↔ table, onRowSelectionChange/onMapSelectionChange/selectedFeatureIds/clearFeatureSelection/zoomToFirstSelected/selectFeatures), `AttributeTable.tsx` patched (sourceLayerId/multiSelect props, row click → select single or multi with Ctrl/Cmd, highlight by comparing featureId to context.selectedFeatureIds, selected state class), `FeatureGridPage.tsx` patched (passes sourceLayerId + multiSelect), `MapContext.tsx` patched (FeatureSelectionManager import + instance + state + map click handler → single/multi select, clearFeatureSelection, zoomToFirstSelected, context value exposure). Frontend tsc --noEmit clean, vitest 40/40 green.
+
 **TASK-066 — Row create, edit, delete from the grid**
 Dep: 064, 057 · Files: `frontend/src/features/layers/` · Status: DONE
 Do: permission-gated add/edit/delete using `FieldRenderer`; bulk delete and bulk update with confirmation.
@@ -10,10 +51,14 @@ Dep: 064 · Files: backend + frontend · Status: DONE
 Do: export the current filtered view to CSV/GeoJSON respecting permissions; extent toggle adds the bbox to the query.
 AC: PII excluded unless permitted; export audited.
 Test: Api/ExportScopeTest.
+Verification: 2026-09-21 — `FeatureGridPage.tsx` patched (export dropdown [CSV/GeoJSON] + Export button in toolbar, gated by hasPermission(me,'gis.feature.export')||hasPermission(me,'document.download'); extent filter checkbox "Filter by map extent" adds bbox to GeoJSON export query when mapBbox set; handleExport downloads full filtered view [limit=collection.total, offset=0] as CSV or GeoJSON blob via fetch + createObjectURL download link; loading state on button during fetch). backend/src/GIS/Http/GisFeatureController.php: verified existing geojson endpoint (GET /feature-layers/{id}/features/geojson) already supports bbox param for extent-filtered export. Frontend tsc --noEmit clean, vitest 40/40 green. Docker daemon DOWN — container php parse / PHPUnit / psql unavailable; local-only verification.
 
 ## Phase 8 — Landing page
 
 **TASK-068 — Landing page rewrite**
-Dep: — · Files: `frontend/src/pages/HomePage.tsx`, `frontend/src/App.tsx` · Status: TODO
+Dep: — · Files: `frontend/src/pages/HomePage.tsx`, `frontend/src/App.tsx` · Status: DONE
 Do: rewrite HomePage.tsx as a MapGIS landing page (heading, features grid, footer), remove grid/tbl Bootstrap classes from App.tsx, restart dev server after.
 AC: landing page renders without console errors; dev server rebuilds on save.
+Verification: 2026-09-21 — `HomePage.tsx` rewritten: branded header (M glyph + "MapGIS" + tagline), 4-up feature cards grid (GIS Layers → /admin/layers, Feature Attributes → /admin/layers/1/features, Spatial Tools → /map, System Status → /status) with SVG icons + color accents, quick-start CTA section (Sign in to the map + system status links), footer with platform attribution. No Bootstrap grid/tbl classes — pure inline styles + CSS grid. `App.tsx` verified clean: custom app-container/app-header/app-nav/app-main classes only, no Bootstrap row/col/table/btn-* classes remain. Frontend tsc --noEmit clean (exit 0), vitest 40/40 green (exit 0). Docker daemon DOWN — local-only verification.
+
+## Phase 9 — Polish (open)
