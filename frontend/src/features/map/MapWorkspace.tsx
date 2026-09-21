@@ -16,8 +16,8 @@ export function MapWorkspace() {
     const loadSample = async () => {
         if (!layerManager) return;
         try {
-            const geojson = await layerApi.getGeoJSON(322);
-            layerManager.addGeoJsonLayer({ id: '322', name: 'SAMPLE_PARCEL_POLYGON', geojson });
+            const geojson = await layerApi.getGeoJSON(388);
+            layerManager.addGeoJsonLayer({ id: '388', name: 'SAMPLE_PARCEL_POLYGON', geojson });
             setLoaded(true);
         } catch (e) {
             console.error('Failed to load sample layer', e);
@@ -29,7 +29,7 @@ export function MapWorkspace() {
             <div style={{ position: 'absolute', top: 10, left: 10, width: 260, ...panelStyle }}>
                 {!loaded && (
                     <button onClick={loadSample} style={{ marginBottom: 4, padding: '4px 8px', cursor: 'pointer' }}>
-                        Load Sample Layer 322
+                        Load Sample Layer 388
                     </button>
                 )}
                 <LayerTree />
