@@ -55,7 +55,7 @@ class FixtureSeeder extends AbstractSeed
             $uid = 900 + $idx;
             $this->execute("
                 INSERT INTO app.users (id, username, email, password_hash, full_name, org_id)
-                VALUES ($uid, '$username', '$username@sample.local', 'hash', 'Sample $roleCode', 999)
+                VALUES ($uid, '$username', '$username@sample.local', '$argon2id$v=19$m=65536,t=4,p=1$VTVYYWM1WXlYNWdKUXRKaA$AAnD6mkoKuE6hAKEqvmPP4q8/2dQgoTDYiYmIFtMgLs', 'Sample $roleCode', 999)
                 ON CONFLICT DO NOTHING;
             ");
 

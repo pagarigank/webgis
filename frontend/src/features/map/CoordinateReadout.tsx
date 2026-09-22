@@ -59,11 +59,12 @@ export function CoordinateReadout() {
 
     const display = useMemo(() => {
         if (!lngLat) return '—';
+        if (srid === 4326) return `${lngLat.lat.toFixed(6)}, ${lngLat.lng.toFixed(6)}`;
+        if (!registryReady) return `${lngLat.lat.toFixed(6)}, ${lngLat.lng.toFixed(6)}`;
         const proj = projectFrom4326(lngLat.lng, lngLat.lat, srid);
         if (!proj) return `${lngLat.lat.toFixed(6)}, ${lngLat.lng.toFixed(6)}`;
-        if (srid === 4326) return `${lngLat.lat.toFixed(6)}, ${lngLat.lng.toFixed(6)}`;
         return `E ${proj[0].toFixed(2)}, N ${proj[1].toFixed(2)}`;
-    }, [lngLat, srid]);
+    }, [lngLat, srid, registryReady]);
 
     return (
         <div

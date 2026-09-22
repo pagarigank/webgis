@@ -91,7 +91,7 @@ export const allPermissionCodes: readonly PermissionCode[] =
 /* ------------------------------------------------------------------ */
 
 export function hasPermission(me: MePayload | null, code: PermissionCode): boolean {
-  return me?.permissions.includes(code) ?? false;
+  return (me?.permissions ?? []).includes(code);
 }
 
 export function layerCapabilities(me: MePayload | null, layerCode: string): LayerCapabilities | undefined {
