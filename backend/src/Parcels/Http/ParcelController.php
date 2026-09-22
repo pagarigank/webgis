@@ -68,7 +68,16 @@ class ParcelController
     }
 
     /**
-     * GET /parcels?limit=&offset=&sort=&dir=&status=&psgc_barangay=&q=
+     * GET /parcels?limit=&offset=&sort=&dir=&status=&psgc_barangay=&q=&include_historical=&bbox=
+     *
+     * TASK-070 — list with filters, keyword search, and map preview support.
+     *  - `q`               keyword search across lot / block / survey plan / title /
+     *                      tax declaration / parcel code / location / barangay name.
+     *  - `include_historical=false` (default): SUPERSEDED parcels are hidden. Per the
+     *                      TASK-070 AC, `include_historical=true` is the ONLY way to
+     *                      see SUPERSEDED parcels.
+     *  - `bbox=w,s,e,n`    (EPSG:4326) restrict the result set to parcels intersecting
+     *                      the envelope — used by the map preview on the parcels page.
      */
     public function list(Request $request, Response $response): Response
     {
@@ -83,10 +92,16 @@ class ParcelController
         $status = $q['status'] ?? null;
         $psgc   = $this->validatePsgc($q['psgc_barangay'] ?? null, 'psgc_barangay');
         $search = $q['q'] ?? null;
+        $includeHistorical = filter_var($q['include_historical'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $bbox   = $q['bbox'] ?? null;
 
         $allowedSort = ['id', 'parcel_code', 'lot_number', 'block_number', 'tax_declaration_no', 'source_area_sqm', 'psgc_barangay', 'status', 'created_at', 'updated_at'];
         $sortCol     = in_array($sort, $allowedSort, true) ? $sort : 'created_at';
 
+        // Joins give the search access to the barangay name (ref.psgc_areas) and the
+        // survey plan number (app.survey_plans) so "plan" and "barangay" filters work.
+        $from   = 'app.parcels p LEFT JOIN ref.psgc_areas pa ON pa.code = p.psgc_barangay '
+                . 'LEFT JOIN app.survey_plans sp ON sp.id = p.survey_plan_id';
         $where  = ['p.deleted_at IS NULL'];
         $params = [];
 
@@ -99,21 +114,50 @@ class ParcelController
             $params[':status'] = $status;
         }
 
+        // TASK-070 AC: only include_historical=true exposes SUPERSEDED parcels.
+        if (!$includeHistorical) {
+            $where[] = "p.status <> 'SUPERSEDED'";
+        }
+
         if ($psgc !== null) {
             $where[] = 'p.psgc_barangay = :psgc';
             $params[':psgc'] = $psgc;
         }
 
         if ($search !== null && trim($search) !== '') {
-            // Search across lot/block/plan/title/tax declaration (TASK-070 will
-            // refine this; the column already exists for a basic keyword filter).
-            $where[] = "(p.lot_number ILIKE :q OR p.block_number ILIKE :q OR p.title_number_ref ILIKE :q OR p.tax_declaration_no ILIKE :q)";
+            $where[] = "(p.parcel_code ILIKE :q OR p.lot_number ILIKE :q OR p.block_number ILIKE :q "
+                . "OR p.title_number_ref ILIKE :q OR p.tax_declaration_no ILIKE :q "
+                . "OR p.location_description ILIKE :q OR sp.plan_number ILIKE :q OR pa.name ILIKE :q)";
             $params[':q'] = '%' . $search . '%';
+        }
+
+        if ($bbox !== null && $bbox !== '') {
+            // PHP's parse_str turns `bbox=w,s,e,n` into an array; normalize so a
+            // single comma-joined string and an auto-parsed array behave identically.
+            $parts = is_array($bbox) ? $bbox : array_map('trim', explode(',', $bbox));
+            $parts = array_values(array_filter($parts, fn ($part) => $part !== ''));
+            if (count($parts) !== 4) {
+                throw new ApiError('VALIDATION_FAILED', 'bbox must be west,south,east,north', 400);
+            }
+            $nums = array_map('floatval', $parts);
+            foreach ($parts as $part) {
+                if (!is_numeric($part)) {
+                    throw new ApiError('VALIDATION_FAILED', 'bbox must be valid west<south<east<north coordinates', 400);
+                }
+            }
+            if (!($nums[0] < $nums[2]) || !($nums[1] < $nums[3])) {
+                throw new ApiError('VALIDATION_FAILED', 'bbox must be valid west<south<east<north coordinates', 400);
+            }
+            $where[] = 'ST_Intersects(p.geom, ST_MakeEnvelope(:w, :s, :e, :n, 4326))';
+            $params[':w'] = $nums[0];
+            $params[':s'] = $nums[1];
+            $params[':e'] = $nums[2];
+            $params[':n'] = $nums[3];
         }
 
         $whereSql = 'WHERE ' . implode(' AND ', $where);
 
-        $countSql = "SELECT COUNT(*) FROM app.parcels p {$whereSql}";
+        $countSql = "SELECT COUNT(*) FROM {$from} {$whereSql}";
         $cntStmt = $this->pdo->prepare($countSql);
         $cntStmt->execute($params);
         $total = (int) $cntStmt->fetchColumn();
@@ -122,8 +166,9 @@ class ParcelController
             . "p.source_area_sqm, p.source_area_unit, p.computed_area_sqm, p.psgc_barangay, p.psgc_municipality, "
             . "p.psgc_province, p.location_description, p.status, p.geometry_source, p.verification_status, "
             . "p.org_id, p.remarks, p.version, p.created_by, p.created_at, p.updated_by, p.updated_at, "
+            . "pa.name AS psgc_barangay_name, sp.plan_number AS survey_plan_number, "
             . "ST_AsGeoJSON(p.geom)::json AS geometry";
-        $sql = "SELECT {$select} FROM app.parcels p {$whereSql} ORDER BY p.{$sortCol} {$dir} LIMIT :lim OFFSET :off";
+        $sql = "SELECT {$select} FROM {$from} {$whereSql} ORDER BY p.{$sortCol} {$dir} LIMIT :lim OFFSET :off";
         $stmt = $this->pdo->prepare($sql);
         foreach ($params as $k => $v) {
             $stmt->bindValue($k, $v);
@@ -141,6 +186,7 @@ class ParcelController
             'offset'   => $offset,
             'sort'     => $sortCol,
             'dir'      => $dir,
+            'include_historical' => $includeHistorical,
         ]);
     }
 
@@ -819,8 +865,10 @@ class ParcelController
             'source_area_unit'   => $r['source_area_unit'],
             'computed_area_sqm'  => $r['computed_area_sqm'] !== null ? (float) $r['computed_area_sqm'] : null,
             'psgc_barangay'      => $r['psgc_barangay'],
+            'psgc_barangay_name' => $r['psgc_barangay_name'] ?? null,
             'psgc_municipality'  => $r['psgc_municipality'],
             'psgc_province'      => $r['psgc_province'],
+            'survey_plan_number' => $r['survey_plan_number'] ?? null,
             'location_description' => $r['location_description'],
             'status'             => $r['status'],
             'provenance'         => $r['geometry_source'],

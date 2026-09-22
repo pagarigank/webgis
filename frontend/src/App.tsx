@@ -12,6 +12,7 @@ import { AuditLogView } from './features/audit/AuditLogView';
 import { MapShell } from './features/map/MapShell';
 import { MapWorkspace } from './features/map/MapWorkspace';
 import { HomePage } from './pages/HomePage';
+import { ParcelListPage } from './features/parcels/pages/ParcelListPage';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { me: _me } = useAuth();
@@ -32,6 +33,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Link to="/map" className={location.pathname === '/map' ? 'active' : ''}>Map</Link>
           {hasPermission(_me, 'user.manage') && (
             <Link to="/admin" className={location.pathname.startsWith('/admin') ? 'active' : ''}>Admin</Link>
+          )}
+          {hasPermission(_me, 'parcel.view') && (
+            <Link to="/parcels" className={location.pathname.startsWith('/parcels') ? 'active' : ''}>Parcels</Link>
           )}
           {hasPermission(_me, 'audit.view') && (
             <Link to="/audit" className={location.pathname === '/audit' ? 'active' : ''}>Audit Logs</Link>
@@ -86,6 +90,14 @@ function App() {
                     </MapShell>
                 </RequireAuth>
             }
+        />
+        <Route
+          path="/parcels"
+          element={
+            <RequirePermission permission="parcel.view">
+              <ParcelListPage />
+            </RequirePermission>
+          }
         />
         <Route
           path="/*"
