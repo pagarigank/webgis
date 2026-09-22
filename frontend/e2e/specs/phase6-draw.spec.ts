@@ -42,6 +42,63 @@ test.describe('Phase 6 — drawing and editing', () => {
         expect(Number(count)).toBeGreaterThanOrEqual(2);
     });
 
+    test('TASK-059b (regression): arming the Line tool draws a valid LineString and it lands in PostGIS', async ({ page }) => {
+        // Regression for the boundary bug where the app-state mode ``draw_line`` was
+        // passed raw to mapbox-gl-draw, which only recognises ``draw_line_string``
+        // (``draw_line is not valid``). This spec is excluded from the polygon-only
+        // path so the line tool is actually exercised end-to-end.
+        //
+        // The 418/DRAW_TEST layer is POLYGON-enforced (fn_enforce_geometry_type
+        // trigger), so a LineString must land in a LINESTRING-capable layer. Create
+        // one idempotently (like the fixture seeder does) so the line actually saves.
+        psql(`
+            INSERT INTO app.gis_layers (code, name, geometry_type, description, status)
+            VALUES ('E2E_LINE_LAYER', 'E2E Line Test Layer', 'LINESTRING', 'Line-capable layer for TASK-059b', 'ACTIVE')
+            ON CONFLICT (code) DO UPDATE SET geometry_type = 'LINESTRING', status = 'ACTIVE'
+        `);
+        // Read the id back with a plain SELECT (a bare INSERT also prints a
+        // ``INSERT 0 1`` status line to stdout, which would corrupt a number
+        // input value).
+        const lineLayerId = psql(`SELECT id FROM app.gis_layers WHERE code = 'E2E_LINE_LAYER'`);
+        psql(`
+            INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve)
+            SELECT l.id, r.id, true, true, true, true, true
+            FROM app.gis_layers l
+            JOIN app.roles r ON r.code = 'SYS_ADMIN'
+            WHERE l.code = 'E2E_LINE_LAYER'
+            ON CONFLICT (layer_id, role_id) DO NOTHING
+        `);
+
+        await page.goto('/map');
+
+        await page.getByTestId('draw-layer-id').fill(lineLayerId);
+
+        // Arm the Line tool exactly like DrawTools does in production.
+        await page.getByTestId('draw-draw_line').click();
+        await expect(page.getByTestId('draw-draw_line')).toHaveCSS('background-color', 'rgb(37, 99, 235)');
+
+        // Draw a simple 3-vertex polyline in empty ocean east of the fixtures,
+        // then finish the LineString (double-click last vertex: the mapbox-gl-draw
+        // contract, identical to a user finishing a line).
+        const s = { x: 580, y: 540 };
+        await page.mouse.click(s.x, s.y);
+        await page.mouse.click(s.x + 110, s.y);
+        await page.mouse.click(s.x + 110, s.y + 60);
+        await page.mouse.dblclick(s.x + 110, s.y + 60); // finish the LineString
+
+        await page.getByTestId('draw-save').click();
+
+        await expect(page.getByTestId('draw-message')).toContainText(/Saved feature/i, {
+            timeout: 20_000,
+        });
+
+        // The line really landed as a valid LineString in PostGIS.
+        const count = psql(
+            `SELECT count(*) FROM app.gis_features WHERE layer_id = ${lineLayerId} AND ST_GeometryType(geom) = 'ST_LineString' AND ST_IsValid(geom)`,
+        );
+        expect(Number(count)).toBeGreaterThanOrEqual(1);
+    });
+
     test('TASK-060: invalid (self-intersecting) geometry is rejected client-side before the API', async ({ page }) => {
         await page.goto('/map');
         const layerId = process.env.E2E_LAYER_ID ?? '418';

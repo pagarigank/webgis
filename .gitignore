@@ -22,3 +22,6 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/playwright/.cache/
 backend/.phpunit.cache/
+# Browser-automation session artifacts (Playwright MCP snapshots, ad-hoc screenshots)
+.playwright-mcp/
+layer-designer-fixed.png

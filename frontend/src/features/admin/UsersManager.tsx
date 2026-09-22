@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import apiClient from '../../lib/apiClient';
+import apiClient, { unwrapList } from '../../lib/apiClient';
 
 export function UsersManager() {
   const queryClient = useQueryClient();
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin_users'],
-    queryFn: () => apiClient.get('/users').then((res: any) => res?.data || res || [])
+    queryFn: () => apiClient.get('/users').then(unwrapList)
   });
 
   const { data: roles } = useQuery({
     queryKey: ['admin_roles'],
-    queryFn: () => apiClient.get('/roles').then((res: any) => res)
+    queryFn: () => apiClient.get('/roles').then(unwrapList)
   });
 
   const [selectedUser, setSelectedUser] = useState<any>(null);

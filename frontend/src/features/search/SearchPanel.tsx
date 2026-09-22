@@ -34,6 +34,7 @@ export const SearchPanel: React.FC = () => {
 
     const [drawMode, setDrawMode] = useState<'polygon' | 'line' | 'point' | null>(null);
     const drawManagerRef = React.useRef<DrawManager | null>(null);
+    const [open, setOpen] = useState(false);
 
     // Lazy-init draw manager on mount
     React.useEffect(() => {
@@ -198,7 +199,41 @@ export const SearchPanel: React.FC = () => {
     }, [map, drawMode]);
 
     return (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, maxWidth: 480, fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{
+            position: 'absolute',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 30,
+            pointerEvents: 'auto',
+            fontFamily: 'system-ui, sans-serif',
+        }}>
+            <button
+                onClick={() => setOpen((v) => !v)}
+                style={{
+                    background: '#fff',
+                    border: `1px solid ${open ? '#93c5fd' : '#e5e7eb'}`,
+                    borderRadius: 8,
+                    padding: '8px 16px',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#1d4ed8',
+                    cursor: 'pointer',
+                }}
+            >
+                🔍 Spatial Search {open ? '▲' : '▼'}
+            </button>
+
+            {open && (
+            <div style={{
+            background: '#fff',
+            border: '1px solid #e5e7eb',
+            borderRadius: 8,
+            padding: 16,
+            width: 470,
+            maxWidth: 470,
+            marginTop: 8,
+        }}>
             <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#1f2937' }}>
                 🔍 Spatial Search (TASK-063)
             </h3>
@@ -390,6 +425,8 @@ export const SearchPanel: React.FC = () => {
                     📍 Use map center as point
                 </button>
             </div>
+            </div>
+            )}
         </div>
     );
 };

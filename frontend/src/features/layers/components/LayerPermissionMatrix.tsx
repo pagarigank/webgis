@@ -1,6 +1,6 @@
 
 import { useQuery } from '@tanstack/react-query';
-import apiClient from '../../../lib/apiClient';
+import apiClient, { unwrapList } from '../../../lib/apiClient';
 
 interface Props {
     layerId: number;
@@ -10,9 +10,8 @@ export function LayerPermissionMatrix({ layerId: _layerId }: Props) {
     const { data: roles = [], isLoading: loadingRoles } = useQuery({
         queryKey: ['roles'],
         queryFn: async () => {
-            // Mock API or actual API if it exists
-            const res = await apiClient.get('/roles').catch(() => ({ data: { data: [{id: 1, name: 'SYS_ADMIN'}, {id: 2, name: 'ENCODER'}] }}));
-            return res.data.data;
+            const res = await apiClient.get('/roles').catch(() => [{ id: 1, name: 'SYS_ADMIN' }, { id: 2, name: 'ENCODER' }]);
+            return unwrapList(res);
         }
     });
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import apiClient from '../../lib/apiClient';
+import apiClient, { unwrapList } from '../../lib/apiClient';
 import { MapPicker } from '../../components/common/MapPicker';
 
 const EMPTY_ARRAY: any[] = [];
@@ -9,14 +9,20 @@ export function ScopeEditor() {
   const queryClient = useQueryClient();
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin_users'],
-    queryFn: () => apiClient.get('/users').then(res => res.data.data)
+    queryFn: () => apiClient.get('/users').then(unwrapList)
   });
 
   const [selectedUser, setSelectedUser] = useState<any>(null);
 
   const { data: scopes, isLoading: isLoadingScopes } = useQuery({
     queryKey: ['user_scopes', selectedUser?.id],
-    queryFn: () => apiClient.get(`/users/${selectedUser.id}/scopes`).then(res => res.data.data),
+    queryFn: () =>
+      apiClient.get(`/users/${selectedUser.id}/scopes`).then((res: any) => {
+        if (Array.isArray(res)) return res;
+        if (Array.isArray(res?.scopes)) return res.scopes;
+        if (Array.isArray(res?.data)) return res.data;
+        return [];
+      }),
     enabled: !!selectedUser
   });
 

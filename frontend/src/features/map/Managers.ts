@@ -300,7 +300,12 @@ export class LayerManager {
      */
     setDrawMode(mode: 'simple_select' | 'direct_select' | 'draw_polygon' | 'draw_point' | 'draw_line' | 'static' = 'simple_select') {
         if (this.drawInstance) {
-            this.drawInstance.changeMode(mode);
+            // mapbox-gl-draw names the line mode `draw_line_string`; the app-level
+            // mode string is `draw_line`. Translate only at this API boundary so
+            // component state (DrawTools active-button compare, action logging)
+            // keeps using the app-level name.
+            const mapboxMode = mode === 'draw_line' ? 'draw_line_string' : mode;
+            this.drawInstance.changeMode(mapboxMode);
         }
     }
 

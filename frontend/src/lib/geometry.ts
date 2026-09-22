@@ -12,6 +12,36 @@ export interface GeometryValidationResult {
  * Validate a GeoJSON geometry object before sending to the server.
  * Returns a list of human-readable errors; empty list = passes client-side checks.
  */
+/**
+ * Compute [w,s,e,n] extent (lon/lat EPSG:4326) from a GeoJSON collection.
+ * Returns undefined when the collection has no coordinates.
+ */
+export function extentFromGeojson(geojson: GeoJSON.FeatureCollection): [number, number, number, number] | undefined {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const walk = (coords: number[] | number[][] | number[][][]) => {
+        if (typeof coords[0] === 'number') {
+            const [x, y] = coords as number[];
+            if (Number.isFinite(x) && Number.isFinite(y)) {
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+            }
+            return;
+        }
+        (coords as unknown[]).forEach((c) => walk(c as number[][]));
+    };
+    for (const feature of geojson.features) {
+        const geom = feature.geometry;
+        if (geom && 'coordinates' in geom) walk(geom.coordinates as never);
+    }
+    if (!Number.isFinite(minX)) return undefined;
+    return [minX, minY, maxX, maxY];
+}
+
 export function validateGeometry(geom: GeoJSON.GeometryObject): GeometryValidationResult {
     const errors: string[] = [];
     const type = geom.type;

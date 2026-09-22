@@ -17,10 +17,6 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  if (status === 'authenticated') {
-    return <Navigate to="/" replace />;
-  }
-
   const [step, setStep] = useState<LoginStep>('credentials');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -29,6 +25,10 @@ const LoginPage: React.FC = () => {
   const [mfaCode, setMfaCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  if (status === 'authenticated') {
+    return <Navigate to="/" replace />;
+  }
 
   const from =
     (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? '/';

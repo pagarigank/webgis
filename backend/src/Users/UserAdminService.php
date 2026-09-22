@@ -57,7 +57,7 @@ final class UserAdminService
 
         $stmt = $this->pdo->prepare("
             SELECT id, username, email, full_name, position, org_id, status,
-                   must_change_password, version, created_at, updated_at, deleted_at
+                   mfa_enabled, must_change_password, version, created_at, updated_at, deleted_at
             FROM app.users u
             $whereSql
             ORDER BY u.id

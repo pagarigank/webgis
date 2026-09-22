@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import apiClient from '../../lib/apiClient';
+import apiClient, { unwrapList } from '../../lib/apiClient';
 
 export function OrganizationsManager() {
   const queryClient = useQueryClient();
   const { data: orgs, isLoading } = useQuery({
     queryKey: ['admin_organizations'],
-    queryFn: () => apiClient.get('/organizations').then(res => res.data.data)
+    queryFn: () => apiClient.get('/organizations').then(unwrapList)
   });
 
   const [selectedOrg, setSelectedOrg] = useState<any>(null);

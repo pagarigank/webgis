@@ -26,6 +26,21 @@ class GisLayerController
         return Envelope::success($response, $layers);
     }
 
+    public function get(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+
+        $stmt = $this->pdo->prepare("SELECT * FROM app.gis_layers WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$id]);
+        $layer = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$layer) {
+            throw new ApiError('NOT_FOUND', 'Layer not found', 404);
+        }
+
+        return Envelope::success($response, $layer);
+    }
+
     public function create(Request $request, Response $response): Response
     {
         $data = (array) $request->getParsedBody();

@@ -22,13 +22,19 @@ test.describe('Phase 5 — map rendering', () => {
 
     test('TASK-052: sample layer loads with bbox, appears in tree, toggles + zoom', async ({ page }) => {
         await page.goto('/map');
-        await page.getByTestId('load-sample-layer').click();
+
+        // Load the sample layer through the hamburger layer switcher.
+        await page.getByTestId('layer-switcher-toggle').click();
 
         // Every feature request must carry a bbox (TASK-053 AC).
         const geojsonReq = page.waitForRequest(
             (r) => r.url().includes('/features.geojson') && r.url().includes('bbox='),
             { timeout: 15_000 },
         );
+        await page
+            .locator('[data-testid="layer-switcher-panel"] label', { hasText: /Sample Parcel Polygon|SAMPLE_PARCEL_POLYGON/ })
+            .locator('input[type="checkbox"]')
+            .click();
         const treeRow = page.locator('.layer-tree li', { hasText: /Sample Parcel Polygon|SAMPLE_PARCEL_POLYGON/ });
         await treeRow.waitFor({ timeout: 15_000 });
         const req = await geojsonReq;
@@ -45,7 +51,11 @@ test.describe('Phase 5 — map rendering', () => {
 
     test('TASK-053: moveend triggers a debounced bbox reload; rapid panning cancels stale requests', async ({ page }) => {
         await page.goto('/map');
-        await page.getByTestId('load-sample-layer').click();
+        await page.getByTestId('layer-switcher-toggle').click();
+        await page
+            .locator('[data-testid="layer-switcher-panel"] label', { hasText: /Sample Parcel Polygon|SAMPLE_PARCEL_POLYGON/ })
+            .locator('input[type="checkbox"]')
+            .click();
         await page.locator('.layer-tree li').first().waitFor({ timeout: 15_000 });
 
         let inFlight = 0;

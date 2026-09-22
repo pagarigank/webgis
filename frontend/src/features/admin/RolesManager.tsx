@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import apiClient from '../../lib/apiClient';
+import apiClient, { unwrapList } from '../../lib/apiClient';
 import { allPermissionCodes } from '../../auth/permissions';
 import type { PermissionCode } from '../../auth/permissions';
 
@@ -8,7 +8,7 @@ export function RolesManager() {
   const queryClient = useQueryClient();
   const { data: roles, isLoading } = useQuery({
     queryKey: ['admin_roles'],
-    queryFn: () => apiClient.get('/roles').then((res: any) => res)
+    queryFn: () => apiClient.get('/roles').then(unwrapList)
   });
 
   const [isCreating, setIsCreating] = useState(false);

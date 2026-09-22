@@ -134,3 +134,14 @@ apiClient.interceptors.response.use(
 );
 
 export default apiClient;
+
+// The response interceptor already unwraps the outer { success, data } envelope,
+// so a queryFn receives the inner payload directly. Endpoints return that payload
+// either as a plain array (e.g. /audit-logs) or as { data: [...], meta } (paginated
+// lists like /users, /roles, /organizations). This normalizes both to an array and
+// never yields a non-array, so consumers can safely call .map on the result.
+export function unwrapList<T = unknown>(res: unknown): T[] {
+  if (Array.isArray(res)) return res as T[];
+  const nested = (res as { data?: unknown } | null | undefined)?.data;
+  return Array.isArray(nested) ? (nested as T[]) : [];
+}

@@ -359,3 +359,15 @@ h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; }
 .text-success { color: var(--brand-success); }
 .text-muted { color: var(--text-secondary); }
 .font-mono { font-family: var(--font-mono); }
+
+/* maplibre-gl-draw cursor shim: mapbox-gl-draw applies "mouse-*" and "mode-*"
+   classes to the map container but ships CSS targeting mapboxgl-* prefixes only.
+   Mirror the same rules for maplibre's maplibregl-* container so cursors arm
+   correctly (crosshair while drawing) instead of staying on the default grab. */
+.maplibregl-map.mouse-pointer .maplibregl-canvas-container.maplibregl-interactive { cursor: pointer; }
+.maplibregl-map.mouse-move .maplibregl-canvas-container.maplibregl-interactive { cursor: move; }
+.maplibregl-map.mouse-add .maplibregl-canvas-container.maplibregl-interactive { cursor: crosshair; }
+.maplibregl-map.mode-direct_select.feature-vertex.mouse-move .maplibregl-canvas-container.maplibregl-interactive { cursor: move; }
+.maplibregl-map.mode-direct_select.feature-midpoint.mouse-pointer .maplibregl-canvas-container.maplibregl-interactive { cursor: cell; }
+.maplibregl-map.mode-direct_select.feature-feature.mouse-move .maplibregl-canvas-container.maplibregl-interactive { cursor: move; }
+.maplibregl-map.mode-static.mouse-pointer .maplibregl-canvas-container.maplibregl-interactive { cursor: grab; cursor: -moz-grab; cursor: -webkit-grab; }

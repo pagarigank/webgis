@@ -91,9 +91,16 @@ export const MeasureTool: React.FC = () => {
     React.useEffect(() => {
         if (!map || !mode) return;
 
+        // DrawTool-free measure mode: show a crosshair so the grab pan cursor
+        // doesn't make the tool look inert.
+        const canvas = map.getCanvas();
+        const prev = canvas.style.cursor;
+        canvas.style.cursor = 'crosshair';
+
         map.on('click', handleMapClick);
         return () => {
             map.off('click', handleMapClick);
+            canvas.style.cursor = prev;
         };
     }, [map, mode, handleMapClick]);
 
@@ -151,7 +158,9 @@ export const MeasureTool: React.FC = () => {
 
 const btnStyle: React.CSSProperties = {
     background: '#fff',
-    border: '1px solid #d1d5db',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: '#d1d5db',
     borderRadius: 6,
     padding: '6px 12px',
     fontSize: 13,

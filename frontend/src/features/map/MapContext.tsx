@@ -118,6 +118,10 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
              onVersionConflict: (error, context) => {
                  conflictHostRef.current?.(error, context);
              },
+             // Keep React drawMode in sync when mapbox-gl-draw changes mode
+             // on its own (line/polygon finished or cancelled → simple_select).
+             // Handles the app-level name too (draw_line_string → draw_line).
+             onModeChange: (mode) => setDrawMode(mode as DrawMode),
          });
          drawManagerRef.current = dm;
          setDrawManager(dm);

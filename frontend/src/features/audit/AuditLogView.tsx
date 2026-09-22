@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import apiClient from '../../lib/apiClient';
+import apiClient, { unwrapList } from '../../lib/apiClient';
 
 export function AuditLogView() {
   const [filters, setFilters] = useState({ entity_type: '', action: '' });
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['audit_logs', filters],
-    queryFn: () => apiClient.get('/audit-logs', { params: filters }).then(res => res.data.data)
+    queryFn: () => apiClient.get('/audit-logs', { params: filters }).then(unwrapList)
   });
 
   return (

@@ -11,6 +11,13 @@ export interface DrawManagerOptions {
     onError?: (error: DrawError) => void;
     onCancel?: () => void;
     /**
+     * Called whenever the underlying mapbox-gl-draw mode changes on its own
+     * (e.g. after a LineString/Polygon is finished or cancelled it reverts to
+     * `simple_select`). Lets the host keep React draw state in sync so the
+     * tool button un-arms and the cursor/clicking behave normally.
+     */
+    onModeChange?: (mode: string) => void;
+    /**
      * Called instead of onError when a version_conflict occurs; gives the host a chance
      * to show ConflictDialog. If omitted, falls back to onError.
      */
@@ -85,6 +92,16 @@ export class DrawManager {
         (this.map as any).on('draw.create', () => this.onDrawChange());
         (this.map as any).on('draw.update', () => this.onDrawChange());
         (this.map as any).on('draw.delete', () => this.onDrawChange());
+        // mapbox-gl-draw reverts to simple_select on its own once a shape is
+        // finished (dblclick/Enter) or cancelled (Escape); surface that so the
+        // host un-arms the tool instead of leaving the UI stuck in "armed".
+        (this.map as any).on('draw.modechange', (e: { mode: string }) => {
+            this.options.onModeChange?.(this.toAppMode(e.mode));
+        });
+    }
+
+    private toAppMode(mapboxMode: string): string {
+        return mapboxMode === 'draw_line_string' ? 'draw_line' : mapboxMode;
     }
 
     private onDrawChange(isUndoRedo = false) {
@@ -115,7 +132,16 @@ export class DrawManager {
     }
 
     setMode(mode: string) {
-        if (this.draw) this.draw.changeMode(mode);
+        if (this.draw) {
+            // mapbox-gl-draw names the line mode `draw_line_string`; the app-level
+            // mode string is `draw_line`. Translate only at this API boundary so
+            // component state (DrawTools active-button compare, action logging)
+            // keeps using the app-level name.
+            const mapboxMode = mode === 'draw_line' ? 'draw_line_string' : mode;
+            this.draw.changeMode(mapboxMode);
+            // changeMode triggers draw.modechange → onModeChange → host keeps
+            // React state in sync (see toAppMode above).
+        }
     }
 
     async saveNew(layerId: number, attributes?: Record<string, unknown>): Promise<Feature | null> {

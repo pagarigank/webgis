@@ -72,6 +72,15 @@ export function DrawTools() {
             if (saved) {
                 setMessage({ kind: 'ok', text: `Saved feature ${saved.id ?? ''} to layer ${lid}.` });
                 setUndoRedoTick((t) => t + 1);
+                // TASK-067: persist visually — reload the target layer's GeoJSON
+                // source so the saved feature shows on the map as part of the layer.
+                const b = ctx.map?.getBounds();
+                if (b) {
+                    const bbox: [number, number, number, number] = [
+                        b.getWest(), b.getSouth(), b.getEast(), b.getNorth(),
+                    ];
+                    ctx.loadLayerFeatures(lid, String(lid), bbox).catch(() => undefined);
+                }
             } else {
                 // onError already surfaced the validation/network reason.
                 setMessage({ kind: 'err', text: 'Save rejected — see error details.' });
@@ -178,7 +187,9 @@ export function DrawTools() {
 
 const btnStyle: React.CSSProperties = {
     background: '#fff',
-    border: '1px solid #d1d5db',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: '#d1d5db',
     borderRadius: 6,
     padding: '6px 10px',
     fontSize: 13,

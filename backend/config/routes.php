@@ -50,6 +50,8 @@ return function (App $app) {
             ->add(AuthenticateMiddleware::class);
         $group->post('/layers', \App\GIS\Http\GisLayerController::class . ':create')
             ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+        $group->get('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':get')
+            ->add(AuthenticateMiddleware::class);
         $group->put('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':update')
             ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
         $group->delete('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':delete')
