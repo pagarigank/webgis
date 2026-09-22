@@ -93,6 +93,27 @@ return function (App $app) {
         $group->get('/layers/{layer_id:[0-9]+}/mvt/{z:\d+}/{x:\d+}/{y:\d+}.mvt', \App\GIS\Http\GisFeatureController::class . ':mvt')
                       ->add(AuthenticateMiddleware::class);
 
+        // ---- Parcels (TASK-068) ----
+        $parcelAuthed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
+        $group->get('/parcels', \App\Parcels\Http\ParcelController::class . ':list')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}', \App\Parcels\Http\ParcelController::class . ':get')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels', \App\Parcels\Http\ParcelController::class . ':create')
+              ->add($parcelAuthed('parcel.create'))->add(AuthenticateMiddleware::class);
+        $group->patch('/parcels/{id}', \App\Parcels\Http\ParcelController::class . ':update')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+        $group->delete('/parcels/{id}', \App\Parcels\Http\ParcelController::class . ':delete')
+              ->add($parcelAuthed('parcel.delete'))->add(AuthenticateMiddleware::class);
+
+        // ---- Parcel versioning (TASK-069) ----
+        $group->get('/parcels/{id}/versions', \App\Parcels\Http\ParcelController::class . ':versions')
+              ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}/versions/{v:[0-9]+}', \App\Parcels\Http\ParcelController::class . ':version')
+              ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels/{id}/versions/{v:[0-9]+}/restore', \App\Parcels\Http\ParcelController::class . ':restore')
+              ->add($parcelAuthed('parcel.version.restore'))->add(AuthenticateMiddleware::class);
+
                 // ---- Spatial queries (TASK-063) ----
         $group->post('/spatial/query', \App\GIS\Http\SpatialQueryController::class . ':query')
               ->add(AuthenticateMiddleware::class);

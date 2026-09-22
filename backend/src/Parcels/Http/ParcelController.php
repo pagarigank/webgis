@@ -1,0 +1,891 @@
+<?php
+declare(strict_types=1);
+
+namespace App\Parcels\Http;
+
+use App\Core\Error\ApiError;
+use App\Core\Http\Response\Envelope;
+use App\Audit\AuditWriter;
+use PDO;
+use Psr\Http\Message\ResponseInterface as Response;
+use Psr\Http\Message\ServerRequestInterface as Request;
+
+/**
+ * Parcel CRUD API (TASK-068).
+ *
+ * A parcel may exist without geometry (geometries arrive via later phases —
+ * manual drawing, survey-derived). provenance (geometry_source) is mandatory,
+ * defaulting to MANUAL_DRAWING. Scope enforcement is delegated to the
+ * app.parcels RLS policies: the caller's user id is set into the session and
+ * Postgres only exposes rows inside the user's data scopes. Writes bump
+ * version and are audit-rowed; DELETE never removes the row — it soft-deletes
+ * and requires a reason.
+ */
+class ParcelController
+{
+    private PDO $pdo;
+    private AuditWriter $audit;
+
+    public function __construct(PDO $pdo, AuditWriter $audit)
+    {
+        $this->pdo = $pdo;
+        $this->audit = $audit;
+    }
+
+    private function resolveUser(Request $request): int
+    {
+        $userId = (int) ($request->getAttribute('user_id') ?: 0);
+        if ($userId <= 0) {
+            throw new ApiError('UNAUTHORIZED', 'Not authenticated', 401);
+        }
+        return $userId;
+    }
+
+    private function setUserInSession(int $uid): void
+    {
+        $this->pdo->exec("SET LOCAL app.current_user_id = " . (int) $uid);
+    }
+
+    private function parseUuid(array $args, string $key): string
+    {
+        $val = $args[$key] ?? '';
+        if (!is_string($val) || !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $val)) {
+            throw new ApiError('VALIDATION_FAILED', 'Invalid parcel id', 400);
+        }
+        return strtolower($val);
+    }
+
+    private function validatePsgc(?string $code, string $field): ?string
+    {
+        if ($code === null || $code === '') {
+            return null;
+        }
+        $code = trim($code);
+        if (!preg_match('/^\d{10,12}$/', $code)) {
+            throw new ApiError('VALIDATION_FAILED', "{$field} must be a 10-12 digit PSGC code", 400);
+        }
+        return $code;
+    }
+
+    /**
+     * GET /parcels?limit=&offset=&sort=&dir=&status=&psgc_barangay=&q=
+     */
+    public function list(Request $request, Response $response): Response
+    {
+        $uid  = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+
+        $q      = $request->getQueryParams();
+        $limit  = min(max((int) ($q['limit'] ?? 50), 1), 1000);
+        $offset = max((int) ($q['offset'] ?? 0), 0);
+        $sort   = $q['sort'] ?? 'created_at';
+        $dir    = strtoupper($q['dir'] ?? 'DESC') === 'DESC' ? 'DESC' : 'ASC';
+        $status = $q['status'] ?? null;
+        $psgc   = $this->validatePsgc($q['psgc_barangay'] ?? null, 'psgc_barangay');
+        $search = $q['q'] ?? null;
+
+        $allowedSort = ['id', 'parcel_code', 'lot_number', 'block_number', 'tax_declaration_no', 'source_area_sqm', 'psgc_barangay', 'status', 'created_at', 'updated_at'];
+        $sortCol     = in_array($sort, $allowedSort, true) ? $sort : 'created_at';
+
+        $where  = ['p.deleted_at IS NULL'];
+        $params = [];
+
+        if ($status !== null && $status !== '') {
+            $validStatuses = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'RETURNED', 'VERIFIED', 'APPROVED', 'PUBLISHED', 'ARCHIVED', 'SUPERSEDED'];
+            if (!in_array($status, $validStatuses, true)) {
+                throw new ApiError('VALIDATION_FAILED', 'Invalid status value', 400);
+            }
+            $where[] = 'p.status = :status';
+            $params[':status'] = $status;
+        }
+
+        if ($psgc !== null) {
+            $where[] = 'p.psgc_barangay = :psgc';
+            $params[':psgc'] = $psgc;
+        }
+
+        if ($search !== null && trim($search) !== '') {
+            // Search across lot/block/plan/title/tax declaration (TASK-070 will
+            // refine this; the column already exists for a basic keyword filter).
+            $where[] = "(p.lot_number ILIKE :q OR p.block_number ILIKE :q OR p.title_number_ref ILIKE :q OR p.tax_declaration_no ILIKE :q)";
+            $params[':q'] = '%' . $search . '%';
+        }
+
+        $whereSql = 'WHERE ' . implode(' AND ', $where);
+
+        $countSql = "SELECT COUNT(*) FROM app.parcels p {$whereSql}";
+        $cntStmt = $this->pdo->prepare($countSql);
+        $cntStmt->execute($params);
+        $total = (int) $cntStmt->fetchColumn();
+
+        $select = "p.id, p.parcel_code, p.lot_number, p.block_number, p.title_number_ref, p.tax_declaration_no, "
+            . "p.source_area_sqm, p.source_area_unit, p.computed_area_sqm, p.psgc_barangay, p.psgc_municipality, "
+            . "p.psgc_province, p.location_description, p.status, p.geometry_source, p.verification_status, "
+            . "p.org_id, p.remarks, p.version, p.created_by, p.created_at, p.updated_by, p.updated_at, "
+            . "ST_AsGeoJSON(p.geom)::json AS geometry";
+        $sql = "SELECT {$select} FROM app.parcels p {$whereSql} ORDER BY p.{$sortCol} {$dir} LIMIT :lim OFFSET :off";
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $k => $v) {
+            $stmt->bindValue($k, $v);
+        }
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = array_map(fn ($r) => $this->formatParcel($r), $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+        return Envelope::success($response, [
+            'data'     => $rows,
+            'total'    => $total,
+            'limit'    => $limit,
+            'offset'   => $offset,
+            'sort'     => $sortCol,
+            'dir'      => $dir,
+        ]);
+    }
+
+    /**
+     * GET /parcels/{id}
+     */
+    public function get(Request $request, Response $response, array $args): Response
+    {
+        $uid  = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+        $pid = $this->parseUuid($args, 'id');
+
+        $select = $this->parcelSelect();
+        $stmt = $this->pdo->prepare("SELECT {$select} FROM app.parcels p WHERE p.id = :pid AND p.deleted_at IS NULL");
+        $stmt->execute([':pid' => $pid]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+
+        return Envelope::success($response, $this->formatParcel($row));
+    }
+
+    /**
+     * POST /parcels
+     * Body: { parcel_code, provenance, lot_number?, status?, psgc_barangay?, ... }
+     * provenance (geometry_source) is mandatory. A parcel may exist without geometry.
+     */
+    public function create(Request $request, Response $response): Response
+    {
+        $uid  = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            throw new ApiError('VALIDATION_FAILED', 'Request body must be a JSON object', 400);
+        }
+
+        $parcelCode = trim((string) ($body['parcel_code'] ?? ''));
+        if ($parcelCode === '') {
+            throw new ApiError('VALIDATION_FAILED', 'parcel_code is required', 400);
+        }
+        if (strlen($parcelCode) > 80) {
+            throw new ApiError('VALIDATION_FAILED', 'parcel_code must be at most 80 characters', 400);
+        }
+
+        // TASK-068 AC: provenance is mandatory.
+        $geometrySource = trim((string) ($body['provenance'] ?? $body['geometry_source'] ?? ''));
+        if ($geometrySource === '') {
+            throw new ApiError('VALIDATION_FAILED', 'provenance (geometry_source) is required', 400);
+        }
+        $this->assertGeometrySource($geometrySource);
+
+        $status = (string) ($body['status'] ?? 'DRAFT');
+        $this->assertStatus($status);
+
+        $geom = $body['geometry'] ?? null;
+        if ($geom !== null) {
+            $this->assertGeoJsonObject($geom);
+        }
+
+        $psgcBarangay = $this->validatePsgc($body['psgc_barangay'] ?? null, 'psgc_barangay');
+        $psgcMunicipality = $this->validatePsgc($body['psgc_municipality'] ?? null, 'psgc_municipality');
+        $psgcProvince = $this->validatePsgc($body['psgc_province'] ?? null, 'psgc_province');
+
+        $sourceAreaSqm = $body['source_area_sqm'] ?? null;
+        if ($sourceAreaSqm !== null) {
+            if (!is_numeric($sourceAreaSqm) || (float) $sourceAreaSqm < 0) {
+                throw new ApiError('VALIDATION_FAILED', 'source_area_sqm must be a non-negative number', 400);
+            }
+            $sourceAreaSqm = round((float) $sourceAreaSqm, 4);
+        }
+
+        $orgId = $body['org_id'] ?? null;
+        if ($orgId !== null) {
+            $orgId = (int) $orgId;
+        }
+
+        $geomSql = 'NULL';
+        $geomParams = [];
+        if ($geom !== null) {
+            $geomJson = json_encode($geom);
+            // Optional server-side validity check when geometry is provided.
+            $checkStmt = $this->pdo->prepare("SELECT ST_IsValid(ST_GeomFromGeoJSON(:gj)) AS ok");
+            $checkStmt->execute([':gj' => $geomJson]);
+            if (!(bool) $checkStmt->fetchColumn()) {
+                throw new ApiError('GEOMETRY_INVALID', 'geometry is not valid per ST_IsValid', 400);
+            }
+            $geomSql = 'ST_Multi(ST_Transform(ST_GeomFromGeoJSON(:gj), 4326))';
+            $geomParams[':gj'] = $geomJson;
+        }
+
+        $sql = "INSERT INTO app.parcels "
+            . "(id, parcel_code, lot_number, block_number, title_number_ref, tax_declaration_no, "
+            . " source_area_sqm, source_area_unit, psgc_barangay, psgc_municipality, psgc_province, "
+            . " location_description, status, geometry_source, remarks, org_id, source_document_id, created_by, geom, version) "
+            . "VALUES (gen_random_uuid(), :code, :lot, :block, :title, :td, "
+            . " :area_sqm, :area_unit, :psgc_b, :psgc_m, :psgc_p, "
+            . " :loc_desc, :status, :geom_src, :remarks, :org_id, :src_doc, :uid, {$geomSql}, 1) "
+            . "RETURNING id";
+        $params = $geomParams + [
+            ':code'      => $parcelCode,
+            ':lot'       => $body['lot_number'] ?? null,
+            ':block'     => $body['block_number'] ?? null,
+            ':title'     => $body['title_number_ref'] ?? null,
+            ':td'        => $body['tax_declaration_no'] ?? null,
+            ':area_sqm'  => $sourceAreaSqm,
+            ':area_unit' => $body['source_area_unit'] ?? 'sqm',
+            ':psgc_b'    => $psgcBarangay,
+            ':psgc_m'    => $psgcMunicipality,
+            ':psgc_p'    => $psgcProvince,
+            ':loc_desc'  => $body['location_description'] ?? null,
+            ':status'    => $status,
+            ':geom_src'  => $geometrySource,
+            ':remarks'   => $body['remarks'] ?? null,
+            ':org_id'    => $orgId,
+            ':src_doc'   => $body['source_document_id'] ?? null,
+            ':uid'       => $uid,
+        ];
+        $stmt = $this->pdo->prepare($sql);
+        try {
+            $stmt->execute($params);
+        } catch (\PDOException $e) {
+            if ($e->getCode() === '23505') {
+                throw new ApiError('CONFLICT', 'A parcel with this parcel_code already exists.', 409);
+            }
+            if ($e->getCode() === '23503') {
+                throw new ApiError('VALIDATION_FAILED', 'Foreign key violation (unknown PSGC code, org, or document).', 400);
+            }
+            throw $e;
+        }
+        $pid = (string) $stmt->fetchColumn();
+
+        // Read back + audit
+        $select = $this->parcelSelect();
+        $fetch = $this->pdo->prepare("SELECT {$select} FROM app.parcels p WHERE p.id = :pid");
+        $fetch->execute([':pid' => $pid]);
+        $row = $fetch->fetch(PDO::FETCH_ASSOC);
+        $parcel = $this->formatParcel($row);
+
+        $this->audit->writeFromSession('INSERT', 'app.parcels', $pid, null, $this->stripForAudit($parcel), null, 'Parcel created via API');
+
+        // TASK-069: brand-new parcel is version 1 — record the baseline version row.
+        $this->writeVersion($pid, 1, $this->snapshotForVersion($parcel), $parcel['status'], $parcel['provenance'], 'Parcel created', 'Parcel created via API', $parcel['geometry']);
+
+        return Envelope::success($response, $parcel, 201);
+    }
+
+    /**
+     * PATCH /parcels/{id}
+     * Partial update. Body: { ..., change_reason } — reason is optional for
+     * attribute edits (TASK-069 records version rows); geometry/status changes
+     * are version-numbered by the caller next.
+     */
+    public function update(Request $request, Response $response, array $args): Response
+    {
+        $uid  = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+        $pid = $this->parseUuid($args, 'id');
+
+        // Verify existence + lock + read version
+        $lock = $this->pdo->prepare("SELECT id, version, parcel_code FROM app.parcels WHERE id = :pid AND deleted_at IS NULL FOR UPDATE");
+        $lock->execute([':pid' => $pid]);
+        $row = $lock->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+        $currentVersion = (int) $row['version'];
+
+        $ifMatch = $request->getHeaderLine('If-Match');
+        if ($ifMatch === '') {
+            throw new ApiError('PRECONDITION_REQUIRED', 'An If-Match header with the current version is required for updates.', 428);
+        }
+        if ((int) $ifMatch !== $currentVersion) {
+            throw new ApiError('VERSION_CONFLICT', 'This parcel was modified by another user.', 409, ['current_version' => $currentVersion]);
+        }
+
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            throw new ApiError('VALIDATION_FAILED', 'Request body must be a JSON object', 400);
+        }
+
+        $allowed = ['lot_number', 'block_number', 'title_number_ref', 'tax_declaration_no', 'source_area_sqm', 'source_area_unit', 'psgc_barangay', 'psgc_municipality', 'psgc_province', 'location_description', 'status', 'provenance', 'geometry_source', 'remarks', 'geometry', 'org_id', 'source_document_id', 'change_reason'];
+        $unknown = array_diff_key($body, array_fill_keys($allowed, true));
+        if (!empty($unknown)) {
+            throw new ApiError('VALIDATION_FAILED', 'Unexpected fields in update payload', 400);
+        }
+
+        $sets = [];
+        $params = [];
+
+        if (array_key_exists('provenance', $body) || array_key_exists('geometry_source', $body)) {
+            $gs = $body['provenance'] ?? $body['geometry_source'];
+            $this->assertGeometrySource((string) $gs);
+            $sets[] = 'geometry_source = :geom_src';
+            $params[':geom_src'] = (string) $gs;
+        }
+
+        foreach (['lot_number', 'block_number', 'title_number_ref', 'tax_declaration_no', 'location_description', 'remarks', 'source_area_unit'] as $text) {
+            if (array_key_exists($text, $body)) {
+                $sets[] = "{$text} = :{$text}";
+                $params[":{$text}"] = $body[$text];
+            }
+        }
+
+        if (array_key_exists('source_area_sqm', $body)) {
+            $v = $body['source_area_sqm'];
+            if ($v !== null && (!is_numeric($v) || (float) $v < 0)) {
+                throw new ApiError('VALIDATION_FAILED', 'source_area_sqm must be a non-negative number', 400);
+            }
+            $sets[] = 'source_area_sqm = :area_sqm';
+            $params[':area_sqm'] = $v === null ? null : round((float) $v, 4);
+        }
+
+        if (array_key_exists('status', $body)) {
+            $this->assertStatus((string) $body['status']);
+            $sets[] = 'status = :status';
+            $params[':status'] = (string) $body['status'];
+        }
+
+        foreach (['psgc_barangay', 'psgc_municipality', 'psgc_province'] as $psgc) {
+            if (array_key_exists($psgc, $body)) {
+                $sets[] = "{$psgc} = :{$psgc}";
+                $params[":{$psgc}"] = $this->validatePsgc($body[$psgc], $psgc);
+            }
+        }
+
+        if (array_key_exists('org_id', $body)) {
+            $sets[] = 'org_id = :org_id';
+            $params[':org_id'] = $body['org_id'] === null ? null : (int) $body['org_id'];
+        }
+        if (array_key_exists('source_document_id', $body)) {
+            $sets[] = 'source_document_id = :src_doc';
+            $params[':src_doc'] = $body['source_document_id'];
+        }
+
+        if (array_key_exists('geometry', $body)) {
+            $geom = $body['geometry'];
+            if ($geom === null) {
+                $sets[] = 'geom = NULL';
+            } else {
+                $this->assertGeoJsonObject($geom);
+                $geomJson = json_encode($geom);
+                $vStmt = $this->pdo->prepare("SELECT ST_IsValid(ST_GeomFromGeoJSON(:gj)) AS ok");
+                $vStmt->execute([':gj' => $geomJson]);
+                if (!(bool) $vStmt->fetchColumn()) {
+                    throw new ApiError('GEOMETRY_INVALID', 'geometry is not valid per ST_IsValid', 400);
+                }
+                $sets[] = 'geom = ST_Multi(ST_Transform(ST_GeomFromGeoJSON(:gj), 4326))';
+                $params[':gj'] = $geomJson;
+            }
+        }
+
+        if (empty($sets)) {
+            return Envelope::success($response, $this->getCurrentParcel($pid));
+        }
+
+        $sets[] = 'version = version + 1';
+        $sets[] = 'updated_by = :uid';
+        $sets[] = 'updated_at = CURRENT_TIMESTAMP';
+        $params[':uid'] = $uid;
+        $params[':pid'] = $pid;
+
+        // Capture true pre-change state BEFORE the UPDATE so summaries/audits
+        // reflect what actually changed (TASK-069).
+        $preChange = $this->getCurrentParcel($pid);
+
+        $sql = "UPDATE app.parcels SET " . implode(', ', $sets) . " WHERE id = :pid AND deleted_at IS NULL RETURNING version";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $newVersion = (int) $stmt->fetchColumn();
+
+        $updated = $this->getCurrentParcel($pid);
+
+        // Audit (TASK-057-style): pre-change snapshot + new state.
+        $reason = $body['change_reason'] ?? null;
+        $this->audit->writeFromSession('UPDATE', 'app.parcels', $pid, $preChange, $this->stripForAudit($updated), null, $reason);
+
+        // TASK-069: record a new version row; never rewrite history.
+        $summary = $this->summarizeChanges($preChange, $updated);
+        $this->writeVersion($pid, $newVersion, $this->snapshotForVersion($updated), $updated['status'], $updated['provenance'], $summary, $reason, $updated['geometry']);
+
+        return Envelope::success($response, $updated);
+    }
+
+    /**
+     * DELETE /parcels/{id}?reason=...  | body { reason, change_reason }
+     * Soft delete only: sets deleted_at, bumps version. Reason is mandatory.
+     */
+    public function delete(Request $request, Response $response, array $args): Response
+    {
+        $uid  = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+        $pid = $this->parseUuid($args, 'id');
+
+        $q = $request->getQueryParams();
+        $body = $request->getParsedBody();
+        $reason = trim((string) ($q['reason'] ?? ($body['reason'] ?? $body['change_reason'] ?? '')));
+        if ($reason === '') {
+            throw new ApiError('VALIDATION_FAILED', 'A delete reason is required', 400);
+        }
+
+        // lock + version
+        $lock = $this->pdo->prepare("SELECT id, version, parcel_code FROM app.parcels WHERE id = :pid AND deleted_at IS NULL FOR UPDATE");
+        $lock->execute([':pid' => $pid]);
+        $row = $lock->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+        $currentVersion = (int) $row['version'];
+
+        $ifMatch = $request->getHeaderLine('If-Match');
+        if ($ifMatch !== '') {
+            if ((int) $ifMatch !== $currentVersion) {
+                throw new ApiError('VERSION_CONFLICT', 'This parcel was modified by another user.', 409, ['current_version' => $currentVersion]);
+            }
+        }
+
+        $oldSnapshot = $this->buildPreChangeSnapshot($pid, $row['parcel_code'], $currentVersion);
+
+        $sql = "UPDATE app.parcels SET deleted_at = CURRENT_TIMESTAMP, version = version + 1, updated_by = :uid WHERE id = :pid AND deleted_at IS NULL RETURNING id";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':pid' => $pid, ':uid' => $uid]);
+        if ($stmt->fetchColumn() === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+
+        $this->audit->writeFromSession('DELETE', 'app.parcels', $pid, $oldSnapshot, null, null, $reason);
+
+        // TASK-069: record the tombstone as the final version row.
+        $final = $this->getCurrentParcel($pid);
+        $this->writeVersion($pid, (int) $final['version'], $this->snapshotForVersion($final), $final['status'], $final['provenance'], 'Parcel deleted', $reason, $final['geometry']);
+
+        return Envelope::success($response, ['id' => $pid, 'deleted' => true]);
+    }
+
+    /**
+     * GET /parcels/{id}/versions
+     * Paginated, newest-first index of version rows (append-only lineage).
+     */
+    public function versions(Request $request, Response $response, array $args): Response
+    {
+        $this->resolveUser($request);
+        $pid = $this->parseUuid($args, 'id');
+
+        $this->assertParcelKeyExists($pid);
+
+        $query = $request->getQueryParams();
+        $page  = max(1, (int) ($query['page'] ?? 1));
+        if ($page > 1000) {
+            $page = 1000;
+        }
+        $perPage = max(1, min(100, (int) ($query['per_page'] ?? 20)));
+        $offset  = ($page - 1) * $perPage;
+
+        $count = $this->pdo->prepare('SELECT COUNT(*) FROM audit.parcel_versions WHERE parcel_id = :pid');
+        $count->execute([':pid' => $pid]);
+        $total = (int) $count->fetchColumn();
+
+        $stmt = $this->pdo->prepare(
+            'SELECT id, version, status, geometry_source, change_summary, change_reason, changed_by, changed_at, '
+            . 'CASE WHEN geom IS NOT NULL THEN true ELSE false END AS has_geometry, request_id '
+            . 'FROM audit.parcel_versions WHERE parcel_id = :pid ORDER BY version DESC LIMIT :lim OFFSET :off'
+        );
+        $stmt->bindValue(':pid', $pid);
+        $stmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
+        $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $items = array_map(fn (array $r) => [
+            'id'              => (int) $r['id'],
+            'version'         => (int) $r['version'],
+            'status'          => $r['status'],
+            'provenance'      => $r['geometry_source'],
+            'change_summary'  => $r['change_summary'],
+            'change_reason'   => $r['change_reason'],
+            'changed_by'      => $r['changed_by'] === null ? null : (int) $r['changed_by'],
+            'changed_at'      => $r['changed_at'],
+            'has_geometry'    => (bool) $r['has_geometry'],
+            'request_id'      => $r['request_id'],
+        ], $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+        return Envelope::success($response, [
+            'data'       => $items,
+            'pagination' => ['page' => $page, 'per_page' => $perPage, 'total' => $total],
+        ]);
+    }
+
+    /**
+     * GET /parcels/{id}/versions/{v}
+     * Full historical version: snapshot + geometry.
+     */
+    public function version(Request $request, Response $response, array $args): Response
+    {
+        $this->resolveUser($request);
+        $pid        = $this->parseUuid($args, 'id');
+        $versionNum = (int) ($args['v'] ?? 0);
+        if ($versionNum < 1) {
+            throw new ApiError('VALIDATION_FAILED', 'Version must be a positive integer', 400);
+        }
+
+        $this->assertParcelKeyExists($pid);
+
+        $stmt = $this->pdo->prepare(
+            'SELECT id, version, snapshot, status, geometry_source, change_summary, change_reason, changed_by, '
+            . 'changed_at, ST_AsGeoJSON(geom) AS geometry, request_id '
+            . 'FROM audit.parcel_versions WHERE parcel_id = :pid AND version = :v'
+        );
+        $stmt->execute([':pid' => $pid, ':v' => $versionNum]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel version not found', 404);
+        }
+
+        $snapshot = json_decode($row['snapshot'], true);
+        $geometry = $row['geometry'];
+        if (is_string($geometry)) {
+            $decoded = json_decode($geometry, true);
+            $geometry = (is_array($decoded) && $decoded !== []) ? $decoded : null;
+        }
+
+        return Envelope::success($response, [
+            'id'             => (int) $row['id'],
+            'version'        => (int) $row['version'],
+            'parcel_id'      => $pid,
+            'snapshot'       => $snapshot,
+            'geometry'       => $geometry,
+            'status'         => $row['status'],
+            'provenance'     => $row['geometry_source'],
+            'change_summary' => $row['change_summary'],
+            'change_reason'  => $row['change_reason'],
+            'changed_by'     => $row['changed_by'] === null ? null : (int) $row['changed_by'],
+            'changed_at'     => $row['changed_at'],
+            'request_id'     => $row['request_id'],
+        ]);
+    }
+
+    /**
+     * POST /parcels/{id}/versions/{v}/restore
+     * Restores a historical snapshot as a NEW version (history is never rewritten).
+     * Requires If-Match against the current parcel version.
+     */
+    public function restore(Request $request, Response $response, array $args): Response
+    {
+        $uid = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+        $pid        = $this->parseUuid($args, 'id');
+        $versionNum = (int) ($args['v'] ?? 0);
+        if ($versionNum < 1) {
+            throw new ApiError('VALIDATION_FAILED', 'Version must be a positive integer', 400);
+        }
+
+        // Current parcel must exist and not be deleted.
+        $lock = $this->pdo->prepare('SELECT id, version, parcel_code FROM app.parcels WHERE id = :pid AND deleted_at IS NULL FOR UPDATE');
+        $lock->execute([':pid' => $pid]);
+        $current = $lock->fetch(PDO::FETCH_ASSOC);
+        if ($current === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+        $currentVersion = (int) $current['version'];
+
+        $ifMatch = $request->getHeaderLine('If-Match');
+        if ($ifMatch === '') {
+            throw new ApiError('PRECONDITION_REQUIRED', 'If-Match header is required for restore', 428);
+        }
+        if ((int) $ifMatch !== $currentVersion) {
+            throw new ApiError('VERSION_CONFLICT', 'This parcel was modified by another user.', 409, ['current_version' => $currentVersion]);
+        }
+
+        // Load the historical version.
+        $stmt = $this->pdo->prepare(
+            'SELECT id, version, snapshot, status, geometry_source, ST_AsGeoJSON(geom) AS geometry '
+            . 'FROM audit.parcel_versions WHERE parcel_id = :pid AND version = :v'
+        );
+        $stmt->execute([':pid' => $pid, ':v' => $versionNum]);
+        $hist = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($hist === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel version not found', 404);
+        }
+        $snapshot = json_decode($hist['snapshot'], true);
+        if (!is_array($snapshot)) {
+            throw new ApiError('INTERNAL', 'Stored version snapshot is corrupt', 500);
+        }
+
+        // Apply the restored key attributes onto the live row, bump version.
+        $sets = ['version = version + 1', 'updated_by = :uid', 'updated_at = CURRENT_TIMESTAMP'];
+        $params = [':pid' => $pid, ':uid' => $uid];
+
+        $map = [
+            'lot_number' => 'lot_number', 'block_number' => 'block_number', 'title_number_ref' => 'title_number_ref',
+            'tax_declaration_no' => 'tax_declaration_no', 'source_area_sqm' => 'source_area_sqm',
+            'source_area_unit' => 'source_area_unit', 'psgc_barangay' => 'psgc_barangay',
+            'psgc_municipality' => 'psgc_municipality', 'psgc_province' => 'psgc_province',
+            'location_description' => 'location_description', 'status' => 'status',
+            'provenance' => 'geometry_source', 'remarks' => 'remarks', 'org_id' => 'org_id',
+            'source_document_id' => 'source_document_id',
+        ];
+        foreach ($map as $snapKey => $col) {
+            if (array_key_exists($snapKey, $snapshot)) {
+                $val = $snapshot[$snapKey];
+                if ($col === 'status') {
+                    $this->assertStatus((string) $val);
+                }
+                if ($col === 'geometry_source') {
+                    $this->assertGeometrySource((string) $val);
+                }
+                if (in_array($col, ['org_id'], true)) {
+                    $sets[] = "{$col} = :{$col}";
+                    $params[":{$col}"] = $val === null ? null : (int) $val;
+                    continue;
+                }
+                $sets[] = "{$col} = :{$col}";
+                $params[":{$col}"] = $val;
+            }
+        }
+
+        $histGeom = $hist['geometry'];
+        if (is_string($histGeom)) {
+            $decoded = json_decode($histGeom, true);
+            $histGeom = (is_array($decoded) && $decoded !== []) ? $decoded : null;
+        }
+        if ($histGeom !== null) {
+            $sets[] = 'geom = ST_Multi(ST_Transform(ST_GeomFromGeoJSON(:gj), 4326))';
+            $params[':gj'] = json_encode($histGeom);
+        } else {
+            $sets[] = 'geom = NULL';
+        }
+
+        $sql = 'UPDATE app.parcels SET ' . implode(', ', $sets) . ' WHERE id = :pid AND deleted_at IS NULL RETURNING version';
+        $upd = $this->pdo->prepare($sql);
+        $upd->execute($params);
+        $newVersion = (int) $upd->fetchColumn();
+
+        $restored = $this->getCurrentParcel($pid);
+        $reason = $this->readChangeReason($request);
+        $this->audit->writeFromSession('UPDATE', 'app.parcels', $pid, null, $this->stripForAudit($restored), null, $reason ?: "Restored from version {$versionNum}");
+
+        $summary = "Restored from version {$versionNum}";
+        $this->writeVersion($pid, $newVersion, $this->snapshotForVersion($restored), $restored['status'], $restored['provenance'], $summary, $reason, $restored['geometry']);
+
+        return Envelope::success($response, $restored);
+    }
+
+    // ── helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * Snapshot used for audit.parcel_versions: all editable parcel state except
+     * the surrogate/audit columns and the geometry (which is stored separately
+     * in the version's geom column).
+     */
+    private function snapshotForVersion(array $parcel): array
+    {
+        $snap = $parcel;
+        unset($snap['id'], $snap['version'], $snap['created_by'], $snap['created_at'], $snap['updated_by'], $snap['updated_at'], $snap['geometry'], $snap['computed_area_sqm'], $snap['verification_status']);
+        return $snap;
+    }
+
+    private function sessionRequestId(): ?string
+    {
+        $row = $this->pdo->query("SELECT NULLIF(current_setting('app.request_id', true), '') AS rid")->fetch();
+        return isset($row['rid']) && trim((string) $row['rid']) !== '' ? (string) $row['rid'] : null;
+    }
+
+    /**
+     * Append a row to audit.parcel_versions. Version rows are append-only:
+     * monotonically increasing per parcel, never renumbered, never deleted.
+     */
+    private function writeVersion(string $pid, int $version, array $snapshot, string $status, string $geometrySource, ?string $summary, ?string $reason, array|string|null $geometry): void
+    {
+        $geomSql = 'NULL';
+        $params = [
+            ':pid'    => $pid,
+            ':ver'    => $version,
+            ':snap'   => json_encode($snapshot, JSON_THROW_ON_ERROR),
+            ':status' => $status,
+            ':gsrc'   => $geometrySource,
+            ':summ'   => $summary,
+            ':reason' => $reason,
+            ':rid'    => $this->sessionRequestId(),
+        ];
+
+        if ($geometry !== null) {
+            $geomSql = 'ST_Multi(ST_GeomFromGeoJSON(:gj))';
+            $params[':gj'] = is_array($geometry) ? json_encode($geometry) : $geometry;
+        }
+
+        $sql = "INSERT INTO audit.parcel_versions "
+            . "(parcel_id, version, snapshot, status, geometry_source, change_summary, change_reason, changed_by, request_id, geom) "
+            . "VALUES (:pid, :ver, :snap::jsonb, :status, :gsrc, :summ, :reason, NULLIF(current_setting('app.user_id', true), '')::bigint, :rid, {$geomSql})";
+        $this->pdo->prepare($sql)->execute($params);
+    }
+
+    /** Build a compact human-readable change summary from two snapshots. */
+    private function summarizeChanges(array $old, array $new): string
+    {
+        $fields = ['status', 'provenance', 'lot_number', 'block_number', 'title_number_ref', 'tax_declaration_no', 'source_area_sqm', 'psgc_barangay', 'psgc_municipality', 'psgc_province', 'location_description'];
+        $parts = [];
+
+        $oldGeom = json_encode($old['geometry'] ?? null);
+        $newGeom = json_encode($new['geometry'] ?? null);
+        if ($oldGeom !== $newGeom) {
+            $parts[] = $new['geometry'] === null ? 'geometry removed' : ($old['geometry'] === null ? 'geometry added' : 'geometry updated');
+        }
+
+        foreach ($fields as $f) {
+            $ov = $old[$f] ?? null;
+            $nv = $new[$f] ?? null;
+            if ($ov !== $nv) {
+                $parts[] = $f . ': ' . $this->shortenValue($ov) . ' -> ' . $this->shortenValue($nv);
+            }
+        }
+
+        return implode('; ', $parts);
+    }
+
+    private function shortenValue(mixed $v): string
+    {
+        if ($v === null) {
+            return 'null';
+        }
+        $s = is_scalar($v) ? (string) $v : json_encode($v);
+        return strlen($s) > 40 ? substr($s, 0, 37) . '...' : $s;
+    }
+
+    private function parcelSelect(): string
+    {
+        return "p.id, p.parcel_code, p.lot_number, p.block_number, p.title_number_ref, p.tax_declaration_no, "
+            . "p.source_area_sqm, p.source_area_unit, p.computed_area_sqm, p.psgc_barangay, p.psgc_municipality, "
+            . "p.psgc_province, p.location_description, p.status, p.geometry_source, p.verification_status, "
+            . "p.org_id, p.remarks, p.version, p.created_by, p.created_at, p.updated_by, p.updated_at, "
+            . "ST_AsGeoJSON(p.geom)::json AS geometry";
+    }
+
+    private function getCurrentParcel(string $pid): array
+    {
+        $select = $this->parcelSelect();
+        $stmt = $this->pdo->prepare("SELECT {$select} FROM app.parcels p WHERE p.id = :pid");
+        $stmt->execute([':pid' => $pid]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+        return $this->formatParcel($row);
+    }
+
+    private function buildPreChangeSnapshot(string $pid, string $parcelCode, int $currentVersion): array
+    {
+        $select = $this->parcelSelect();
+        $stmt = $this->pdo->prepare("SELECT {$select} FROM app.parcels p WHERE p.id = :pid");
+        $stmt->execute([':pid' => $pid]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            return ['id' => $pid, 'parcel_code' => $parcelCode, 'version' => $currentVersion];
+        }
+        $snap = $this->formatParcel($row);
+        $snap['version'] = $currentVersion;
+        return $snap;
+    }
+
+    private function formatParcel(array $r): array
+    {
+        $geometry = $r['geometry'] ?? null;
+        if (is_string($geometry)) {
+            $decoded = json_decode($geometry, true);
+            $geometry = (is_array($decoded) && $decoded !== []) ? $decoded : null;
+        }
+        return [
+            'id'                 => $r['id'],
+            'parcel_code'        => $r['parcel_code'],
+            'lot_number'         => $r['lot_number'],
+            'block_number'       => $r['block_number'],
+            'title_number_ref'   => $r['title_number_ref'],
+            'tax_declaration_no' => $r['tax_declaration_no'],
+            'source_area_sqm'    => $r['source_area_sqm'] !== null ? (float) $r['source_area_sqm'] : null,
+            'source_area_unit'   => $r['source_area_unit'],
+            'computed_area_sqm'  => $r['computed_area_sqm'] !== null ? (float) $r['computed_area_sqm'] : null,
+            'psgc_barangay'      => $r['psgc_barangay'],
+            'psgc_municipality'  => $r['psgc_municipality'],
+            'psgc_province'      => $r['psgc_province'],
+            'location_description' => $r['location_description'],
+            'status'             => $r['status'],
+            'provenance'         => $r['geometry_source'],
+            'geometry_source'    => $r['geometry_source'],
+            'verification_status' => $r['verification_status'],
+            'org_id'             => $r['org_id'] !== null ? (int) $r['org_id'] : null,
+            'remarks'            => $r['remarks'],
+            'version'            => (int) $r['version'],
+            'created_by'         => $r['created_by'] !== null ? (int) $r['created_by'] : null,
+            'created_at'         => $r['created_at'],
+            'updated_by'         => $r['updated_by'] !== null ? (int) $r['updated_by'] : null,
+            'updated_at'         => $r['updated_at'],
+            'geometry'           => $geometry,
+        ];
+    }
+
+    private function stripForAudit(array $parcel): array
+    {
+        unset($parcel['geometry'], $parcel['id'], $parcel['created_by'], $parcel['created_at'], $parcel['updated_by'], $parcel['updated_at']);
+        return $parcel;
+    }
+
+    private function assertParcelKeyExists(string $pid): void
+    {
+        $stmt = $this->pdo->prepare('SELECT 1 FROM app.parcels WHERE id = :pid');
+        $stmt->execute([':pid' => $pid]);
+        if ($stmt->fetchColumn() === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+    }
+
+    private function readChangeReason(Request $request): ?string
+    {
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            return null;
+        }
+        $reason = trim((string) ($body['change_reason'] ?? ($body['reason'] ?? '')));
+        return $reason === '' ? null : $reason;
+    }
+
+    private function assertStatus(string $status): void
+    {
+        $validStatuses = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'RETURNED', 'VERIFIED', 'APPROVED', 'PUBLISHED', 'ARCHIVED', 'SUPERSEDED'];
+        if (!in_array($status, $validStatuses, true)) {
+            throw new ApiError('VALIDATION_FAILED', 'Invalid status value', 400);
+        }
+    }
+
+    private function assertGeometrySource(string $source): void
+    {
+        $valid = ['SURVEY_COORDINATES', 'COMPUTED_FROM_TECHNICAL_DESCRIPTION', 'TRANSFORMED_FROM_HISTORICAL_SURVEY', 'IMPORTED_GIS', 'CAD_IMPORT', 'DIGITIZED_FROM_IMAGERY', 'MANUAL_DRAWING', 'APPROXIMATE'];
+        if (!in_array($source, $valid, true)) {
+            throw new ApiError('VALIDATION_FAILED', 'Invalid provenance (geometry_source) value', 400);
+        }
+    }
+
+    private function assertGeoJsonObject(mixed $geom): void
+    {
+        if (!is_array($geom) || !isset($geom['type']) || !is_string($geom['type'])) {
+            throw new ApiError('VALIDATION_FAILED', 'geometry must be a GeoJSON object', 400);
+        }
+        $allowedTypes = ['Polygon', 'MultiPolygon'];
+        if (!in_array($geom['type'], $allowedTypes, true)) {
+            throw new ApiError('VALIDATION_FAILED', 'Unsupported geometry type: ' . $geom['type'], 400);
+        }
+    }
+}

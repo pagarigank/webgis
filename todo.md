@@ -541,16 +541,18 @@ Verification: 2026-09-21 — `FeatureGridPage.tsx` patched (export dropdown [CSV
 ## PHASE 8 — Parcels core
 
 **TASK-068 — Parcel CRUD API**
-Dep: 032, 019 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 032, 019 · Files: `backend/src/Parcels/` · Status: DONE
 Do: create/read/update/soft-delete with PSGC location, source area, provenance, status; `If-Match`; scope enforcement.
 AC: a parcel can exist without geometry; provenance is mandatory; delete requires a reason and never removes the row.
 Test: Api/ParcelCrudTest.
+Verification: 2026-09-22 - `backend/src/Parcels/Http/ParcelController.php` (NEW: list/get/create/update/delete; PSGC 10-12 digit validation, provenance mandatory + enum checked against `ck_parcel_geom_src`, status enum checked, geometry optional and wrapped `ST_Multi(ST_Transform(...4326))` to fit `geom` typmod MultiPolygon; If-Match 428/409 with `current_version` details matching GisFeatureController; DELETE requires reason and only sets `deleted_at`, never removes row; audit via `AuditWriter::writeFromSession` with `PiiPolicy` redaction; unique `parcel_code` 23505 -> 409, FK 23503 -> 400). `backend/config/routes.php` (NEW /parcels group: GET list, GET {id}, POST, PATCH {id}, DELETE {id}, each `$parcelAuthed('parcel.*')` + AuthenticateMiddleware; `parcel.view/create/update/delete` perms already seeded in migration 15 and granted to SYS_ADMIN). `backend/tests/Api/ParcelCrudTest.php` (NEW, 14 tests/56 assertions): create w/o geometry, provenance mandatory, unknown provenance 400, duplicate parcel_code 409, get 200/404, list status filter + keyword search + pagination, If-Match 428/409, update bumps version, polygon geometry added, delete reason 400, soft-delete retains row, unknown-id delete 404. Full suite: 192 tests, only pre-existing failures remain (PsgcTest/RlsTest/SeederTest depend on full PSGC seed; `ref.psgc_areas` has 14 rows only — restored later when PsgcSeeder full load is run).
 
 **TASK-069 — Parcel versioning**
-Dep: 068, 025 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 068, 025 · Files: `backend/src/Parcels/` · Status: DONE
 Do: version row on every geometry, status, TD, or key-attribute change, with change summary and reason.
 AC: versions are monotonic, never renumbered, never deleted; restore creates a new version.
 Test: Api/ParcelVersionTest.
+Verification: 2026-09-22 - `ParcelController.php` now records a row into (existing) `audit.parcel_versions` on create (v1 baseline), every update (pre-change diff summed via `summarizeChanges()`), soft-delete (tombstone), and restore. New endpoints: GET `/parcels/{id}/versions` (paginated lineage, newest-first, `parcel.lineage.view`), GET `/parcels/{id}/versions/{v}` (full snapshot + geometry, `parcel.lineage.view`), POST `/parcels/{id}/versions/{v}/restore` (requires If-Match 428/409, applies historical snapshot as a NEW version — history is append-only, `parcel.version.restore`). `writeVersion()` persists snapshot jsonb, status, geometry_source, change_summary, change_reason, changed_by (from `app.user_id`), request_id, and geom (ST_AsGeoJSON round-trip); unique(parcel_id,version) enforces "never renumbered, never deleted". Fixed pre-existing audit bug: `update()` captured post-`UPDATE` snapshot (invisible diffs) — now snapshots pre-change state. Routes registered in `routes.php`. `Api/ParcelVersionTest` (14 tests/51 assertions) green; full suite 206 tests unchanged in the 2 RlsTest errors + 2 PsgcTest/SeederTest failures (PSGC seed, pre-existing).
 
 **TASK-070 — Parcel list, search, and map integration**
 Dep: 068, 054 · Files: backend + `frontend/src/features/parcels/` · Status: TODO
