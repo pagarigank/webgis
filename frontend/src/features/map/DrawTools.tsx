@@ -2,8 +2,11 @@
 // Arms exactly one tool at a time, exposes undo/redo, save-to-layer, and
 // reports client geometry-validation errors from DrawManager.
 import React, { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useMapContext } from './MapContext';
 import type { DrawMode } from './MapContext';
+import { layerApi } from '../layers/api/layerApi';
+import type { ActiveLayer } from './Managers';
 
 const LAYER_ID_STORAGE_KEY = 'webgis.draw.layer_id';
 
@@ -15,13 +18,43 @@ const TOOLS: { mode: DrawMode; label: string }[] = [
 
 export function DrawTools() {
     const ctx = useMapContext();
-    const { drawMode, setDrawMode, drawManager } = ctx;
+    const { drawMode, setDrawMode, drawManager, layerManager } = ctx;
     const [layerId, setLayerId] = useState<string>(() =>
         localStorage.getItem(LAYER_ID_STORAGE_KEY) ?? '',
     );
+    // Loaded/displayed layers from the LayerManager — the "target" is wired to
+    // these (they are what the user actually has on the map).
+    const [displayLayers, setDisplayLayers] = useState<ActiveLayer[]>([]);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
     const [undoRedoTick, setUndoRedoTick] = useState(0);
+
+    useEffect(() => {
+        if (!layerManager) return;
+        setDisplayLayers(layerManager.getLayers());
+        return layerManager.subscribe((layers) => {
+            setDisplayLayers([...layers]);
+        });
+    }, [layerManager]);
+
+    // All non-hidden layers (same set as the hamburger switcher) so the user can
+    // also target a layer not currently on the map.
+    const { data: allLayers = [] } = useQuery({
+        queryKey: ['layers'],
+        queryFn: layerApi.getAll,
+    });
+    const targetOptions = (allLayers as any[]).filter((l) => !l.is_hidden);
+
+    // Auto-default: the target is wired to the currently displayed layer. As
+    // soon as something is visible on the map, point at the first visible
+    // loaded layer — unless the user explicitly picked a target this session.
+    const touchedRef = React.useRef(false);
+    useEffect(() => {
+        if (touchedRef.current) return;
+        const visible = displayLayers.filter((l) => l.visible);
+        if (visible.length === 0) return;
+        setLayerId(String(visible[0].id));
+    }, [displayLayers]);
 
     useEffect(() => {
         localStorage.setItem(LAYER_ID_STORAGE_KEY, layerId);
@@ -140,13 +173,53 @@ export function DrawTools() {
                     ↷ Redo
                 </button>
             </div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>Target layer ID:</span>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>Target layer:</span>
+                <select
+                    data-testid="draw-layer-target"
+                    value={targetOptions.some((l) => String(l.id) === layerId) ? layerId : ''}
+                    onChange={(e) => {
+                        touchedRef.current = true;
+                        setLayerId(e.target.value);
+                    }}
+                    style={{
+                        maxWidth: 220,
+                        padding: '4px 6px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 4,
+                        fontSize: 13,
+                        background: '#fff',
+                    }}
+                >
+                    <option value="">
+                        {displayLayers.filter((l) => l.visible).length > 0
+                            ? '— manual/other —'
+                            : '— none on map —'}
+                    </option>
+                    {displayLayers.filter((l) => l.visible).map((l) => (
+                        <option key={l.id} value={String(l.id)}>
+                            {l.name} (on map)
+                        </option>
+                    ))}
+                    {targetOptions
+                        .filter((l) => !displayLayers.some((dl) => String(dl.id) === String(l.id)))
+                        .map((l) => (
+                            <option key={l.id} value={String(l.id)}>
+                                {l.name} · {l.code}
+                            </option>
+                        ))}
+                </select>
+                <span style={{ fontSize: 12, color: '#6b7280' }} title="Or type a layer ID directly">
+                    ID:
+                </span>
                 <input
                     data-testid="draw-layer-id"
                     type="number"
                     value={layerId}
-                    onChange={(e) => setLayerId(e.target.value)}
+                    onChange={(e) => {
+                        touchedRef.current = true;
+                        setLayerId(e.target.value);
+                    }}
                     placeholder="e.g. 418"
                     style={{ width: 80, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }}
                 />

@@ -22,6 +22,66 @@ export interface GeoJsonLayerOptions {
     onUpdate?: (geojson: GeoJSON.FeatureCollection) => void;
 }
 
+// Colors match the MapboxDraw build-time styles so a drawn feature that is
+// saved and then rendered as part of its layer looks identical to how it
+// looked while it was being built (polygon fill + stroke, line, point).
+const DRAW_COLOR = '#ff5500';
+
+/**
+ * Map a layer's declared geometry type to the same draw-style colors. Used so
+ * the render style is deterministic even when a bbox fetch returns no features.
+ */
+export function styleFromGeometryType(geometryType?: string): { type: string; paint: Record<string, unknown>; layout: Record<string, unknown> } {
+    const type = (geometryType || '').toUpperCase();
+    const isPolygon = type.includes('POLYGON');
+    const isLine = type.includes('LINE');
+    const isPoint = type.includes('POINT');
+    if (isPolygon) {
+        return { type: 'fill', paint: { 'fill-color': DRAW_COLOR, 'fill-opacity': 0.3 }, layout: {} };
+    }
+    if (isLine) {
+        return { type: 'line', paint: { 'line-color': DRAW_COLOR, 'line-width': 2 }, layout: {} };
+    }
+    if (isPoint) {
+        return { type: 'circle', paint: { 'circle-radius': 4, 'circle-color': DRAW_COLOR }, layout: {} };
+    }
+    return { type: 'fill', paint: {}, layout: {} };
+}
+
+/**
+ * Derive a MapLibre layer style from the GeoJSON geometries actually present.
+ * A single MapLibre layer can only be one type (fill/line/circle); pick the
+ * dominant geometry, preferring the "heaviest" render (polygon > line > point).
+ */
+function styleFromGeojson(
+    geojson: GeoJSON.FeatureCollection | GeoJSON.Feature | null,
+): { type: string; paint: Record<string, unknown>; layout: Record<string, unknown> } {
+    const features =
+        geojson && geojson.type === 'FeatureCollection'
+            ? (geojson as GeoJSON.FeatureCollection).features
+            : geojson
+              ? [(geojson as GeoJSON.Feature)]
+              : [];
+    const types = new Set<string>();
+    for (const f of features) {
+        if (f && f.geometry && f.geometry.type) types.add(f.geometry.type);
+    }
+    const hasPolygon = types.has('Polygon') || types.has('MultiPolygon');
+    const hasLine = types.has('LineString') || types.has('MultiLineString');
+    const hasPoint = types.has('Point') || types.has('MultiPoint');
+
+    if (hasPolygon) {
+        return { type: 'fill', paint: { 'fill-color': DRAW_COLOR, 'fill-opacity': 0.3 }, layout: {} };
+    }
+    if (hasLine) {
+        return { type: 'line', paint: { 'line-color': DRAW_COLOR, 'line-width': 2 }, layout: {} };
+    }
+    if (hasPoint) {
+        return { type: 'circle', paint: { 'circle-radius': 4, 'circle-color': DRAW_COLOR }, layout: {} };
+    }
+    return { type: 'fill', paint: {}, layout: {} };
+}
+
 /**
  * LayerManager handles GeoJSON and MVT layers on the MapLibre map.
  * Supports dynamic source switching between GeoJSON and MVT tiles per layer.
@@ -57,6 +117,10 @@ export class LayerManager {
         const { id, name, geojson, style, extent } = options;
         const sourceId = `source-${id}`;
         const layerId = `${id}-layer`;
+        // No explicit style → derive one from the geometries so served/persisted
+        // features render with the same colors as the draw tools (not MapLibre's
+        // default black fill).
+        const resolvedStyle = style ?? styleFromGeojson(geojson);
 
         if (this.map.getSource(sourceId)) {
             // Update existing source data
@@ -70,14 +134,25 @@ export class LayerManager {
 
             this.map.addLayer({
                 id: layerId,
-                type: style?.type || 'fill',
+                type: resolvedStyle?.type || 'fill',
                 source: sourceId,
-                paint: style?.paint || {},
-                layout: style?.layout || {},
+                paint: resolvedStyle?.paint || {},
+                layout: resolvedStyle?.layout || {},
             });
 
+            // Polygon fills get a matching stroke outline so the persisted
+            // feature looks exactly like a drawn polygon (fill + border).
+            if (resolvedStyle?.type === 'fill' && !this.map.getLayer(`${layerId}-outline`)) {
+                this.map.addLayer({
+                    id: `${layerId}-outline`,
+                    type: 'line',
+                    source: sourceId,
+                    paint: { 'line-color': DRAW_COLOR, 'line-width': 2 },
+                });
+            }
+
             // Attach extent to layer metadata for zoom-to
-            this.layers.unshift({ id, name, visible: true, opacity: 1, extent, style });
+            this.layers.unshift({ id, name, visible: true, opacity: 1, extent, style: resolvedStyle });
             this.notify();
         }
 
@@ -93,6 +168,9 @@ export class LayerManager {
         if (this.map.getLayer(layerId)) {
             this.map.removeLayer(layerId);
         }
+        if (this.map.getLayer(`${layerId}-outline`)) {
+            this.map.removeLayer(`${layerId}-outline`);
+        }
         if (this.map.getSource(sourceId)) {
             this.map.removeSource(sourceId);
         }
@@ -104,6 +182,9 @@ export class LayerManager {
         const layerId = `${id}-layer`;
         if (this.map.getLayer(layerId)) {
             this.map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+            if (this.map.getLayer(`${layerId}-outline`)) {
+                this.map.setLayoutProperty(`${layerId}-outline`, 'visibility', visible ? 'visible' : 'none');
+            }
             const layer = this.layers.find(l => l.id === id);
             if (layer) {
                 layer.visible = visible;
@@ -135,6 +216,10 @@ export class LayerManager {
             const layerId = `${this.layers[i].id}-layer`;
             if (this.map.getLayer(layerId)) {
                 this.map.moveLayer(layerId);
+            }
+            if (this.map.getLayer(`${layerId}-outline`)) {
+                // Keep the stroke outline directly above its fill.
+                this.map.moveLayer(`${layerId}-outline`);
             }
         }
         this.notify();

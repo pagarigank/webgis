@@ -40,6 +40,18 @@ export function psql(sql: string): string {
     ).trim();
 }
 
+/**
+ * Reset the map-facing layer fixtures to a deterministic baseline so spec
+ * assertions do not depend on ambient DB drift (e.g. admin-hid layers).
+ * - sample layers must be visible in the hamburger (is_hidden = false)
+ * - every role needs can_view so bbox GeoJSON loads (permission middleware)
+ */
+export function seedMapLayers(): void {
+    // NOTE: keep this ALL on ONE line. execSync on win32 (cmd.exe) mangles
+    // multi-line arguments to `psql -c "..."`, silently dropping statements.
+    psql(`UPDATE app.gis_layers SET is_hidden = false WHERE code IN ('SAMPLE_PARCEL_POLYGON','E2E_LINE_LAYER','E2E_DRAW_TEST'); INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve) SELECT l.id, r.id, true, true, true, true, true FROM app.gis_layers l CROSS JOIN app.roles r WHERE l.code IN ('SAMPLE_PARCEL_POLYGON','E2E_LINE_LAYER','E2E_DRAW_TEST') AND r.code IN ('SYS_ADMIN','app_rw','app_ro','DATA_ENCODER','GIS_SPECIALIST','SURVEYOR') ON CONFLICT (layer_id, role_id) DO UPDATE SET can_view = true; INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve) SELECT 4, r.id, true, r.code = 'SYS_ADMIN', r.code = 'SYS_ADMIN', r.code = 'SYS_ADMIN', r.code = 'SYS_ADMIN' FROM app.roles r WHERE r.code IN ('SYS_ADMIN','app_rw','app_ro','DATA_ENCODER','GIS_SPECIALIST','SURVEYOR') ON CONFLICT (layer_id, role_id) DO UPDATE SET can_view = true;`);
+}
+
 export const test = base.extend<{ resetAuthRateLimit: void }>({
     /**
      * Every test logs in through the real form (and the /login mount triggers a

@@ -1,7 +1,8 @@
 // @ts-nocheck
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useMapContext } from './MapContext';
 import { spatialApi } from './spatialApi';
+import type { ActiveLayer } from './Managers';
 import { IdentifyPopup } from './IdentifyPopup';
 import * as maplibregl from 'maplibre-gl';
 import type { MeasureDistanceResult, MeasureAreaResult } from './spatialApi';
@@ -169,7 +170,7 @@ const btnStyle: React.CSSProperties = {
 };
 
 export const IdentifyTool: React.FC = () => {
-    const map = useMapContext().map;
+    const { map, layerManager } = useMapContext();
     const [popup, setPopup] = useState<{
         feature: any;
         layerName: string | null;
@@ -179,6 +180,24 @@ export const IdentifyTool: React.FC = () => {
     } | null>(null);
     const [layerId, setLayerId] = useState<string>('');
     const [loading, setLoading] = useState(false);
+    const [displayLayers, setDisplayLayers] = useState<ActiveLayer[]>([]);
+    const touchedRef = useRef(false);
+
+    useEffect(() => {
+        if (!layerManager) return;
+        setDisplayLayers(layerManager.getLayers());
+        return layerManager.subscribe((layers) => {
+            setDisplayLayers([...layers]);
+        });
+    }, [layerManager]);
+
+    // Wire identify to the currently displayed layer, like the draw target.
+    useEffect(() => {
+        if (touchedRef.current) return;
+        const visible = displayLayers.filter((l) => l.visible);
+        if (visible.length === 0) return;
+        setLayerId(String(visible[0].id));
+    }, [displayLayers]);
 
     const handleIdentify = useCallback(
         (e: maplibregl.MapMouseEvent) => {
@@ -221,12 +240,42 @@ export const IdentifyTool: React.FC = () => {
 
     return (
         <div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>Layer ID:</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>Layer:</span>
+                <select
+                    style={{
+                        maxWidth: 200,
+                        padding: '4px 6px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 4,
+                        fontSize: 13,
+                        background: '#fff',
+                    }}
+                    value={displayLayers.some((l) => String(l.id) === layerId) ? layerId : ''}
+                    onChange={(e) => {
+                        touchedRef.current = true;
+                        setLayerId(e.target.value);
+                    }}
+                >
+                    <option value="">
+                        {displayLayers.filter((l) => l.visible).length > 0
+                            ? '— manual/other —'
+                            : '— none on map —'}
+                    </option>
+                    {displayLayers.filter((l) => l.visible).map((l) => (
+                        <option key={l.id} value={String(l.id)}>
+                            {l.name} (on map)
+                        </option>
+                    ))}
+                </select>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>ID:</span>
                 <input
                     type="number"
                     value={layerId}
-                    onChange={(e) => setLayerId(e.target.value)}
+                    onChange={(e) => {
+                        touchedRef.current = true;
+                        setLayerId(e.target.value);
+                    }}
                     placeholder="e.g. 1"
                     style={{
                         width: 80,
@@ -264,9 +313,10 @@ export const IdentifyTool: React.FC = () => {
                     onClose={closePopup}
                 />
             )}
-            {!layerId && (
+            {!layerId && displayLayers.filter((l) => l.visible).length === 0 && (
                 <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
-                    Enter a layer ID and click the map (or use "Identify at center") to see feature details.
+                    Load a layer from the ☰ switcher to identify its features — or type a layer ID
+                    and click the map (or use "Identify at center").
                 </div>
             )}
         </div>
@@ -276,6 +326,13 @@ export const IdentifyTool: React.FC = () => {
 export const ZoomToTool: React.FC = () => {
     const map = useMapContext().map;
     const layerManager = useMapContext().layerManager;
+    const [layers, setLayers] = useState<Array<{ id: string; name: string; visible: boolean; extent?: [number, number, number, number] }>>([]);
+
+    useEffect(() => {
+        if (!layerManager) return;
+        setLayers(layerManager.getLayers());
+        return layerManager.subscribe((next) => setLayers([...next]));
+    }, [layerManager]);
 
     if (!map) return null;
 
@@ -300,12 +357,12 @@ export const ZoomToTool: React.FC = () => {
                         <div style={{ width: '100%', margin: '8px 0', fontSize: 12, color: '#6b7280' }}>
                             Or zoom to a loaded layer:
                         </div>
-                        {layerManager.getLayers().length === 0 ? (
+                        {layers.length === 0 ? (
                             <div style={{ fontSize: 12, color: '#9ca3af' }}>
-                                No layers loaded. Load a layer to see zoom-to buttons.
+                                No layers loaded. Use the ☰ switcher to load a layer here.
                             </div>
                         ) : (
-                            layerManager.getLayers().map((layer) => (
+                            layers.map((layer) => (
                                 <button
                                     key={layer.id}
                                     onClick={() => {

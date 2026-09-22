@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMapContext } from '../map/MapContext';
 import { layerApi } from './api/layerApi';
 import { extentFromGeojson } from '../../lib/geometry';
+import { styleFromGeometryType } from '../map/Managers';
 import type { Layer } from './types';
 
 /**
@@ -65,6 +66,10 @@ export function LayerSwitcher() {
                 id: sourceLayerId,
                 name,
                 geojson,
+                // Deterministic style from the layer's geometry type so a saved
+                // polygon/line/point renders with the draw colors (never the
+                // default black fill) even when an empty bbox returns no features.
+                style: styleFromGeometryType((layer as { geometry_type?: string }).geometry_type),
                 extent: extentFromGeojson(geojson),
             });
             registerViewportLayer(layer.id, sourceLayerId);

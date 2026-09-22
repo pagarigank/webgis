@@ -1,4 +1,4 @@
-import { test, expect, login } from '../fixtures';
+import { test, expect, login, seedMapLayers } from '../fixtures';
 
 /**
  * PHASE 5 E2E: map shell, layer panel, CRS readout, tools.
@@ -7,6 +7,7 @@ import { test, expect, login } from '../fixtures';
 
 test.describe('Phase 5 — map rendering', () => {
     test.beforeEach(async ({ page }) => {
+        seedMapLayers(); // sample layers visible + viewable regardless of ambient DB state
         await login(page);
     });
 
