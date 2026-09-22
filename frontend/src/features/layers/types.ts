@@ -48,6 +48,7 @@ export interface Layer {
     name?: string;
     type?: string;
     description?: string;
+    is_hidden?: boolean;
     style?: LayerStyle;
     fields?: LayerField[];
     permissions?: LayerPermission[];

@@ -52,17 +52,18 @@ class GisLayerController
         $srid = isset($data['srid']) ? (int) $data['srid'] : null;
         $source = $data['source'] ?? null;
         $renderMode = $data['render_mode'] ?? null;
+        $isHidden = filter_var($data['is_hidden'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
         if (empty($code) || empty($name)) {
             throw new ApiError('VALIDATION_FAILED', 'Code and name are required', 400);
         }
 
         $stmt = $this->pdo->prepare("
-            INSERT INTO app.gis_layers (code, name, geometry_type, description, group_path, srid, source, render_mode)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO app.gis_layers (code, name, geometry_type, description, group_path, srid, source, render_mode, is_hidden)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
         ");
-        $stmt->execute([$code, $name, $geometryType, $description, $groupPath, $srid, $source, $renderMode]);
+        $stmt->execute([$code, $name, $geometryType, $description, $groupPath, $srid, $source, $renderMode, $isHidden ? 1 : 0]);
         $id = $stmt->fetchColumn();
 
         return Envelope::success($response, ['id' => $id], 201);
@@ -88,10 +89,10 @@ class GisLayerController
         
         $fields = [];
         $values = [];
-        foreach (['name', 'description', 'geometry_type', 'display_order', 'min_zoom', 'max_zoom', 'group_path', 'extent'] as $field) {
+        foreach (['name', 'description', 'geometry_type', 'display_order', 'min_zoom', 'max_zoom', 'group_path', 'extent', 'is_hidden'] as $field) {
             if (array_key_exists($field, $data)) {
                 $fields[] = "$field = ?";
-                $values[] = $data[$field];
+                $values[] = $field === 'is_hidden' ? (filter_var($data[$field], FILTER_VALIDATE_BOOLEAN) ? 1 : 0) : $data[$field];
             }
         }
         

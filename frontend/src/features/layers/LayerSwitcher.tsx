@@ -23,6 +23,8 @@ export function LayerSwitcher() {
         queryKey: ['layers'],
         queryFn: layerApi.getAll,
     });
+    // Soft-hide: layers marked hidden in admin never appear in the switcher.
+    const switchableLayers = dbLayers.filter((layer: any) => !layer.is_hidden);
 
     useEffect(() => {
         if (!layerManager) return;
@@ -106,10 +108,10 @@ export function LayerSwitcher() {
 
             {open && (
                 <div data-testid="layer-switcher-panel" style={{ borderTop: '1px solid #e5e7eb', maxHeight: 260, overflowY: 'auto' }}>
-                    {dbLayers.length === 0 && (
+                    {switchableLayers.length === 0 && (
                         <div className="p-2 text-muted small">No layers found.</div>
                     )}
-                    {dbLayers.map((layer: any) => {
+                    {switchableLayers.map((layer: any) => {
                         const checked = isVisible(layer.id);
                         const busy = loading.has(layer.id);
                         return (
