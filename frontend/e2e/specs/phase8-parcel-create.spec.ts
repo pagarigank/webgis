@@ -5,7 +5,7 @@ import { test, expect, login, psql } from '../fixtures';
  * Verifies the frontend.md §20 flow:
  *   - "New parcel" button on the list opens the draw page
  *   - polygon drawing updates the live readout (vertices · perimeter · area)
- *   - provenance defaults to MANUAL_DRAWING, DIGITIZED_FROM_IMAGERY on satellite
+ *   - provenance defaults to DIGITIZED_FROM_IMAGERY (satellite basemap), MANUAL_DRAWING on roads
  *   - survey-derived provenance options disabled until a survey plan is attached,
  *     then a typed justification is required
  *   - Save draft creates the parcel via the API (visible in the editor)
@@ -20,15 +20,27 @@ async function waitForMapReady(page: import('@playwright/test').Page) {
 }
 
 async function drawQuad(page: import('@playwright/test').Page) {
-    const s = { x: 560, y: 360 };
-    await page.mouse.click(s.x, s.y);
-    await page.mouse.click(s.x + 100, s.y);
-    await page.mouse.click(s.x + 100, s.y + 70);
-    await page.mouse.click(s.x, s.y + 70);
-    await page.mouse.click(s.x, s.y); // close the ring
+    // Click the map canvas via its locator so Playwright scrolls it into view
+    // first — form fills can push the map off-screen and miss viewport clicks.
+    // Pace the clicks a little so mapbox-gl-draw reliably registers each vertex
+    // and computes the centroid for the ring-close hit test.
+    const canvas = page.getByTestId('parcel-create-map').locator('canvas');
+    await expect(canvas).toBeVisible({ timeout: 15_000 });
+    const box = (await canvas.boundingBox())!;
+    const s = { x: box.width * 0.4, y: box.height * 0.4 };
+    const click = async (dx: number, dy: number) => {
+        await canvas.click({ position: { x: dx, y: dy } });
+        await page.waitForTimeout(120);
+    };
+    await click(s.x, s.y);
+    await click(s.x + box.width * 0.15, s.y);
+    await click(s.x + box.width * 0.15, s.y + box.height * 0.25);
+    await click(s.x, s.y + box.height * 0.25);
+    await click(s.x, s.y); // close the ring
     // The polygon must be in component state before submitting the form, otherwise
-    // geometry is null in the create payload (TASK-072 save draft).
-    await expect(page.getByTestId('parcel-create-readout')).toBeVisible({ timeout: 15_000 });
+    // geometry is null in the create payload (TASK-072 save draft). The readout
+    // placeholder is always rendered, so wait on the vertices counter instead.
+    await expect(page.getByTestId('parcel-create-vertices')).toContainText(/[1-9]/, { timeout: 15_000 });
 }
 
 test.describe('Phase 8 — new parcel (TASK-072)', () => {
@@ -44,8 +56,8 @@ test.describe('Phase 8 — new parcel (TASK-072)', () => {
         await expect(page.getByRole('heading', { name: 'New parcel' })).toBeVisible({ timeout: 15_000 });
         await waitForMapReady(page);
 
-        // Default provenance with the roads basemap is MANUAL_DRAWING.
-        await expect(page.getByTestId('parcel-create-provenance')).toHaveValue('MANUAL_DRAWING');
+        // Default provenance with the satellite basemap is DIGITIZED_FROM_IMAGERY.
+        await expect(page.getByTestId('parcel-create-provenance')).toHaveValue('DIGITIZED_FROM_IMAGERY');
 
         // Draw a poly → live readout appears with count > 0 and area > 0.
         await drawQuad(page);
@@ -57,11 +69,19 @@ test.describe('Phase 8 — new parcel (TASK-072)', () => {
         expect(area).toBeGreaterThan(0);
     });
 
-    test('TASK-072: satellite basemap flips the default provenance to DIGITIZED_FROM_IMAGERY', async ({ page }) => {
+    test('TASK-072: basemap toggle flips the default provenance (satellite → DIGITIZED_FROM_IMAGERY, roads → MANUAL_DRAWING)', async ({ page }) => {
         await login(page);
         await page.goto('/parcels/new');
         await waitForMapReady(page);
 
+        // Satellite is the default backdrop → DIGITIZED_FROM_IMAGERY.
+        await expect(page.getByTestId('parcel-create-provenance')).toHaveValue('DIGITIZED_FROM_IMAGERY');
+
+        // Roads → MANUAL_DRAWING.
+        await page.getByTestId('create-basemap-roads').click();
+        await expect(page.getByTestId('parcel-create-provenance')).toHaveValue('MANUAL_DRAWING');
+
+        // Back to satellite → DIGITIZED_FROM_IMAGERY.
         await page.getByTestId('create-basemap-satellite').click();
         await expect(page.getByTestId('parcel-create-provenance')).toHaveValue('DIGITIZED_FROM_IMAGERY');
     });
@@ -70,6 +90,10 @@ test.describe('Phase 8 — new parcel (TASK-072)', () => {
         await login(page);
         await page.goto('/parcels/new');
         await waitForMapReady(page);
+
+        // Over the roads basemap the drawn polygon is a manual drawing.
+        await page.getByTestId('create-basemap-roads').click();
+        await expect(page.getByTestId('parcel-create-provenance')).toHaveValue('MANUAL_DRAWING');
 
         await drawQuad(page);
 

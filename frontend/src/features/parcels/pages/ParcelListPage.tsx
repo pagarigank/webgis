@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { useBasemapToggle } from '../../map/basemap';
 import { parcelApi } from '../api/parcelApi';
 import type { Parcel, ParcelListParams } from '../types';
 
@@ -255,7 +256,9 @@ function ParcelMap(props: {
 }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
+    const [mapReady, setMapReady] = useState(false);
     const { parcels, onViewportChange } = props;
+    useBasemapToggle(mapRef.current, 'satellite');
 
     // Initialize the map once (mirrors MapView / MapContext init pattern).
     useEffect(() => {
@@ -269,8 +272,9 @@ function ParcelMap(props: {
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         map.on('load', () => {
             map.addSource('parcels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-            map.addLayer({ id: 'parcel-fills', type: 'fill', source: 'parcels', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.45 } });
-            map.addLayer({ id: 'parcel-lines', type: 'line', source: 'parcels', paint: { 'line-color': '#1e40af', 'line-width': 2 } });
+            map.addLayer({ id: 'parcel-fills-layer', type: 'fill', source: 'parcels', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.45 } });
+            map.addLayer({ id: 'parcel-lines-layer', type: 'line', source: 'parcels', paint: { 'line-color': '#1e40af', 'line-width': 2 } });
+            setMapReady(true);
         });
         mapRef.current = map;
         // Publish the first viewport once the map settles.

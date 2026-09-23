@@ -62,7 +62,7 @@ export function ParcelCreatePage() {
     const mapContainer = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const drawRef = useRef<MapboxDraw | null>(null);
-    const { basemap, setBasemap } = useBasemapToggle(mapRef.current);
+    const { basemap, setBasemap } = useBasemapToggle(mapRef.current, 'satellite');
 
     const [geometry, setGeometry] = useState<GeoJSON.Polygon | GeoJSON.MultiPolygon | null>(null);
     const [readout, setReadout] = useState<ReturnType<typeof polygonReadout>>(undefined);

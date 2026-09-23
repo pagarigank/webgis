@@ -1,15 +1,19 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { useBasemapToggle } from '../../map/basemap';
 import type { Parcel } from '../types';
 
 /**
  * Persistent right-hand map preview for the parcel editor (frontend.md §7).
  * Shows the current parcel geometry; when it exists the map fits to its bounds.
+ * Rendered over the satellite basemap so the parcel overlays imagery.
  */
 export function ParcelPreviewMap({ parcel }: { parcel: Parcel }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
+    const [mapReady, setMapReady] = useState(false);
+    useBasemapToggle(mapRef.current, 'satellite');
 
     useEffect(() => {
         if (!containerRef.current || mapRef.current) return;
@@ -22,8 +26,9 @@ export function ParcelPreviewMap({ parcel }: { parcel: Parcel }) {
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         map.on('load', () => {
             map.addSource('parcel', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-            map.addLayer({ id: 'parcel-fill', type: 'fill', source: 'parcel', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.35 } });
-            map.addLayer({ id: 'parcel-outline', type: 'line', source: 'parcel', paint: { 'line-color': '#1e40af', 'line-width': 2 } });
+            map.addLayer({ id: 'parcel-fill-layer', type: 'fill', source: 'parcel', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.35 } });
+            map.addLayer({ id: 'parcel-outline-layer', type: 'line', source: 'parcel', paint: { 'line-color': '#1e40af', 'line-width': 2 } });
+            setMapReady(true);
         });
         mapRef.current = map;
         return () => {

@@ -28,8 +28,8 @@ function isAppLayer(id: string): boolean {
     return id.startsWith('gl-draw') || id.endsWith('-layer');
 }
 
-export function useBasemapToggle(map: maplibregl.Map | null) {
-    const [basemap, setBasemap] = useState<BasemapKind>('roads');
+export function useBasemapToggle(map: maplibregl.Map | null, initial: BasemapKind = 'roads') {
+    const [basemap, setBasemap] = useState<BasemapKind>(initial);
     // Original (non-app) style layer ids, captured on load so we can hide them
     // under the raster basemaps and never touch app-owned layers.
     const baseLayerIdsRef = useRef<string[]>([]);
@@ -90,7 +90,7 @@ export function useBasemapToggle(map: maplibregl.Map | null) {
         const style = map.getStyle();
         baseLayerIdsRef.current = style.layers.map((l) => l.id).filter((id) => !isAppLayer(id));
         ensureLayers();
-        const mode: BasemapKind = 'roads';
+        const mode: BasemapKind = initial;
         const satelliteOn = mode === 'satellite';
         const setVis = (id: string, visible: boolean) => {
             if (map.getLayer(id)) {
@@ -103,7 +103,7 @@ export function useBasemapToggle(map: maplibregl.Map | null) {
         for (const id of baseLayerIdsRef.current) {
             setVis(id, false);
         }
-    }, [map, ensureLayers]);
+    }, [map, ensureLayers, initial]);
 
     return { basemap, setBasemap: applyBasemap };
 }
