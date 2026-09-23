@@ -12,6 +12,7 @@ export interface Parcel {
     psgc_barangay_name: string | null;
     psgc_municipality: string | null;
     psgc_province: string | null;
+    survey_plan_id: number | null;
     survey_plan_number: string | null;
     location_description: string | null;
     status: string;
@@ -67,8 +68,29 @@ export type ParcelPatch = Partial<
         | 'remarks'
         | 'provenance'
         | 'geometry_source'
+        | 'survey_plan_id'
     >
 > & { change_reason?: string; status?: string };
+
+/** POST /parcels body (TASK-072 manual drawing + provenance guard). */
+export interface ParcelCreateInput {
+    parcel_code: string;
+    provenance: string;
+    lot_number?: string | null;
+    block_number?: string | null;
+    title_number_ref?: string | null;
+    tax_declaration_no?: string | null;
+    source_area_sqm?: number | null;
+    source_area_unit?: string;
+    psgc_barangay?: string | null;
+    psgc_municipality?: string | null;
+    psgc_province?: string | null;
+    location_description?: string | null;
+    status?: string;
+    geometry?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
+    survey_plan_id?: number | null;
+    change_reason?: string;
+}
 
 /** A row of the version lineage index (GET /parcels/{id}/versions). */
 export interface ParcelVersionSummary {

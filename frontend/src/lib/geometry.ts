@@ -239,15 +239,76 @@ function orientation(
     return val > 0 ? 1 : 2; // clockwise or counterclockwise
 }
 
+export interface PolygonReadout {
+    vertexCount: number;
+    perimeterM: number;
+    areaSqm: number;
+}
+
 /**
- * Haversine distance in degrees (approximate — good enough for "too short" heuristic).
+ * TASK-072 — live readout for a drawn polygon. Treats a Polygon feature's first
+ * ring (or every ring of a MultiPolygon) in EPSG:4326 coordinates and reports
+ * vertices, perimeter (m) and area (m²) via the spherical excess formula.
+ * Returns undefined when there is no usable ring.
  */
-function haversineDistance(a: [number, number], b: [number, number]): number {
+export function polygonReadout(geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon): PolygonReadout | undefined {
+    const rings: [number, number][][] =
+        geometry.type === 'Polygon'
+            ? (geometry.coordinates as [number, number][][])
+            : geometry.coordinates.map((poly) => poly[0]);
+
+    let perimeterM = 0;
+    let areaSqm = 0;
+    let vertexCount = 0;
+
+    for (const ring of rings) {
+        if (ring.length < 3) continue;
+        const pts = ring[ring.length - 1][0] === ring[0][0] && ring[ring.length - 1][1] === ring[0][1]
+            ? ring.slice(0, -1)
+            : ring;
+        vertexCount += pts.length;
+        for (let i = 0; i < pts.length; i++) {
+            perimeterM += haversineDistanceMeters(pts[i], pts[(i + 1) % pts.length]);
+        }
+        areaSqm += sphericalPolygonArea(pts);
+    }
+
+    if (vertexCount === 0) return undefined;
+    return { vertexCount, perimeterM, areaSqm: Math.abs(areaSqm) };
+}
+
+/** Haversine distance in metres between two [lng, lat] points. */
+export function haversineDistanceMeters(a: [number, number], b: [number, number]): number {
     const dLat = (b[1] - a[1]) * (Math.PI / 180);
     const dLon = (b[0] - a[0]) * (Math.PI / 180);
     const lat1 = a[1] * (Math.PI / 180);
     const lat2 = b[1] * (Math.PI / 180);
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-    const dist = 2 * 6371000 * Math.asin(Math.sqrt(Math.min(1, h))); // metres
-    return dist / 111320; // approximate degrees
+    return 2 * 6371000 * Math.asin(Math.sqrt(Math.min(1, h)));
+}
+
+/**
+ * Area of a closed polygon of [lng, lat] vertices (no closing duplicate) using
+ * the spherical excess / "shoelace on a sphere" formula. Positive when the ring
+ * is wound counter-clockwise, negative otherwise.
+ */
+function sphericalPolygonArea(pts: [number, number][]): number {
+    const R = 6371000;
+    let sum = 0;
+    for (let i = 0; i < pts.length; i++) {
+        const [lng1, lat1] = pts[i];
+        const [lng2, lat2] = pts[(i + 1) % pts.length];
+        const dLng = (lng2 - lng1) * (Math.PI / 180);
+        const phi1 = lat1 * (Math.PI / 180);
+        const phi2 = lat2 * (Math.PI / 180);
+        sum += dLng * (2 + Math.sin(phi1) + Math.sin(phi2));
+    }
+    return (R * R * sum) / 2;
+}
+
+/**
+ * Haversine distance in degrees (approximate — good enough for "too short" heuristic).
+ */
+function haversineDistance(a: [number, number], b: [number, number]): number {
+    return haversineDistanceMeters(a, b) / 111320; // approximate degrees
 }

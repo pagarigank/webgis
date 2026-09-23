@@ -151,6 +151,17 @@ export function ParcelEditorPage() {
                                     editing={canEdit}
                                     onDirtyChange={handleDirtyChange}
                                     onSave={async (values) => {
+                                        const SURVEY_DERIVED = new Set([
+                                            'SURVEY_COORDINATES',
+                                            'COMPUTED_FROM_TECHNICAL_DESCRIPTION',
+                                            'TRANSFORMED_FROM_HISTORICAL_SURVEY',
+                                        ]);
+                                        const surveyDerived = SURVEY_DERIVED.has(values.provenance);
+                                        if (surveyDerived && values.justification.trim() === '') {
+                                            setConflictMessage('Switching to survey-derived provenance requires a recorded justification.');
+                                            setSaveState(SAVE_IDLE);
+                                            return;
+                                        }
                                         const patch: Record<string, unknown> = {
                                             lot_number: values.lot_number.trim() || null,
                                             block_number: values.block_number.trim() || null,
@@ -162,6 +173,9 @@ export function ParcelEditorPage() {
                                             remarks: values.remarks.trim() || null,
                                             provenance: values.provenance,
                                         };
+                                        if (values.justification.trim() !== '') {
+                                            patch.change_reason = values.justification.trim();
+                                        }
                                         for (const psgc of ['psgc_barangay', 'psgc_municipality', 'psgc_province'] as const) {
                                             const v = values[psgc].trim();
                                             patch[psgc] = /^\d{10,12}$/.test(v) ? v : null;

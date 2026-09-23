@@ -26,6 +26,17 @@ class ParcelController
     private PDO $pdo;
     private AuditWriter $audit;
 
+    /**
+     * FR-199 / TASK-072 — provenance values that assert the geometry came from
+     * official survey data. Relabelling a parcel to any of these requires survey
+     * data attached (survey_plan_id) and a recorded justification (change_reason).
+     */
+    private const SURVEY_DERIVED_SOURCES = [
+        'SURVEY_COORDINATES',
+        'COMPUTED_FROM_TECHNICAL_DESCRIPTION',
+        'TRANSFORMED_FROM_HISTORICAL_SURVEY',
+    ];
+
     public function __construct(PDO $pdo, AuditWriter $audit)
     {
         $this->pdo = $pdo;
@@ -166,7 +177,7 @@ class ParcelController
             . "p.source_area_sqm, p.source_area_unit, p.computed_area_sqm, p.psgc_barangay, p.psgc_municipality, "
             . "p.psgc_province, p.location_description, p.status, p.geometry_source, p.verification_status, "
             . "p.org_id, p.remarks, p.version, p.created_by, p.created_at, p.updated_by, p.updated_at, "
-            . "pa.name AS psgc_barangay_name, sp.plan_number AS survey_plan_number, "
+            . "p.survey_plan_id, pa.name AS psgc_barangay_name, sp.plan_number AS survey_plan_number, "
             . "ST_AsGeoJSON(p.geom)::json AS geometry";
         $sql = "SELECT {$select} FROM {$from} {$whereSql} ORDER BY p.{$sortCol} {$dir} LIMIT :lim OFFSET :off";
         $stmt = $this->pdo->prepare($sql);
@@ -200,7 +211,7 @@ class ParcelController
         $pid = $this->parseUuid($args, 'id');
 
         $select = $this->parcelSelect();
-        $stmt = $this->pdo->prepare("SELECT {$select} FROM app.parcels p WHERE p.id = :pid AND p.deleted_at IS NULL");
+        $stmt = $this->pdo->prepare("SELECT {$select} FROM {$this->parcelFrom()} WHERE p.id = :pid AND p.deleted_at IS NULL");
         $stmt->execute([':pid' => $pid]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -240,6 +251,12 @@ class ParcelController
             throw new ApiError('VALIDATION_FAILED', 'provenance (geometry_source) is required', 400);
         }
         $this->assertGeometrySource($geometrySource);
+
+        // FR-199: a parcel created with survey-derived provenance must attach a
+        // survey plan and record the justification (TASK-072).
+        $surveyPlanId = $this->resolveSurveyPlanId($body['survey_plan_id'] ?? null);
+        $justification = $this->readCreateJustification($body);
+        $this->assertSurveyDerivedProvenance($geometrySource, $surveyPlanId, $justification);
 
         $status = (string) ($body['status'] ?? 'DRAFT');
         $this->assertStatus($status);
@@ -283,10 +300,10 @@ class ParcelController
         $sql = "INSERT INTO app.parcels "
             . "(id, parcel_code, lot_number, block_number, title_number_ref, tax_declaration_no, "
             . " source_area_sqm, source_area_unit, psgc_barangay, psgc_municipality, psgc_province, "
-            . " location_description, status, geometry_source, remarks, org_id, source_document_id, created_by, geom, version) "
+            . " location_description, status, geometry_source, remarks, org_id, source_document_id, survey_plan_id, created_by, geom, version) "
             . "VALUES (gen_random_uuid(), :code, :lot, :block, :title, :td, "
             . " :area_sqm, :area_unit, :psgc_b, :psgc_m, :psgc_p, "
-            . " :loc_desc, :status, :geom_src, :remarks, :org_id, :src_doc, :uid, {$geomSql}, 1) "
+            . " :loc_desc, :status, :geom_src, :remarks, :org_id, :src_doc, :survey_plan_id, :uid, {$geomSql}, 1) "
             . "RETURNING id";
         $params = $geomParams + [
             ':code'      => $parcelCode,
@@ -305,6 +322,7 @@ class ParcelController
             ':remarks'   => $body['remarks'] ?? null,
             ':org_id'    => $orgId,
             ':src_doc'   => $body['source_document_id'] ?? null,
+            ':survey_plan_id' => $surveyPlanId,
             ':uid'       => $uid,
         ];
         $stmt = $this->pdo->prepare($sql);
@@ -323,7 +341,7 @@ class ParcelController
 
         // Read back + audit
         $select = $this->parcelSelect();
-        $fetch = $this->pdo->prepare("SELECT {$select} FROM app.parcels p WHERE p.id = :pid");
+        $fetch = $this->pdo->prepare("SELECT {$select} FROM {$this->parcelFrom()} WHERE p.id = :pid");
         $fetch->execute([':pid' => $pid]);
         $row = $fetch->fetch(PDO::FETCH_ASSOC);
         $parcel = $this->formatParcel($row);
@@ -331,7 +349,7 @@ class ParcelController
         $this->audit->writeFromSession('INSERT', 'app.parcels', $pid, null, $this->stripForAudit($parcel), null, 'Parcel created via API');
 
         // TASK-069: brand-new parcel is version 1 — record the baseline version row.
-        $this->writeVersion($pid, 1, $this->snapshotForVersion($parcel), $parcel['status'], $parcel['provenance'], 'Parcel created', 'Parcel created via API', $parcel['geometry']);
+        $this->writeVersion($pid, 1, $this->snapshotForVersion($parcel), $parcel['status'], $parcel['provenance'], 'Parcel created', $justification ?? 'Parcel created via API', $parcel['geometry']);
 
         return Envelope::success($response, $parcel, 201);
     }
@@ -348,8 +366,8 @@ class ParcelController
         $this->setUserInSession($uid);
         $pid = $this->parseUuid($args, 'id');
 
-        // Verify existence + lock + read version
-        $lock = $this->pdo->prepare("SELECT id, version, parcel_code FROM app.parcels WHERE id = :pid AND deleted_at IS NULL FOR UPDATE");
+        // Verify existence + lock + read version + pre-change provenance (FR-199).
+        $lock = $this->pdo->prepare("SELECT id, version, parcel_code, geometry_source, survey_plan_id FROM app.parcels WHERE id = :pid AND deleted_at IS NULL FOR UPDATE");
         $lock->execute([':pid' => $pid]);
         $row = $lock->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {
@@ -370,7 +388,7 @@ class ParcelController
             throw new ApiError('VALIDATION_FAILED', 'Request body must be a JSON object', 400);
         }
 
-        $allowed = ['lot_number', 'block_number', 'title_number_ref', 'tax_declaration_no', 'source_area_sqm', 'source_area_unit', 'psgc_barangay', 'psgc_municipality', 'psgc_province', 'location_description', 'status', 'provenance', 'geometry_source', 'remarks', 'geometry', 'org_id', 'source_document_id', 'change_reason'];
+        $allowed = ['lot_number', 'block_number', 'title_number_ref', 'tax_declaration_no', 'source_area_sqm', 'source_area_unit', 'psgc_barangay', 'psgc_municipality', 'psgc_province', 'location_description', 'status', 'provenance', 'geometry_source', 'remarks', 'geometry', 'org_id', 'source_document_id', 'survey_plan_id', 'change_reason'];
         $unknown = array_diff_key($body, array_fill_keys($allowed, true));
         if (!empty($unknown)) {
             throw new ApiError('VALIDATION_FAILED', 'Unexpected fields in update payload', 400);
@@ -384,6 +402,31 @@ class ParcelController
             $this->assertGeometrySource((string) $gs);
             $sets[] = 'geometry_source = :geom_src';
             $params[':geom_src'] = (string) $gs;
+        }
+
+        if (array_key_exists('survey_plan_id', $body)) {
+            $surveyPlanId = $this->resolveSurveyPlanId($body['survey_plan_id']);
+            $sets[] = 'survey_plan_id = :survey_plan_id';
+            $params[':survey_plan_id'] = $surveyPlanId;
+        }
+
+        // FR-199: changing provenance to a survey-derived value requires survey
+        // data attached (survey_plan_id present on the record after this update)
+        // and a recorded justification (change_reason).
+        if (array_key_exists('provenance', $body) || array_key_exists('geometry_source', $body)) {
+            $newSource = (string) ($body['provenance'] ?? $body['geometry_source']);
+            if (in_array($newSource, self::SURVEY_DERIVED_SOURCES, true)) {
+                $resultingPlanId = array_key_exists('survey_plan_id', $body)
+                    ? $params[':survey_plan_id']
+                    : ($row['survey_plan_id'] !== null ? (int) $row['survey_plan_id'] : null);
+                $reason = trim((string) ($body['change_reason'] ?? ($body['reason'] ?? '')));
+                if ($resultingPlanId === null) {
+                    throw new ApiError('VALIDATION_FAILED', 'Survey-derived provenance requires survey data: attach a survey_plan_id.', 400);
+                }
+                if ($reason === '') {
+                    throw new ApiError('VALIDATION_FAILED', 'Switching to survey-derived provenance requires a recorded justification (change_reason).', 400);
+                }
+            }
         }
 
         foreach (['lot_number', 'block_number', 'title_number_ref', 'tax_declaration_no', 'location_description', 'remarks', 'source_area_unit'] as $text) {
@@ -683,7 +726,7 @@ class ParcelController
             'psgc_municipality' => 'psgc_municipality', 'psgc_province' => 'psgc_province',
             'location_description' => 'location_description', 'status' => 'status',
             'provenance' => 'geometry_source', 'remarks' => 'remarks', 'org_id' => 'org_id',
-            'source_document_id' => 'source_document_id',
+            'source_document_id' => 'source_document_id', 'survey_plan_id' => 'survey_plan_id',
         ];
         foreach ($map as $snapKey => $col) {
             if (array_key_exists($snapKey, $snapshot)) {
@@ -694,7 +737,7 @@ class ParcelController
                 if ($col === 'geometry_source') {
                     $this->assertGeometrySource((string) $val);
                 }
-                if (in_array($col, ['org_id'], true)) {
+                if (in_array($col, ['org_id', 'survey_plan_id'], true)) {
                     $sets[] = "{$col} = :{$col}";
                     $params[":{$col}"] = $val === null ? null : (int) $val;
                     continue;
@@ -818,13 +861,21 @@ class ParcelController
             . "p.source_area_sqm, p.source_area_unit, p.computed_area_sqm, p.psgc_barangay, p.psgc_municipality, "
             . "p.psgc_province, p.location_description, p.status, p.geometry_source, p.verification_status, "
             . "p.org_id, p.remarks, p.version, p.created_by, p.created_at, p.updated_by, p.updated_at, "
+            . "p.survey_plan_id, sp.plan_number AS survey_plan_number, pa.name AS psgc_barangay_name, "
             . "ST_AsGeoJSON(p.geom)::json AS geometry";
+    }
+
+    private function parcelFrom(): string
+    {
+        return 'app.parcels p '
+            . 'LEFT JOIN app.survey_plans sp ON sp.id = p.survey_plan_id '
+            . 'LEFT JOIN ref.psgc_areas pa ON pa.code = p.psgc_barangay';
     }
 
     private function getCurrentParcel(string $pid): array
     {
         $select = $this->parcelSelect();
-        $stmt = $this->pdo->prepare("SELECT {$select} FROM app.parcels p WHERE p.id = :pid");
+        $stmt = $this->pdo->prepare("SELECT {$select} FROM {$this->parcelFrom()} WHERE p.id = :pid");
         $stmt->execute([':pid' => $pid]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {
@@ -836,7 +887,7 @@ class ParcelController
     private function buildPreChangeSnapshot(string $pid, string $parcelCode, int $currentVersion): array
     {
         $select = $this->parcelSelect();
-        $stmt = $this->pdo->prepare("SELECT {$select} FROM app.parcels p WHERE p.id = :pid");
+        $stmt = $this->pdo->prepare("SELECT {$select} FROM {$this->parcelFrom()} WHERE p.id = :pid");
         $stmt->execute([':pid' => $pid]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {
@@ -868,6 +919,7 @@ class ParcelController
             'psgc_barangay_name' => $r['psgc_barangay_name'] ?? null,
             'psgc_municipality'  => $r['psgc_municipality'],
             'psgc_province'      => $r['psgc_province'],
+            'survey_plan_id'     => $r['survey_plan_id'] !== null ? (int) $r['survey_plan_id'] : null,
             'survey_plan_number' => $r['survey_plan_number'] ?? null,
             'location_description' => $r['location_description'],
             'status'             => $r['status'],
@@ -908,6 +960,64 @@ class ParcelController
         }
         $reason = trim((string) ($body['change_reason'] ?? ($body['reason'] ?? '')));
         return $reason === '' ? null : $reason;
+    }
+
+    /**
+     * FR-199 — resolve and validate survey_plan_id. Returns null when the body
+     * omits it; throws when a value is present but not a positive integer or does
+     * not reference an existing survey plan.
+     */
+    private function resolveSurveyPlanId(mixed $value): ?int
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (is_int($value)) {
+            $id = $value;
+        } elseif (is_string($value) && preg_match('/^\d{1,10}$/', trim($value))) {
+            $id = (int) trim($value);
+        } else {
+            throw new ApiError('VALIDATION_FAILED', 'survey_plan_id must be a positive integer', 400);
+        }
+        if ($id <= 0) {
+            throw new ApiError('VALIDATION_FAILED', 'survey_plan_id must be a positive integer', 400);
+        }
+        $stmt = $this->pdo->prepare('SELECT 1 FROM app.survey_plans WHERE id = :id AND deleted_at IS NULL');
+        $stmt->execute([':id' => $id]);
+        if ($stmt->fetchColumn() === false) {
+            throw new ApiError('VALIDATION_FAILED', 'survey_plan_id does not reference an existing survey plan', 400);
+        }
+        return $id;
+    }
+
+    /**
+     * FR-199 — the justification recorded against a parcel that is created with a
+     * survey-derived provenance. Mirrors readChangeReason() so the create endpoint
+     * accepts the same change_reason field used by updates.
+     */
+    private function readCreateJustification(array $body): ?string
+    {
+        $reason = trim((string) ($body['change_reason'] ?? ($body['justification'] ?? '')));
+        return $reason === '' ? null : $reason;
+    }
+
+    /**
+     * FR-199 — survey-derived provenance (SURVEY_COORDINATES,
+     * COMPUTED_FROM_TECHNICAL_DESCRIPTION, TRANSFORMED_FROM_HISTORICAL_SURVEY)
+     * requires survey data attached (survey_plan_id) and a recorded justification.
+     * Throws VALIDATION_FAILED when either prerequisite is missing.
+     */
+    private function assertSurveyDerivedProvenance(string $source, ?int $surveyPlanId, ?string $justification): void
+    {
+        if (!in_array($source, self::SURVEY_DERIVED_SOURCES, true)) {
+            return;
+        }
+        if ($surveyPlanId === null) {
+            throw new ApiError('VALIDATION_FAILED', 'Survey-derived provenance requires survey data: attach a survey_plan_id.', 400);
+        }
+        if ($justification === null) {
+            throw new ApiError('VALIDATION_FAILED', 'Switching to survey-derived provenance requires a recorded justification (change_reason).', 400);
+        }
     }
 
     private function assertStatus(string $status): void

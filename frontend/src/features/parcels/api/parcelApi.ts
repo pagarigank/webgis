@@ -1,5 +1,5 @@
 import apiClient from '../../../lib/apiClient';
-import type { Parcel, ParcelListParams, ParcelListPayload, ParcelPatch, ParcelVersionsPayload } from '../types';
+import type { Parcel, ParcelListParams, ParcelListPayload, ParcelPatch, ParcelVersionsPayload, ParcelCreateInput } from '../types';
 
 /**
  * TASK-070 — parcel list/search. The backend list endpoint returns an inner
@@ -14,6 +14,11 @@ export const parcelApi = {
 
     getById: async (id: string): Promise<Parcel> => {
         return (await apiClient.get(`/parcels/${id}`)) as Parcel;
+    },
+
+    /** TASK-072 — create a parcel (draw → attributes → Save draft). 201 on success. */
+    create: async (input: ParcelCreateInput): Promise<Parcel> => {
+        return (await apiClient.post('/parcels', input)) as Parcel;
     },
 
     /** PATCH semantics require If-Match with the current parcel version (428/409). */

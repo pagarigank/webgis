@@ -60,9 +60,14 @@ export function ParcelListPage() {
         <div className="container-fluid py-4">
             <div className="d-flex justify-content-between align-items-center mb-4">
                 <h2 className="mb-0">Parcels</h2>
-                <div className="text-muted small">
-                    {total} result{total === 1 ? '' : 's'}
-                    {restrictToMap && bbox ? ' · limited to map view' : ''}
+                <div className="d-flex gap-3 align-items-center">
+                    <div className="text-muted small">
+                        {total} result{total === 1 ? '' : 's'}
+                        {restrictToMap && bbox ? ' · limited to map view' : ''}
+                    </div>
+                    <Link to="/parcels/new" className="btn btn-primary btn-sm" data-testid="parcel-create-btn">
+                        + New parcel
+                    </Link>
                 </div>
             </div>
 

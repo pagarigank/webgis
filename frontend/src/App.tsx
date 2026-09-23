@@ -14,6 +14,7 @@ import { MapWorkspace } from './features/map/MapWorkspace';
 import { HomePage } from './pages/HomePage';
 import { ParcelListPage } from './features/parcels/pages/ParcelListPage';
 import { ParcelEditorPage } from './features/parcels/pages/ParcelEditorPage';
+import { ParcelCreatePage } from './features/parcels/pages/ParcelCreatePage';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { me: _me } = useAuth();
@@ -97,6 +98,14 @@ function App() {
           element={
             <RequirePermission permission="parcel.view">
               <ParcelListPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/parcels/new"
+          element={
+            <RequirePermission permission="parcel.create">
+              <ParcelCreatePage />
             </RequirePermission>
           }
         />

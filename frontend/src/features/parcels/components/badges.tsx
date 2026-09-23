@@ -53,6 +53,17 @@ export const PROVENANCE_HELP: Record<string, string> = {
 
 export const PROVENANCE_VALUES = Object.keys(PROVENANCE_HELP);
 
+/**
+ * TASK-072 — survey-derived provenances (FR-199). These cannot be chosen for a
+ * manually drawn parcel unless survey data is attached (survey_plan_id) and a
+ * justification is recorded; the editor disables them otherwise.
+ */
+export const SURVEY_DERIVED_PROVENANCE: ReadonlySet<string> = new Set([
+    'SURVEY_COORDINATES',
+    'COMPUTED_FROM_TECHNICAL_DESCRIPTION',
+    'TRANSFORMED_FROM_HISTORICAL_SURVEY',
+]);
+
 const PROVENANCE_TONE: Record<string, string> = {
     SURVEY_COORDINATES: 'success',
     COMPUTED_FROM_TECHNICAL_DESCRIPTION: 'success',

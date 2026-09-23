@@ -1,13 +1,17 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import type { Parcel } from '../types';
-import { PROVENANCE_HELP, PROVENANCE_VALUES } from './badges';
+import { PROVENANCE_HELP, PROVENANCE_VALUES, SURVEY_DERIVED_PROVENANCE } from './badges';
 
 /**
  * Information tab (frontend.md §7): lot/block, PSGC codes, tax declaration,
  * source area + unit, location description, remarks, and the provenance
  * selector with its inline explanation. Field edits surface upward so the
  * sticky status bar can show "Unsaved changes" and drive the save action.
+ *
+ * TASK-072 (FR-199): survey-derived provenance options are disabled while the
+ * parcel has no survey data (survey_plan_id); choosing one requires a typed
+ * justification, which is sent as `change_reason` on save.
  */
 export interface InformationFormValues {
     lot_number: string;
@@ -22,6 +26,7 @@ export interface InformationFormValues {
     location_description: string;
     remarks: string;
     provenance: string;
+    justification: string;
 }
 
 function toForm(p: Parcel): InformationFormValues {
@@ -38,6 +43,7 @@ function toForm(p: Parcel): InformationFormValues {
         location_description: p.location_description ?? '',
         remarks: p.remarks ?? '',
         provenance: p.provenance,
+        justification: '',
     };
 }
 
@@ -52,6 +58,17 @@ export function InformationTab(props: {
         defaultValues: toForm(parcel),
     });
     const provenance = watch('provenance');
+    const justification = watch('justification');
+    const surveyDerived = SURVEY_DERIVED_PROVENANCE.has(provenance);
+    const canSurveyDerived = parcel.survey_plan_id != null;
+    const provenanceOptions = useMemo(
+        () =>
+            PROVENANCE_VALUES.map((v) => ({
+                value: v,
+                disabled: SURVEY_DERIVED_PROVENANCE.has(v) && !canSurveyDerived,
+            })),
+        [canSurveyDerived],
+    );
 
     // Keep the latest dirty callback without re-running the effect below.
     const onDirtyChangeRef = useRef(onDirtyChange);
@@ -149,15 +166,40 @@ export function InformationTab(props: {
                     <label className="form-label small text-muted mb-1">Provenance (geometry source)</label>
                     <Controller {...field('provenance')} render={({ field: f }) => (
                         <select {...f} className="form-select" data-testid="parcel-editor-provenance">
-                            {PROVENANCE_VALUES.map((v) => (
-                                <option key={v} value={v}>{v}</option>
+                            {provenanceOptions.map((o) => (
+                                <option key={o.value} value={o.value} disabled={o.disabled}>{o.value}</option>
                             ))}
                         </select>
                     )} />
                     <div className="form-text" data-testid="parcel-editor-provenance-help">
                         {PROVENANCE_HELP[provenance] ?? 'Select a provenance value.'}
                     </div>
+                    {canSurveyDerived && surveyDerived && (
+                        <div className="alert alert-warning py-2 px-3 small mt-2 mb-0">
+                            Survey-derived provenance — record a justification for the change.
+                        </div>
+                    )}
+                    {!canSurveyDerived && (
+                        <div className="alert alert-warning py-2 px-3 small mt-2 mb-0" data-testid="parcel-editor-survey-notice">
+                            Survey-derived provenance options are disabled until survey data (survey plan) is
+                            attached to this parcel.
+                        </div>
+                    )}
                 </div>
+
+                {surveyDerived && (
+                    <div className="col-12">
+                        <label className="form-label small text-muted mb-1">Justification</label>
+                        <Controller {...field('justification')} render={({ field: f }) => (
+                            <textarea {...f} rows={2} className="form-control" placeholder="Why is this provenance survey-derived?" />
+                        )} />
+                        {justification.trim() === '' && (
+                            <div className="form-text text-danger" data-testid="parcel-editor-justification-required">
+                                Required when provenance is survey-derived.
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <div className="col-12">
                     <label className="form-label small text-muted mb-1">Remarks</label>
