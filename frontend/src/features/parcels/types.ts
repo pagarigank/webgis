@@ -49,3 +49,42 @@ export interface ParcelListParams {
     include_historical?: boolean;
     bbox?: string;
 }
+
+/** PATCH body (subset of ParcelController::update allowed fields). */
+export type ParcelPatch = Partial<
+    Pick<
+        Parcel,
+        | 'lot_number'
+        | 'block_number'
+        | 'title_number_ref'
+        | 'tax_declaration_no'
+        | 'source_area_sqm'
+        | 'source_area_unit'
+        | 'psgc_barangay'
+        | 'psgc_municipality'
+        | 'psgc_province'
+        | 'location_description'
+        | 'remarks'
+        | 'provenance'
+        | 'geometry_source'
+    >
+> & { change_reason?: string; status?: string };
+
+/** A row of the version lineage index (GET /parcels/{id}/versions). */
+export interface ParcelVersionSummary {
+    id: number;
+    version: number;
+    status: string;
+    provenance: string;
+    change_summary: string | null;
+    change_reason: string | null;
+    changed_by: number | null;
+    changed_at: string;
+    has_geometry: boolean;
+    request_id: string | null;
+}
+
+export interface ParcelVersionsPayload {
+    data: ParcelVersionSummary[];
+    pagination: { page: number; per_page: number; total: number };
+}

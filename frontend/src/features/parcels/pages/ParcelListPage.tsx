@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -206,7 +207,16 @@ function ParcelTable(props: {
                     ) : (
                         data.map((p) => (
                             <tr key={p.id} data-testid="parcel-row">
-                                <td><code>{p.parcel_code}</code></td>
+                                <td>
+                                    <Link
+                                        to={`/parcels/${p.id}/information`}
+                                        className="text-decoration-none"
+                                        data-testid={`parcel-open-${p.parcel_code}`}
+                                    >
+                                        <code>{p.parcel_code}</code>
+                                        <span className="visually-hidden"> Open editor</span>
+                                    </Link>
+                                </td>
                                 <td>
                                     {p.lot_number ?? '—'}
                                     {p.block_number ? <span className="text-muted small"> / {p.block_number}</span> : null}
