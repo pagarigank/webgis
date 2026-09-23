@@ -194,5 +194,19 @@ return function (App $app) {
             ->add($authed('audit.view'))->add(AuthenticateMiddleware::class);
         $group->get('/audit-logs/{id}', \App\Audit\Http\AuditQueryController::class . ':get')
             ->add($authed('audit.view'))->add(AuthenticateMiddleware::class);
+
+        // ---- Control points (Phase 9, TASK-073; 074 adds verify/dependents, 075 adds nearest) ----
+        $cpAuthed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
+        $cp = \App\Survey\Http\ControlPointController::class;
+        $group->get('/control-points', $cp . ':list')
+            ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/control-points', $cp . ':create')
+            ->add($cpAuthed('control_point.create'))->add(AuthenticateMiddleware::class);
+        $group->get('/control-points/{id:[0-9]+}', $cp . ':get')
+            ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);
+        $group->put('/control-points/{id:[0-9]+}', $cp . ':update')
+            ->add($cpAuthed('control_point.update'))->add(AuthenticateMiddleware::class);
+        $group->delete('/control-points/{id:[0-9]+}', $cp . ':delete')
+            ->add($cpAuthed('control_point.update'))->add(AuthenticateMiddleware::class);
     });
 };
