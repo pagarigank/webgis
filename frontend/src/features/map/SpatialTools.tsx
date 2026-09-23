@@ -389,3 +389,78 @@ export const ZoomToTool: React.FC = () => {
         </div>
     );
 };
+
+export const NearestControlPointTool: React.FC = () => {
+    const map = useMapContext().map;
+    const [open, setOpen] = useState(false);
+    const [selectedPoint, setSelectedPoint] = useState<any>(null);
+
+    const handleSelect = (pt: any) => {
+        setSelectedPoint(pt);
+        if (map && pt.latitude !== null && pt.longitude !== null) {
+            map.flyTo({
+                center: [pt.longitude, pt.latitude],
+                zoom: 16,
+                duration: 1200,
+            });
+        }
+    };
+
+    if (!map) return null;
+
+    const center = map.getCenter();
+
+    return (
+        <div style={{ marginTop: 8 }}>
+            <button
+                type="button"
+                onClick={() => setOpen(!open)}
+                style={{
+                    ...btnStyle,
+                    width: '100%',
+                    background: open ? '#2563eb' : '#fff',
+                    color: open ? '#fff' : '#374151',
+                    borderColor: open ? '#2563eb' : '#d1d5db',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    padding: '8px 12px',
+                    fontWeight: 600,
+                }}
+            >
+                <span>📍</span> {open ? 'Hide Control Point Picker' : 'Find Control Points Near Center'}
+            </button>
+            {open && (
+                <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>
+                        Searching near map center: {center.lat.toFixed(5)}°, {center.lng.toFixed(5)}°
+                    </div>
+                    {/* Lazy-import or render ControlPointPicker */}
+                    <React.Suspense fallback={<div>Loading picker…</div>}>
+                        <ControlPointPickerWrapper
+                            onSelect={handleSelect}
+                            initialLat={center.lat}
+                            initialLon={center.lng}
+                            selectedPointId={selectedPoint?.id}
+                        />
+                    </React.Suspense>
+                    {selectedPoint && (
+                        <div style={{ marginTop: 8, padding: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, fontSize: 12 }}>
+                            <strong>Selected:</strong> {selectedPoint.point_name} ({selectedPoint.status})
+                            <br />
+                            Lat: {selectedPoint.latitude?.toFixed(6)}°, Lon: {selectedPoint.longitude?.toFixed(6)}°
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const ControlPointPickerWrapper = React.lazy(() =>
+    import('../control-points/components/ControlPointPicker').then((m) => ({
+        default: m.ControlPointPicker,
+    }))
+);
+

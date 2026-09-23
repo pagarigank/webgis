@@ -2,7 +2,7 @@ import React from 'react';
 import { useMapContext } from './MapContext';
 import { LayerTree } from '../layers/LayerTree';
 import { LayerSwitcher } from '../layers/LayerSwitcher';
-import { MeasureTool, IdentifyTool, ZoomToTool } from './SpatialTools';
+import { MeasureTool, IdentifyTool, ZoomToTool, NearestControlPointTool } from './SpatialTools';
 import { DrawTools } from './DrawTools';
 import { BasemapToggle } from './BasemapToggle';
 import { CoordinateReadout } from './CoordinateReadout';
@@ -26,6 +26,7 @@ export function MapWorkspace() {
                 <ZoomToTool />
                 <MeasureTool />
                 <IdentifyTool />
+                <NearestControlPointTool />
             </div>
             <CoordinateReadout />
         </>

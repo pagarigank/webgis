@@ -2,9 +2,9 @@
 
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
-**Current phase:** PHASE 3 — Authentication, RBAC, audit (M2 Identity)
-**Implementation status:** IN PROGRESS — foundation (001–026) shipped; Identity tasks 027–037 DONE; queue is currently empty
-**Last updated:** 2026-09-20
+**Current phase:** PHASE 10 — Technical descriptions and parser
+**Implementation status:** IN PROGRESS — Phases 1 through 9 (tasks 001–077b) shipped; next is TASK-078 (bearing value objects and parsing)
+**Last updated:** 2026-09-24
 
 ---
 
@@ -62,17 +62,45 @@
 | 41 | TASK-041 | Layer CRUD API | 031 | DONE | layer create/read/update/archive with optimistic concurrency |
 | 42 | TASK-042 | Custom field metadata API | 041 | DONE | CRUD for all 16 field types |
 | 43 | TASK-043 | Metadata-driven attribute validation (server) | 042 | DONE | validator building rules from `gis_layer_fields` |
-|| 44 | TASK-044 | Retype cast logic (field conversion) | 042 | TODO | safely upcast/downcast existing values |
-|| 45 | TASK-045 | Frontend layer list page | 041, 010 | DONE | `LayerListPage` with TanStack Query |
-|| 46 | TASK-046 | Frontend layer designer routing | 045, 041 | DONE | `LayerDesignerPage` with create/edit routes |
-|| 47 | TASK-047 | Layer designer UI (metadata, fields, styles, permissions) | 041-046, 038 | DONE | LayerDesigner + FieldDesigner + StyleDesigner + LayerPermissionMatrix |
-|| 48 | TASK-048 | FieldRenderer and runtime Zod schema generation | 042, 010 | DONE | one component per field type; schema from metadata |
-|| 49 | TASK-049 | Map shell and MapContext | 010 | DONE | single maplibre Map instance; LayerManager + InteractionManager; map never unmounts in workspace. 2026-09-21: removed duplicate OSM raster style (was conflicting with demotiles default); MapShell now wraps only /map route. |
-|| 50 | TASK-050 | Basemap provider API and manager UI | 020, 030 | DONE (fixed) | provider CRUD, GET /basemaps (no keys), admin UI. 2026-09-21: TileProxyController.php restored from stripped state; BasemapLoader changed from setStyle() to source.setTiles() to preserve map state; non-XYZ types warn instead of silently failing. |
-|| 51 | TASK-051 | Authenticated tile proxy for key-bearing providers | 050 | DONE (fixed) | 2026-09-21: TileProxyController.php was non-functional (all variable names stripped); fully restored, verified PHP parse in Docker PHP 8.3.33 at /var/www/html/src/GIS/Http/TileProxyController.php. |
-|| 52 | TASK-052 | Layer panel, legend, visibility, opacity, ordering | 049, 041 | DONE | LayerTree with drag reorder, visibility, opacity, legend, zoom-to. 2026-09-21: fixed broken import paths (../map/ → ../../map/); types/index.ts now exports LayerField, LayerStyleRule, LayerStyle, LayerPermission (fixes tsc -b errors in FieldRenderer, fieldApi, styleApi, FieldDesigner). |
+| 44 | TASK-044 | Retype cast logic (field conversion) | 042 | TODO | safely upcast/downcast existing values |
+| 45 | TASK-045 | Frontend layer list page | 041, 010 | DONE | `LayerListPage` with TanStack Query |
+| 46 | TASK-046 | Frontend layer designer routing | 045, 041 | DONE | `LayerDesignerPage` with create/edit routes |
+| 47 | TASK-047 | Layer designer UI (metadata, fields, styles, permissions) | 041-046, 038 | DONE | LayerDesigner + FieldDesigner + StyleDesigner + LayerPermissionMatrix |
+| 48 | TASK-048 | FieldRenderer and runtime Zod schema generation | 042, 010 | DONE | one component per field type; schema from metadata |
+| 49 | TASK-049 | Map shell and MapContext | 010 | DONE | single maplibre Map instance; LayerManager + InteractionManager; map never unmounts in workspace. 2026-09-21: removed duplicate OSM raster style (was conflicting with demotiles default); MapShell now wraps only /map route. |
+| 50 | TASK-050 | Basemap provider API and manager UI | 020, 030 | DONE (fixed) | provider CRUD, GET /basemaps (no keys), admin UI. 2026-09-21: TileProxyController.php restored from stripped state; BasemapLoader changed from setStyle() to source.setTiles() to preserve map state; non-XYZ types warn instead of silently failing. |
+| 51 | TASK-051 | Authenticated tile proxy for key-bearing providers | 050 | DONE (fixed) | 2026-09-21: TileProxyController.php was non-functional (all variable names stripped); fully restored, verified PHP parse in Docker PHP 8.3.33 at /var/www/html/src/GIS/Http/TileProxyController.php. |
+| 52 | TASK-052 | Layer panel, legend, visibility, opacity, ordering | 049, 041 | DONE | LayerTree with drag reorder, visibility, opacity, legend, zoom-to. 2026-09-21: fixed broken import paths (../map/ → ../../map/); types/index.ts now exports LayerField, LayerStyleRule, LayerStyle, LayerPermission (fixes tsc -b errors in FieldRenderer, fieldApi, styleApi, FieldDesigner). |
+| 53 | TASK-053 | GeoJSON feature source with bbox loading | 049, 054 | DONE | MapboxDraw / bbox loading in layerApi |
+| 54 | TASK-054 | Feature query API with bbox, filter, sort, pagination | 043, 032 | DONE | GisFeatureController CRUD + GeoJSON / MVT / coordinateReadout |
+| 55 | TASK-055 | MVT vector tile endpoint | 054 | DONE | ST_AsMVT endpoint in GisFeatureController |
+| 56 | TASK-056 | Client CRS registration and coordinate readout | 014, 049 | DONE | Coordinate readout with geographic coordinate validation |
+| 57 | TASK-057 | Feature create/update/delete API with concurrency | 054, 021 | DONE | AuditWriter, If-Match version conflict, ST_IsValidReason, ST_IsSimple |
+| 58 | TASK-058 | Drawing tools (point, line, polygon) with snapping | 049, 057 | DONE | DrawManager with MapboxDraw, live readout, save/error handlers |
+| 58b | TASK-058b | Multi-part geometry drawing and editing | 058 | TODO | MultiPoint, MultiLineString, MultiPolygon editing |
+| 59 | TASK-059 | Vertex editing, move, delete, undo/redo | 058 | DONE | DrawManager bounded undo/redo stack (max 50), shortcuts, unsaved-changes guard |
+| 60 | TASK-060 | Client-side geometry validation and server reconciliation | 059, 057 | DONE | geometry.ts validation (ring closure, self-intersection, vertices), server reconciliation |
+| 61 | TASK-061 | Conflict dialog | 057, 037 | DONE | ConflictDialog and ConflictDialogHost with reload/compare/new-version actions |
+| 62 | TASK-062 | Measure, identify, zoom-to tools | 049 | DONE | SpatialMeasure & SpatialToolController backend, MeasureTool, IdentifyTool, ZoomToTool |
+| 63 | TASK-063 | Spatial query API and search panel | 054 | DONE | SpatialQuery & SpatialQueryController backend (7 ops), SearchPanel UI |
+| 64 | TASK-064 | Attribute grid (server-driven) | 054, 048 | DONE | TanStack Table v9 FeatureGridPage with server pagination, sort, URL filters |
+| 65 | TASK-065 | Two-way map/table selection | 064, 049 | DONE | FeatureSelectionManager and FeatureSelectionContext bridging map & table selection |
+| 66 | TASK-066 | Row create, edit, delete from the grid | 064, 057 | DONE | FeatureEditor modal with FieldRenderer, permissions gating, bulk delete |
+| 67 | TASK-067 | Grid export and filter-by-extent | 064 | DONE | CSV & GeoJSON export with bbox extent filtering and permission gating |
+| 68 | TASK-068 | Parcel CRUD API | 032, 019 | DONE | ParcelController CRUD with PSGC, provenance, If-Match, soft-delete with audit |
+| 69 | TASK-069 | Parcel versioning | 068, 025 | DONE | Monotonic parcel versions, GET versions/detail, POST restore, pre-change diffs |
+| 70 | TASK-070 | Parcel list, search, and map integration | 068, 054 | DONE | Multi-field search, status/psgc filters, map preview envelope, include_historical gate |
+| 71 | TASK-071 | Parcel editor shell with tabs | 070, 048 | DONE | 9-tab editor shell, unsaved changes guard, status bar, workflow actions |
+| 72 | TASK-072 | Manual parcel drawing | 071, 058 | DONE | ParcelCreatePage, live readout, provenance defaults, survey-derived justification guard |
+| 73 | TASK-073 | Control point CRUD API | 014, 032 | DONE | Derivation of coordinates (projected vs geographic), origin tracking, CRS validation |
+| 74 | TASK-074 | Control point verification and dependents | 073 | DONE | Verification action, dependents endpoint, computation immutability |
+| 75 | TASK-075 | Nearest control point and map picker | 073, 049 | DONE | GIST KNN nearest-N query, geodesic distance, ControlPointPicker, NearestControlPointTool |
+| 76 | TASK-076 | Control point UI | 075, 038 | DONE | High-visibility UNVERIFIED badge, List/Editor pages, coordinate origin toggle, verification button |
+| 77 | TASK-077 | Survey plan CRUD and linkage | 068 | DONE | SurveyPlanController with plan types, If-Match, active parcel guard, SurveyPlanTab linkage |
+| 78 | TASK-077b | RPT / Property Assessment Integration Adapter (Stub) | 068 | DONE | Outbound port PropertyLinkProvider, StubPropertyLinkProvider, Unit test green |
+| 79 | TASK-078 | Bearing value objects and parsing (pure domain) | 014 | TODO | Bearing, Azimuth; parse quadrant DMS, decimal, cardinal; exact conversion |
 
-Nothing below TASK-052 is queued yet. The queue is extended one milestone at a time so it reflects reality rather than intention; the full ordered plan is in `todo.md`. On 2026-09-21 the navigation and layers issues from TASK-050/051/052 were audited and fixed: TileProxyController.php (all variable names stripped → restored and verified in Docker PHP 8.3.33), MapShell no longer wraps /admin /audit /status routes (map only behind /map), BasemapLoader uses source.setTiles() instead of setStyle() (preserves map state), App.tsx restructured so admin pages render without a map behind them, LayerTree import paths fixed, types/index.ts exports restored (LayerField, LayerStyleRule, LayerStyle, LayerPermission), layerApi.update() sends If-Match header, .tab-item CSS added for AdminView NavLinks.
+Phase 9 (Control points and survey plans, tasks 073–077b) has been audited and completed on 2026-09-24. Control points CRUD, coordinate derivations, verification, dependents tracking, nearest KNN spatial queries, frontend control point management UI (list, editor, picker, status badges), survey plan CRUD with parcel linkages, and the RPT property assessment stub adapter are fully implemented and verified. Next active task is TASK-078 (bearing value objects).
 
 TASK-034 shipped the admin APIs: `UserAdminService` (CRUD, deactivate as soft delete, role/scope assignment, force-password-reset, `effective-access` explainer), `RoleAdminService`/`OrganizationAdminService` (system-role protection, If-Match versioning, deactivation guards), controllers, and rewritten `config/routes.php` with per-route `AuthorizeMiddleware` declarations. Full suite: 121 tests / 306 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56).
 

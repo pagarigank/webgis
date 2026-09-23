@@ -15,6 +15,8 @@ import { HomePage } from './pages/HomePage';
 import { ParcelListPage } from './features/parcels/pages/ParcelListPage';
 import { ParcelEditorPage } from './features/parcels/pages/ParcelEditorPage';
 import { ParcelCreatePage } from './features/parcels/pages/ParcelCreatePage';
+import { ControlPointListPage } from './features/control-points/pages/ControlPointListPage';
+import { ControlPointEditorPage } from './features/control-points/pages/ControlPointEditorPage';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { me: _me } = useAuth();
@@ -38,6 +40,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           )}
           {hasPermission(_me, 'parcel.view') && (
             <Link to="/parcels" className={location.pathname.startsWith('/parcels') ? 'active' : ''}>Parcels</Link>
+          )}
+          {hasPermission(_me, 'control_point.view') && (
+            <Link to="/control-points" className={location.pathname.startsWith('/control-points') ? 'active' : ''}>Control Points</Link>
           )}
           {hasPermission(_me, 'audit.view') && (
             <Link to="/audit" className={location.pathname === '/audit' ? 'active' : ''}>Audit Logs</Link>
@@ -114,6 +119,30 @@ function App() {
           element={
             <RequirePermission permission="parcel.view">
               <ParcelEditorPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/control-points"
+          element={
+            <RequirePermission permission="control_point.view">
+              <ControlPointListPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/control-points/new"
+          element={
+            <RequirePermission permission="control_point.create">
+              <ControlPointEditorPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/control-points/:id"
+          element={
+            <RequirePermission permission="control_point.view">
+              <ControlPointEditorPage />
             </RequirePermission>
           }
         />

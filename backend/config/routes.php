@@ -202,6 +202,8 @@ return function (App $app) {
             ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);
         $group->post('/control-points', $cp . ':create')
             ->add($cpAuthed('control_point.create'))->add(AuthenticateMiddleware::class);
+        $group->get('/control-points/nearest', $cp . ':nearest')
+            ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);
         $group->get('/control-points/{id:[0-9]+}', $cp . ':get')
             ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);
         $group->put('/control-points/{id:[0-9]+}', $cp . ':update')
@@ -212,5 +214,22 @@ return function (App $app) {
             ->add($cpAuthed('control_point.verify'))->add(AuthenticateMiddleware::class);
         $group->get('/control-points/{id:[0-9]+}/dependents', $cp . ':dependents')
             ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);
+
+        // ---- Survey plans (Phase 9, TASK-077) ----
+        $spAuthed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
+        $sp = \App\Survey\Http\SurveyPlanController::class;
+        $group->get('/survey-plans', $sp . ':list')
+            ->add($spAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/survey-plans', $sp . ':create')
+            ->add($spAuthed('survey.create'))->add(AuthenticateMiddleware::class);
+        $group->get('/survey-plans/{id:[0-9]+}', $sp . ':get')
+            ->add($spAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->put('/survey-plans/{id:[0-9]+}', $sp . ':update')
+            ->add($spAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+        $group->delete('/survey-plans/{id:[0-9]+}', $sp . ':delete')
+            ->add($spAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+        $group->get('/survey-plans/{id:[0-9]+}/parcels', $sp . ':parcels')
+            ->add($spAuthed('survey.view'))->add(AuthenticateMiddleware::class);
     });
 };
+

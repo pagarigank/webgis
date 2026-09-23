@@ -1,10 +1,6 @@
-**TASK-049 — Map shell and `MapContext`**
-Dep: 010 · Files: `frontend/src/features/map/MapWorkspace.tsx`, `MapContext.tsx`, `SpatialTools.tsx`, `ConflictDialogHost.tsx`, `Managers.ts`, `App.tsx` · Status: DONE
-Do: single MapLibre GL map instance, `layerManager`, `selectionManager`, `interactionMgr`, zoom/measure/identify tools, conflict dialog host; `/map` route wired.
-AC: MapWorkspace renders with LayerTree panel + SpatialTools panel; map never unmounts inside the workspace; layer loading works via `apiClient`.
-Verification: 2026-09-21 — `MapWorkspace.tsx` (NEW: LayerTree left panel + ZoomToTool/MeasureTool/IdentifyTool right panel, each wrapped in pointerEvents:'auto' divs). `MapContext.tsx` (layerManager as useState, selectionManager state, registerConflictHandler method, FeatureSelectionManager instantiation). `SpatialTools.tsx` (IdentifyTool fixed: r.feature not r.features[0], r.layer_name). `Managers.ts` (loadLayerFeatures uses apiClient with Bearer token). `ConflictDialogHost.tsx` (useEffect registers handleError via ctx.registerConflictHandler). `App.tsx` (/map route renders MapWorkspace inside MapShell, /map nav link added). Build: npx tsc -b + npm run build pass clean. API verification via curl: auth JWT works, POST /spatial/query returns 1 feature (layer 388), GET /spatial/identify returns feature + distance_m + layer_name, GET /spatial/measure returns length_m, GET /mvt returns 59-byte tile. Playwright browser verified: /map page renders all panels correctly; Load Sample Layer 388 button shows correct layer ID (was 322); Identify/Measure/SpatialSearch panels functional. Note: tokenStore resets on Vite HMR concurrent-rendering-error in dev mode — not a code bug, curl verification confirms backend works.
-
-**TASK-064 — Identify bug fix**
-Dep: 062 · Files: `backend/src/GIS/Domain/IdentifyPopup.php`, `backend/src/GIS/Domain/SpatialMeasure.php` · Status: DONE
-Do: IdentifyPopup.forPoint handle empty featureId (find nearest), fix :srid::int cast for ST_Transform. SpatialMeasure.length/area/identify fix :srid::int cast and scope SQL (rbac_layer_capabilities -> layer_permissions).
-Verification: 2026-09-21 — curl verify: GET /spatial/identify with empty feature_id returns nearest feature (distance_m=1077.71) + layer_name="Sample Parcel Polygon". POST /spatial/measure returns length_m=1544.74. All PHP parse clean.
+**TASK-078 — Bearing value objects and parsing (pure domain)**
+Dep: 014 · Files: `backend/src/Survey/Domain/Bearing.php`, `backend/src/Survey/Domain/Azimuth.php`, `backend/tests/Unit/BearingTest.php` · Status: TODO
+Do: `Bearing`, `Azimuth`; parse quadrant DMS, quadrant decimal, azimuth DMS/decimal, cardinal; normalise to azimuth; keep the original string untouched.
+AC: quadrant↔azimuth conversion exact to 1e-9 in all four quadrants and at boundaries; ambiguous 0°/90° rejected (VR-07); round-trip stable.
+Test: Unit/BearingTest — known-answer vectors, malformed inputs, boundary cases. Written first.
+Entry criteria: Phase 9 (Control points and survey plans, tasks 073–077b) is DONE.

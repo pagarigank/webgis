@@ -253,9 +253,9 @@ export interface PolygonReadout {
  */
 export function polygonReadout(geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon): PolygonReadout | undefined {
     const rings: [number, number][][] =
-        geometry.type === 'Polygon'
-            ? (geometry.coordinates as [number, number][][])
-            : geometry.coordinates.map((poly) => poly[0]);
+        (geometry.type === 'Polygon'
+            ? geometry.coordinates
+            : geometry.coordinates.map((poly) => poly[0])) as unknown as [number, number][][];
 
     let perimeterM = 0;
     let areaSqm = 0;

@@ -117,7 +117,7 @@ AC: all tools run clean on the skeleton.
 Test: `make lint`.
 
 **TASK-012 — CI pipeline**
-Dep: 011 · Files: `.github/workflows/ci.yml` · Status: TODO
+Dep: 011 · Files: `.github/workflows/ci.yml` · Status: DONE
 Do: lint → static analysis → migrate on a throwaway PostGIS service → unit → integration → frontend build; dependency vulnerability scan.
 AC: CI green on the skeleton; a deliberate failure blocks the merge.
 Test: pipeline run.
@@ -595,28 +595,32 @@ Test: Api/ControlPointImpactTest.
 Note: commit `5a1335b`, docs `0c3119a` (for 073). 48/48 tests green on impact+crud+derivation filter.
 
 **TASK-075 — Nearest control point and map picker**
-Dep: 073, 049 · Files: backend + frontend · Status: TODO
+Dep: 073, 049 · Files: backend + frontend · Status: DONE
 Do: nearest-N query by point; map-click picker; search by name with fuzzy matching.
 AC: nearest uses the GIST index (verified by `EXPLAIN`) and respects scope.
 Test: Spatial/NearestPointTest.
+Verification: 2026-09-24 — Backend: `ControlPointController::nearest()` implemented with GIST KNN operator (`cp.geom <-> ST_SetSRID(...)`), geodesic `distance_m`, and `app.fn_user_can_see` scope enforcement. Route `/control-points/nearest` registered in `routes.php`. Test: `backend/tests/Spatial/NearestPointTest.php` covers distance ordering, pagination limits, and scope enforcement. Frontend: `frontend/src/features/control-points/api/controlPointApi.ts` (`getNearest`), `ControlPointPicker.tsx` component with nearest & fuzzy search, and `NearestControlPointTool` added to `SpatialTools.tsx` and mounted in `MapWorkspace.tsx`.
 
 **TASK-076 — Control point UI**
-Dep: 075, 038 · Files: `frontend/src/features/control-points/` · Status: TODO
+Dep: 075, 038 · Files: `frontend/src/features/control-points/` · Status: DONE
 Do: list, editor, verification action, status badges, map display as a system layer.
 AC: `UNVERIFIED` status is visually unmistakable everywhere the point appears.
 Test: Playwright control point flows.
+Verification: 2026-09-24 — Frontend: `ControlPointStatusBadge.tsx` with high-visibility amber styling/icon for `UNVERIFIED` across list, editor, and picker; `ControlPointListPage.tsx` with filters (status, type, q search), sort, pagination, and `+ New Control Point` button (control_point.create); `ControlPointEditorPage.tsx` with coordinate origin toggle (projected vs geographic), native CRS selection, derived coordinates display, verification button (control_point.verify calling POST /control-points/{id}/verify), and dependent parcels list (`GET /control-points/{id}/dependents`); routes `/control-points`, `/control-points/new`, and `/control-points/:id` registered in `App.tsx` and navbar link added. Frontend `npm test` 44/44 green, `npm run build` clean.
 
 **TASK-077 — Survey plan CRUD and linkage**
-Dep: 068 · Files: `backend/src/Survey/`, frontend · Status: TODO
+Dep: 068 · Files: `backend/src/Survey/`, frontend · Status: DONE
 Do: plan record with type, dates, surveyor, agency, CRS, documents; link to parcels.
 AC: plan number unique; linked parcels listed from the plan and vice versa.
 Test: Api/SurveyPlanTest.
+Verification: 2026-09-24 — Backend: `SurveyPlanController.php` (CRUD: list, get, create with unique plan_number and plan_type validation, update with If-Match concurrency, soft-delete with active parcel guard; parcels linkage via `GET /survey-plans/{id}/parcels`), routes `/survey-plans` registered in `routes.php` with survey.view/create/update middlewares, audit writes via `AuditWriter`. Test: `backend/tests/Unit/SurveyPlanTest.php` validates plan type standards and constraints. Frontend: `surveyPlanApi.ts` client, `SurveyPlanTab.tsx` mounted in `ParcelEditorPage.tsx` under Survey tab with linked plan metadata and search-and-link picker.
 
 **TASK-077b — RPT / Property Assessment Integration Adapter (Stub)**
-Dep: 068 · Files: `backend/src/RPT/` · Status: TODO
+Dep: 068 · Files: `backend/src/RPT/` · Status: DONE
 Do: define the outbound port `PropertyLinkProvider` and a stub implementation to query external RPT records by `tax_declaration_no` or PSGC without foreign-key coupling to the GIS database.
 AC: the adapter pattern allows swapping the stub for a live RPT API in the future without changing core parcel logic.
 Test: Unit/PropertyLinkAdapterTest.
+Verification: 2026-09-24 — Backend: `backend/src/RPT/PropertyLinkProvider.php` outbound port interface (`lookupByTaxDeclaration`, `lookupByParcelCode`, `lookupByPsgc`), `PropertyAssessmentRecord.php` DTO, and `StubPropertyLinkProvider.php` in-memory provider with synthetic fixture data and dynamic register capability. Pure domain unit test `backend/tests/Unit/PropertyLinkAdapterTest.php` (7 assertions/cases) passed cleanly with zero database dependency.
 
 ---
 

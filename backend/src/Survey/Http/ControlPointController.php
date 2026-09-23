@@ -143,6 +143,94 @@ class ControlPointController
         ]);
     }
 
+    // ── TASK-075: nearest ─────────────────────────────────────────────────
+
+    /**
+     * GET /control-points/nearest?lat=&lon=&limit=&type=
+     *
+     * Nearest-N control points to a WGS 84 position, ordered by distance using
+     * the GIST index (`cp.geom <-> :pt`, verified by EXPLAIN). Each row carries
+     * a geodesic `distance_m` (computed on geography). Results respect record
+     * data scopes exactly like the RLS policies: a point is returned only when
+     * `app.fn_user_can_see` grants the caller access to its barangay, so the
+     * map picker never leaks out-of-scope points.
+     */
+    public function nearest(Request $request, Response $response): Response
+    {
+        $uid = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+
+        $q   = $request->getQueryParams();
+        $raw = [$q['lat'] ?? null, $q['lon'] ?? null];
+        foreach ($raw as $i => $value) {
+            if (!is_numeric($value)) {
+                throw new ApiError('VALIDATION_FAILED', $i === 0 ? 'lat must be a numeric coordinate' : 'lon must be a numeric coordinate', 400);
+            }
+            $raw[$i] = (float) $value;
+        }
+        [$lat, $lon] = $raw;
+        if ($lat < -90 || $lat > 90 || $lon < -180 || $lon > 180) {
+            throw new ApiError('VALIDATION_FAILED', 'lat/lon out of range', 400);
+        }
+
+        $limit = min(max((int) ($q['limit'] ?? 10), 1), 100);
+
+        $where  = ['cp.deleted_at IS NULL'];
+        $params = [];
+
+        $type = $q['type'] ?? null;
+        if ($type !== null && $type !== '') {
+            if (!in_array($type, self::POINT_TYPES, true)) {
+                throw new ApiError('VALIDATION_FAILED', 'Invalid type value', 400);
+            }
+            $where[]   = 'cp.point_type = :type';
+            $params[':type'] = $type;
+        }
+
+        // Same predicate the parcels RLS policies use; resolves GLOBAL first,
+        // then geographic / organisation data scopes. Positioned eagerly so a
+        // point outside the caller's scope can never reach the picker.
+        $where[] = 'app.fn_user_can_see(NULLIF(current_setting(\'app.user_id\', true), \'\')::bigint, cp.psgc_barangay, NULL)';
+
+        $whereSql = 'WHERE ' . implode(' AND ', $where);
+        $from     = 'app.survey_control_points cp '
+                  . 'LEFT JOIN ref.crs_registry c ON c.id = cp.native_crs_id';
+
+        // Named placeholders appear exactly once (native prepares reject
+        // repetition), hence the lon1/lat1 (distance) vs lon2/lat2 (order).
+        $refPoint = 'ST_SetSRID(ST_MakePoint(:lon1, :lat1), 4326)';
+
+        $sql = 'SELECT ' . $this->pointSelect() . ', '
+             . 'ROUND((ST_Distance(cp.geom::geography, ' . $refPoint . '::geography))::numeric, 2) AS distance_m '
+             . "FROM {$from} {$whereSql} "
+             . 'ORDER BY cp.geom <-> ST_SetSRID(ST_MakePoint(:lon2, :lat2), 4326) '
+             . 'LIMIT :lim';
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $k => $v) {
+            $stmt->bindValue($k, $v);
+        }
+        $stmt->bindValue(':lon1', $lon);
+        $stmt->bindValue(':lat1', $lat);
+        $stmt->bindValue(':lon2', $lon);
+        $stmt->bindValue(':lat2', $lat);
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $row                = $this->formatPoint($r);
+            $row['distance_m']  = $r['distance_m'] !== null ? (float) $r['distance_m'] : null;
+            $rows[] = $row;
+        }
+
+        return Envelope::success($response, [
+            'data'  => $rows,
+            'total' => count($rows),
+            'limit' => $limit,
+        ]);
+    }
+
     /**
      * GET /control-points/{id}
      */

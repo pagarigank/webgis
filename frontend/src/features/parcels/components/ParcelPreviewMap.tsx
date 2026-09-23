@@ -71,5 +71,5 @@ export function ParcelPreviewMap({ parcel }: { parcel: Parcel }) {
         }
     }, [parcel]);
 
-    return <div ref={containerRef} style={{ height: '100%', minHeight: 420 }} data-testid="parcel-editor-map" />;
+    return <div ref={containerRef} style={{ height: '100%', minHeight: 420 }} data-testid="parcel-editor-map" data-map-ready={mapReady ? 'true' : 'false'} />;
 }

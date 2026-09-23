@@ -165,3 +165,34 @@ On 2026-09-20 the complete suite ran **98 tests / 228 assertions, OK** on the Do
 - **TASK-046**: Implemented GisLayerStyleController to support SINGLE, CATEGORIZED, and GRADUATED styling rules. Created API routes and tests.
 
 - **TASK-047**: Implemented LayerDesigner UI (frontend) with subcomponents for editing layer metadata, fields, styles, and basic role permissions. Added Cypress E2E test.
+
+## TASK-075: Nearest control point and map picker
+- **What shipped**:
+  - Backend: `GET /control-points/nearest?lat=&lon=&limit=&type=` in `ControlPointController.php` using the GIST KNN distance operator (`<->`), geodesic `distance_m` calculation, and `app.fn_user_can_see` scope enforcement. Registered in `routes.php` under `control_point.view`.
+  - Frontend: `frontend/src/features/control-points/api/controlPointApi.ts` with `getNearest()`, `ControlPointPicker.tsx` component supporting nearest search to coordinates and fuzzy name search, and `NearestControlPointTool` integrated in `SpatialTools.tsx` and mounted in `MapWorkspace.tsx`.
+- **Decisions made**: Geodesic distance calculated via `ST_Distance(cp.geom::geography, ...)` to report accurate real-world metric distances in the picker list.
+- **Follow-up items**: TASK-076.
+
+## TASK-076: Control point UI
+- **What shipped**:
+  - `ControlPointStatusBadge.tsx`: Prominent warning-amber styling with icon for `UNVERIFIED` status per the AC requirement ("visually unmistakable everywhere the point appears"), checkmark green for `VERIFIED`, red for `DISPUTED`, gray for `RETIRED`.
+  - `ControlPointListPage.tsx`: Paginated table with filters by status, type, fuzzy query, sorting by name/type/status/dates, coordinates display (native and derived with explicit badges), and `+ New Control Point` button.
+  - `ControlPointEditorPage.tsx`: Full monument editor supporting coordinate origin toggle (`PROJECTED` vs `GEOGRAPHIC`), native CRS selection, accuracy metadata, audit change reasons, live dependents panel (`GET /control-points/{id}/dependents`), and "Verify Point" action button gated by `control_point.verify`.
+  - Routed `/control-points`, `/control-points/new`, and `/control-points/:id` in `App.tsx` and added navigation link.
+- **Decisions made**: Unverified status carries a distinct warning outline and background so surveyor review state cannot be overlooked.
+
+## TASK-077: Survey plan CRUD and linkage
+- **What shipped**:
+  - Backend: `SurveyPlanController.php` with CRUD (`GET /survey-plans`, `POST /survey-plans`, `GET /survey-plans/{id}`, `PUT /survey-plans/{id}`, `DELETE /survey-plans/{id}`, and `GET /survey-plans/{id}/parcels`). Enforces unique plan numbers, validates standard Philippine survey plan types (Psd, Psu, Pcs, etc.), optimistic locking via `If-Match`, soft-delete with active parcel protection, and full audit logging via `AuditWriter`. Registered in `routes.php`.
+  - Tests: `backend/tests/Unit/SurveyPlanTest.php` asserting plan types and rules.
+  - Frontend: `surveyPlanApi.ts` client, `SurveyPlanTab.tsx` mounted inside `ParcelEditorPage.tsx` under the Survey tab, allowing viewing linked survey plan details or searching and linking/unlinking survey plans to parcels.
+- **Decisions made**: Deleting a survey plan is strictly refused if any active parcel references it (`linkedCount > 0`).
+
+## TASK-077b: RPT / Property Assessment Integration Adapter (Stub)
+- **What shipped**:
+  - Outbound port interface `backend/src/RPT/PropertyLinkProvider.php` defining lookups by Tax Declaration number (`lookupByTaxDeclaration`), parcel code (`lookupByParcelCode`), and PSGC (`lookupByPsgc`).
+  - DTO `backend/src/RPT/PropertyAssessmentRecord.php` encapsulating assessment values and ownership without database foreign keys.
+  - In-memory implementation `backend/src/RPT/StubPropertyLinkProvider.php` with synthetic fixtures and dynamic registration capability.
+  - Unit test `backend/tests/Unit/PropertyLinkAdapterTest.php` (7 test cases passed).
+- **Decisions made**: Architectural commitment: strict adapter pattern with no foreign keys into third-party RPT databases, allowing live RPT integration in future phases without touching core parcel domain code.
+

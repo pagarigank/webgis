@@ -306,5 +306,5 @@ function ParcelMap(props: {
         } as GeoJSON.FeatureCollection);
     }, [parcels]);
 
-    return <div ref={containerRef} style={{ height: '460px' }} data-testid="parcel-map" />;
+    return <div ref={containerRef} style={{ height: '460px' }} data-testid="parcel-map" data-map-ready={mapReady ? 'true' : 'false'} />;
 }
