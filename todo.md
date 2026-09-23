@@ -588,10 +588,11 @@ Note: commit `ab49f77`. Registration/verify/nearest routes deferred to 074/075.
 Follow-up: add `nearest` route and method (TASK-075); add `verify`/`dependents` (TASK-074).
 
 **TASK-074 — Control point verification and dependents**
-Dep: 073 · Files: `backend/src/Survey/` · Status: TODO
+Dep: 073 · Files: `backend/src/Survey/` · Status: DONE
 Do: `verify` action recording verifier and time; `dependents` endpoint; coordinate edits flag dependent parcels for review without altering past computations.
 AC: editing coordinates leaves every existing computation byte-identical and returns the impacted parcel list.
 Test: Api/ControlPointImpactTest.
+Note: commit `5a1335b`, docs `0c3119a` (for 073). 48/48 tests green on impact+crud+derivation filter.
 
 **TASK-075 — Nearest control point and map picker**
 Dep: 073, 049 · Files: backend + frontend · Status: TODO
