@@ -580,10 +580,12 @@ Verification: 2026-09-23 - Backend: `ParcelController::create()` now accepts `su
 ## PHASE 9 — Control points and survey plans
 
 **TASK-073 — Control point CRUD API**
-Dep: 014, 032 · Files: `backend/src/Survey/` · Status: TODO
+Dep: 014, 032 · Files: `backend/src/Survey/` · Status: DONE
 Do: full record; accept E/N **or** lat/long, derive the other, record which was original; `UNVERIFIED` by default.
 AC: derived coordinates are labelled derived; a point outside its CRS area of use is rejected.
 Test: Api/ControlPointTest, Unit/CoordinateDerivationTest.
+Note: commit `ab49f77`. Registration/verify/nearest routes deferred to 074/075.
+Follow-up: add `nearest` route and method (TASK-075); add `verify`/`dependents` (TASK-074).
 
 **TASK-074 — Control point verification and dependents**
 Dep: 073 · Files: `backend/src/Survey/` · Status: TODO
