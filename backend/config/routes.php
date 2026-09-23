@@ -208,5 +208,9 @@ return function (App $app) {
             ->add($cpAuthed('control_point.update'))->add(AuthenticateMiddleware::class);
         $group->delete('/control-points/{id:[0-9]+}', $cp . ':delete')
             ->add($cpAuthed('control_point.update'))->add(AuthenticateMiddleware::class);
+        $group->post('/control-points/{id:[0-9]+}/verify', $cp . ':verify')
+            ->add($cpAuthed('control_point.verify'))->add(AuthenticateMiddleware::class);
+        $group->get('/control-points/{id:[0-9]+}/dependents', $cp . ':dependents')
+            ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);
     });
 };

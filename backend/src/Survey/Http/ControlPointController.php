@@ -499,6 +499,22 @@ class ControlPointController
 
             $updated = $this->getCurrent($id);
 
+            // TASK-074 / FR-081: a coordinate change puts every dependent
+            // parcel (one whose computation used this point) up for review.
+            // The flag lives on the parcel, which is exactly the surface the
+            // parcel picker and review queues filter on. Computations are left
+            // byte-identical: each already stores its own input_snapshot.
+            $impact = [];
+            if ($coordinatesChanged) {
+                $impact = $this->findDependentParcels($id);
+                if ($impact !== []) {
+                    $this->flagParcelsForReview($impact, $uid);
+                    // Re-read so the returned rows carry the fresh flag.
+                    $impact = $this->findDependentParcels($id);
+                }
+            }
+            $updated['impact'] = $impact;
+
             $reason = trim((string) ($body['change_reason'] ?? ''));
             $this->audit->writeFromSession(
                 'UPDATE',
@@ -511,6 +527,85 @@ class ControlPointController
             );
 
             return Envelope::success($response, $updated);
+    }
+
+    /**
+     * POST /control-points/{id}/verify (control_point.verify)
+     *
+     * TASK-074 / FR-078. Records the verifier and the moment of verification
+     * and moves the point to VERIFIED. Re-verification is idempotent in the
+     * sense that it may be repeated; each call stamps verified_by/verified_at
+     * and bumps the version (the state transition is an audited change).
+     */
+    public function verify(Request $request, Response $response, array $args): Response
+    {
+        $uid = $this->resolveUser($request);
+        $id  = $this->parseId($args);
+
+        // Middleware owns the outer transaction; audit is atomic, rollback on error.
+        $this->setUserInSession($uid);
+
+        $lock = $this->pdo->prepare(
+            'SELECT * FROM app.survey_control_points WHERE id = :id AND deleted_at IS NULL FOR UPDATE'
+        );
+        $lock->execute([':id' => $id]);
+        $current = $lock->fetch(PDO::FETCH_ASSOC);
+        if ($current === false) {
+            throw new ApiError('NOT_FOUND', 'Control point not found', 404);
+        }
+
+        $pre = $this->formatPoint($this->hydrateCrs($current));
+
+        $upd = $this->pdo->prepare(
+            "UPDATE app.survey_control_points SET status = 'VERIFIED', verified_by = :uid, "
+            . 'verified_at = CURRENT_TIMESTAMP, version = version + 1, updated_by = :uid, '
+            . 'updated_at = CURRENT_TIMESTAMP '
+            . 'WHERE id = :id AND deleted_at IS NULL RETURNING id'
+        );
+        $upd->execute([':id' => $id, ':uid' => $uid]);
+
+        $row = $this->getCurrent($id);
+        $this->audit->writeFromSession(
+            'VERIFY',
+            'app.survey_control_points',
+            (string) $id,
+            $this->stripForAudit($pre),
+            $this->stripForAudit($row),
+            null,
+            'Control point verified'
+        );
+
+        return Envelope::success($response, $row);
+    }
+
+    /**
+     * GET /control-points/{id}/dependents (control_point.view)
+     *
+     * TASK-074 / FR-081. Parcels whose computations used this control point:
+     * a parcel depends on the point when the tie points of its current
+     * technical description (or of its current computation's technical
+     * description) reference it. These are the parcels flagged for review when
+     * the point's coordinates are edited. Soft-deleted parcels are excluded.
+     */
+    public function dependents(Request $request, Response $response, array $args): Response
+    {
+        $this->resolveUser($request);
+        $id = $this->parseId($args);
+
+        $chk = $this->pdo->prepare(
+            'SELECT 1 FROM app.survey_control_points WHERE id = :id AND deleted_at IS NULL'
+        );
+        $chk->execute([':id' => $id]);
+        if ($chk->fetchColumn() === false) {
+            throw new ApiError('NOT_FOUND', 'Control point not found', 404);
+        }
+
+        $parcels = $this->findDependentParcels($id);
+
+        return Envelope::success($response, [
+            'parcels' => $parcels,
+            'total'   => count($parcels),
+        ]);
     }
 
     /**
@@ -874,6 +969,73 @@ class ControlPointController
     {
         unset($point['geom'], $point['id'], $point['created_by'], $point['created_at'], $point['updated_by'], $point['updated_at']);
         return $point;
+    }
+
+    /**
+     * Parcels whose computations used this control point (TASK-074/FR-081).
+     * A parcel depends on the point when a current technical description — or
+     * the technical description behind the parcel's current computation —
+     * carries a tie point referencing it. Soft-deleted parcels are excluded.
+     */
+    private function findDependentParcels(int $cpId): array
+    {
+        $sql = 'SELECT DISTINCT p.id, p.parcel_code, p.lot_number, p.block_number, '
+             . 'p.status, p.verification_status, p.computed_area_sqm, '
+             . 'p.control_review_pending, p.control_review_since '
+             . 'FROM app.parcels p '
+             . 'WHERE p.deleted_at IS NULL '
+             . 'AND EXISTS ('
+             . 'SELECT 1 FROM app.tie_points tp '
+             . 'JOIN app.technical_descriptions td ON td.id = tp.technical_description_id '
+             . 'WHERE tp.control_point_id = :cp '
+             . 'AND ('
+             . '(td.parcel_id = p.id AND td.is_current = true) '
+             . 'OR EXISTS (SELECT 1 FROM app.parcel_computations pc '
+             . 'WHERE pc.parcel_id = p.id AND pc.is_current = true '
+             . 'AND pc.technical_description_id = td.id)'
+             . ')'
+             . ') '
+             . 'ORDER BY p.parcel_code';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':cp' => $cpId]);
+        return array_map(fn (array $r) => $this->formatDependentParcel($r), $stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * Mark parcels as pending review after a control point coordinate change.
+     * Deliberately does NOT bump the parcel version: recomputing a parcel later
+     * must not fail an in-flight optimistically-locked write that only touched
+     * the review flag.
+     */
+    private function flagParcelsForReview(array $parcels, int $uid): void
+    {
+        $ids = array_column($parcels, 'id');
+        $ph  = implode(', ', array_fill(0, count($ids), '?'));
+        $sql = 'UPDATE app.parcels SET control_review_pending = true, '
+             . 'control_review_since = COALESCE(control_review_since, CURRENT_TIMESTAMP), '
+             . 'updated_at = CURRENT_TIMESTAMP '
+             . "WHERE id IN ($ph)";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($ids);
+    }
+
+    private function formatDependentParcel(array $r): array
+    {
+        $pending = $r['control_review_pending'];
+        if (is_string($pending)) {
+            $pending = in_array(strtolower($pending), ['1', 't', 'true', 'y', 'yes', 'on'], true);
+        }
+        return [
+            'id'                      => (string) $r['id'],
+            'parcel_code'             => $r['parcel_code'],
+            'lot_number'              => $r['lot_number'],
+            'block_number'            => $r['block_number'],
+            'status'                  => $r['status'],
+            'verification_status'     => $r['verification_status'],
+            'computed_area_sqm'       => $r['computed_area_sqm'] !== null ? (float) $r['computed_area_sqm'] : null,
+            'control_review_pending'  => (bool) $pending,
+            'control_review_since'    => $r['control_review_since'],
+        ];
     }
 
     private function optionalString(array $body, string $key, int $max): ?string
