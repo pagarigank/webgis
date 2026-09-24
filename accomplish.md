@@ -196,3 +196,59 @@ On 2026-09-20 the complete suite ran **98 tests / 228 assertions, OK** on the Do
   - Unit test `backend/tests/Unit/PropertyLinkAdapterTest.php` (7 test cases passed).
 - **Decisions made**: Architectural commitment: strict adapter pattern with no foreign keys into third-party RPT databases, allowing live RPT integration in future phases without touching core parcel domain code.
 
+## TASK-078: Bearing value objects and parsing (pure domain)
+- **What shipped**:
+  - Pure domain value objects `backend/src/Survey/Domain/Bearing.php` and `Azimuth.php`.
+  - Parses quadrant DMS (`N 25°30'00" E`, `N25-30-00E`, `N 25d 30m 00s E`), decimal quadrant (`N 25.5 E`), raw decimal azimuth, and cardinal directions (`DUE NORTH`, `N`, `S`, `E`, `W`).
+  - Strict enforcement of VR-01 (deg 0–90, min 0–59, sec 0–59.999), VR-02 (azimuth 0 ≤ Az < 360), VR-03 (quadrants NE/SE/SW/NW or cardinal), and VR-07 (ambiguous 0° and 90° bearings with quadrant rejected; cardinals required).
+  - Exact quadrant-to-azimuth conversions to 1e-9; round-trip stability.
+  - Unit tests: `backend/tests/Unit/BearingTest.php` (8 tests / 26 assertions passed).
+
+## TASK-079: Distance value object and unit conversion
+- **What shipped**:
+  - Pure domain value object `backend/src/Survey/Domain/Distance.php`.
+  - Canonical meters (`distance_m`) preservation with exact conversion factors for meters, kilometers, international feet (0.3048 m), US survey feet (1200/3937 m), Spanish varas (0.835905 m), and Gunter's chains (20.1168 m).
+  - Enforces VR-04 (distance > 0.01 m; zero/negative rejected), VR-06 (registered unit validation), and VR-05 (warning when single course exceeds 5,000 m).
+  - Unit tests: `backend/tests/Unit/DistanceTest.php` (10 tests / 22 assertions passed).
+
+## TASK-080: Technical description CRUD and revisions
+- **What shipped**:
+  - Backend controller `backend/src/Survey/Http/TechnicalDescriptionController.php` with `GET /parcels/{id}/technical-descriptions`, `POST /parcels/{id}/technical-descriptions` (creates next sequential revision, manages `is_current`), `GET /technical-descriptions/{id}` (full detail with tie points, tie lines, and courses), `PUT /technical-descriptions/{id}` (optimistic locking via `If-Match`, blocks in-place mutation of confirmed revisions), course CRUD (`POST/PUT/DELETE /courses`, sequential renumbering on delete, atomic reordering via `PUT /courses/order`).
+  - Full audit logging via `AuditWriter`. Routes registered in `backend/config/routes.php` and DI container in `backend/config/dependencies.php`.
+
+## TASK-081: Course syntax validation endpoint
+- **What shipped**:
+  - Domain service `backend/src/Survey/Domain/CourseValidator.php` validating course sequences against VR-01 through VR-09 (bearing bounds, azimuth bounds, quadrant types, distance bounds, 5000m warning, unit registration, ambiguous 0°/90° rejection, collinear consecutive warning VR-08, reversed backtrack course warning VR-09).
+  - Endpoint `POST /technical-descriptions/{id}/validate` returning `{ valid, errors, warnings, validated_courses }` without computing.
+  - Unit tests: `backend/tests/Unit/CourseValidatorTest.php` (9 tests passed).
+
+## TASK-082: Technical description parser
+- **What shipped**:
+  - Pure domain parser `backend/src/Survey/Domain/Parser/TechnicalDescriptionParser.php` tokenizing free-form cadastral/Torrens survey descriptions.
+  - Extracts tie points (BLLM, MBM, PBM), tie line vectors, point of beginning, boundary course sequences, claimed area, character source spans, and confidence scores (0.0 to 1.0).
+  - High/low confidence scoring; never guesses silently; flags low-confidence or corrupt text with VR issue codes.
+  - Endpoint `POST /survey/parse`.
+  - Unit tests: `backend/tests/Unit/ParserTest.php` (4 tests passed).
+
+## TASK-083: Staging, review, and confirmation workflow
+- **What shipped**:
+  - Confirmation endpoint `POST /technical-descriptions/{id}/confirm` validating all courses through `CourseValidator`.
+  - Premature confirmation guard: returns 422 `PARSE_UNRESOLVED` with issue list if any course has unresolved syntax errors.
+  - Sets `confirmed_by`, `confirmed_at`, marks `parser_status = 'CONFIRMED'`, sets `is_confirmed = true` on courses, and writes audit row `technical_description.confirm`.
+
+## TASK-084: Technical description UI
+- **What shipped**:
+  - Frontend client: `frontend/src/features/survey/api/surveyApi.ts`.
+  - Compound input `BearingInput.tsx`: Quadrant dropdowns, degrees/minutes/seconds inputs, live derived azimuth readout, paste-parse fallback, and VR-01...VR-07 instant validation.
+  - Survey tab `TechnicalDescriptionTab.tsx`: Revision selector, metadata display, course table with reordering, course validation trigger with VR badges, paste-and-parse review modal with source text, confidence scores, and confirm action lock.
+  - Tie point tab `TiePointTab.tsx`: Geodetic tie point cards, as-used coordinates, tie lines, and `ControlPointPicker` integration.
+  - Mounted inside `ParcelEditorPage.tsx`.
+
+## TASK-085: Live traverse preview on the map
+- **What shipped**:
+  - Component `TraversePreviewMap.tsx`: Real-time traverse coordinate derivation ($\Delta N = D\cos Az, \Delta E = D\sin Az$), SVG vector canvas with grid and vertex labels, closure gap calculation, and prominent red dashed open-polygon gap indicator between the last vertex and POB with live distance readout. Embedded in `TechnicalDescriptionTab.tsx`.
+
+## TASK-086: OCR assist (optional, flagged)
+- **What shipped**:
+  - Endpoint `POST /technical-descriptions/{id}/ocr` in `TechnicalDescriptionController.php` accepting scanned OCR text, extracting courses with `extraction_method = 'OCR_EXTRACTED'`, staging into the technical description, and channeling into the identical review/confirmation workflow.
+

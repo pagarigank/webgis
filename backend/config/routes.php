@@ -230,6 +230,38 @@ return function (App $app) {
             ->add($spAuthed('survey.update'))->add(AuthenticateMiddleware::class);
         $group->get('/survey-plans/{id:[0-9]+}/parcels', $sp . ':parcels')
             ->add($spAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+
+        // ---- Technical descriptions, Courses, Parsing & Validation (Phase 10, TASK-080..086) ----
+        $tdAuthed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
+        $td = \App\Survey\Http\TechnicalDescriptionController::class;
+
+        $group->get('/parcels/{id}/technical-descriptions', $td . ':listForParcel')
+            ->add($tdAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels/{id}/technical-descriptions', $td . ':createForParcel')
+            ->add($tdAuthed('survey.create'))->add(AuthenticateMiddleware::class);
+
+        $group->get('/technical-descriptions/{id:[0-9]+}', $td . ':get')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->put('/technical-descriptions/{id:[0-9]+}', $td . ':update')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+
+        $group->post('/technical-descriptions/{id:[0-9]+}/courses', $td . ':addCourse')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+        $group->put('/technical-descriptions/{id:[0-9]+}/courses/{courseId:[0-9]+}', $td . ':updateCourse')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+        $group->delete('/technical-descriptions/{id:[0-9]+}/courses/{courseId:[0-9]+}', $td . ':deleteCourse')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+        $group->put('/technical-descriptions/{id:[0-9]+}/courses/order', $td . ':reorderCourses')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+
+        $group->post('/technical-descriptions/{id:[0-9]+}/validate', $td . ':validateCourses')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/survey/parse', $td . ':parseText')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/technical-descriptions/{id:[0-9]+}/confirm', $td . ':confirm')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+        $group->post('/technical-descriptions/{id:[0-9]+}/ocr', $td . ':ocrAssist')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
     });
 };
 

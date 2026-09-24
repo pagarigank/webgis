@@ -5,6 +5,8 @@ import axios from 'axios';
 import { parcelApi } from '../api/parcelApi';
 import { InformationTab } from '../components/InformationTab';
 import { SurveyPlanTab } from '../components/SurveyPlanTab';
+import { TechnicalDescriptionTab } from '../../survey/components/TechnicalDescriptionTab';
+import { TiePointTab } from '../../survey/components/TiePointTab';
 import { ParcelPreviewMap } from '../components/ParcelPreviewMap';
 import { ParcelMeta } from '../components/badges';
 import { Modal } from '../../../components/dialogs/Modal';
@@ -204,9 +206,10 @@ export function ParcelEditorPage() {
                             {activeTab === 'survey' && (
                                 <SurveyPlanTab parcel={parcel} onUpdated={() => void refetch()} />
                             )}
+                            {activeTab === 'tiepoint' && <TiePointTab parcelId={id} />}
+                            {activeTab === 'techdesc' && <TechnicalDescriptionTab parcelId={id} />}
                             {activeTab === 'history' && <HistoryTab id={id} />}
-                            {(activeTab === 'title' || activeTab === 'tiepoint'
-                                || activeTab === 'techdesc' || activeTab === 'computation'
+                            {(activeTab === 'title' || activeTab === 'computation'
                                 || activeTab === 'validation' || activeTab === 'documents') && (
                                 <ComingSoon tabLabel={PARCEL_TABS.find((t) => t.key === activeTab)!.label} />
                             )}

@@ -2,8 +2,8 @@
 
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
-**Current phase:** PHASE 10 — Technical descriptions and parser
-**Implementation status:** IN PROGRESS — Phases 1 through 9 (tasks 001–077b) shipped; next is TASK-078 (bearing value objects and parsing)
+**Current phase:** PHASE 11 — Computation engine
+**Implementation status:** IN PROGRESS — Phases 1 through 10 (tasks 001–086) shipped; next is TASK-087 (traverse computer)
 **Last updated:** 2026-09-24
 
 ---
@@ -98,9 +98,18 @@
 | 76 | TASK-076 | Control point UI | 075, 038 | DONE | High-visibility UNVERIFIED badge, List/Editor pages, coordinate origin toggle, verification button |
 | 77 | TASK-077 | Survey plan CRUD and linkage | 068 | DONE | SurveyPlanController with plan types, If-Match, active parcel guard, SurveyPlanTab linkage |
 | 78 | TASK-077b | RPT / Property Assessment Integration Adapter (Stub) | 068 | DONE | Outbound port PropertyLinkProvider, StubPropertyLinkProvider, Unit test green |
-| 79 | TASK-078 | Bearing value objects and parsing (pure domain) | 014 | TODO | Bearing, Azimuth; parse quadrant DMS, decimal, cardinal; exact conversion |
+| 79 | TASK-078 | Bearing value objects and parsing (pure domain) | 014 | DONE | Bearing, Azimuth; parse quadrant DMS, decimal, cardinal; exact conversion |
+| 80 | TASK-079 | Distance value object and unit conversion | 014 | DONE | Distance canonical meters, exact ref.units factors, VR-04..06 |
+| 81 | TASK-080 | Technical description CRUD and revisions | 068, 073 | DONE | Revisions, tie points/lines, courses CRUD/reorder, If-Match, audit |
+| 82 | TASK-081 | Course syntax validation endpoint | 080, 078, 079 | DONE | Rules VR-01...VR-09 enforced and reported |
+| 83 | TASK-082 | Technical description parser | 078, 079 | DONE | Tokenization, spans, confidence scores, unresolved flagging |
+| 84 | TASK-083 | Staging, review, and confirmation workflow | 082, 080 | DONE | Confirm action, PARSE_UNRESOLVED guard, audited |
+| 85 | TASK-084 | Technical description UI | 083, 071 | DONE | BearingInput, course table, tie point tab, paste-and-parse review pane |
+| 86 | TASK-085 | Live traverse preview on the map | 084, 049 | DONE | Real-time traverse vectors, closure error, explicit red gap indicator |
+| 87 | TASK-086 | OCR assist (optional, flagged) | 083 | DONE | OCR assist staging endpoint with OCR_EXTRACTED marking |
+| 88 | TASK-087 | Traverse computer (pure domain) | 078, 079 | TODO | tie point -> tie line -> POB -> successive courses; deltaN, deltaE |
 
-Phase 9 (Control points and survey plans, tasks 073–077b) has been audited and completed on 2026-09-24. Control points CRUD, coordinate derivations, verification, dependents tracking, nearest KNN spatial queries, frontend control point management UI (list, editor, picker, status badges), survey plan CRUD with parcel linkages, and the RPT property assessment stub adapter are fully implemented and verified. Next active task is TASK-078 (bearing value objects).
+Phase 10 (Technical descriptions and parser, tasks 078–086) has been audited and completed on 2026-09-24. Pure domain survey geometry (Bearing, Azimuth, Distance), course syntax validation enforcing VR-01...VR-09, cadastral technical description parser with source spans and confidence scores, confirmation workflow with PARSE_UNRESOLVED gate, frontend survey UI (BearingInput, course table, tie point tab, paste-and-parse review modal), live traverse preview map with explicit red closure gap indicator, and OCR assist staging are fully implemented and verified. Next active task is TASK-087 (traverse computer).
 
 TASK-034 shipped the admin APIs: `UserAdminService` (CRUD, deactivate as soft delete, role/scope assignment, force-password-reset, `effective-access` explainer), `RoleAdminService`/`OrganizationAdminService` (system-role protection, If-Match versioning, deactivation guards), controllers, and rewritten `config/routes.php` with per-route `AuthorizeMiddleware` declarations. Full suite: 121 tests / 306 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56).
 

@@ -116,4 +116,8 @@ return [
     \App\GIS\Domain\SpatialQuery::class => \DI\autowire(\App\GIS\Domain\SpatialQuery::class),
     \App\GIS\Http\SpatialQueryController::class => \DI\autowire(\App\GIS\Http\SpatialQueryController::class)
         ->constructorParameter('query', \DI\get(\App\GIS\Domain\SpatialQuery::class)),
+
+    \App\Survey\Http\TechnicalDescriptionController::class => \DI\autowire(\App\Survey\Http\TechnicalDescriptionController::class)
+        ->constructorParameter('audit', \DI\get(AuditWriter::class)),
 ];
+

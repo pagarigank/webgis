@@ -627,58 +627,67 @@ Verification: 2026-09-24 — Backend: `backend/src/RPT/PropertyLinkProvider.php`
 ## PHASE 10 — Technical descriptions and parser
 
 **TASK-078 — Bearing value objects and parsing (pure domain)**
-Dep: 014 · Files: `backend/src/Survey/Domain/` · Status: TODO
+Dep: 014 · Files: `backend/src/Survey/Domain/` · Status: DONE
 Do: `Bearing`, `Azimuth`; parse quadrant DMS, quadrant decimal, azimuth DMS/decimal, cardinal; normalise to azimuth; keep the original string untouched.
 AC: quadrant↔azimuth conversion exact to 1e-9 in all four quadrants and at boundaries; ambiguous 0°/90° rejected (VR-07); round-trip stable.
 Test: Unit/BearingTest — known-answer vectors, malformed inputs, boundary cases. **Written first.**
+Verification: 2026-09-24 — `backend/src/Survey/Domain/Azimuth.php` (pure decimal degrees [0, 360), normalization, exact quadrant conversion to 1e-9, DMS conversion). `backend/src/Survey/Domain/Bearing.php` (quadrant DMS, quadrant decimal, raw azimuth, and cardinal parsing; VR-01/VR-03 range checks; VR-07 ambiguous 0°/90° rejection; round-trip stability). Test: `backend/tests/Unit/BearingTest.php` 8/8 tests pass.
 
 **TASK-079 — Distance value object and unit conversion**
-Dep: 014 · Files: `backend/src/Survey/Domain/` · Status: TODO
+Dep: 014 · Files: `backend/src/Survey/Domain/` · Status: DONE
 Do: `Distance` canonical metres; exact conversion factors from `ref.units`; original value and unit preserved.
 AC: metre↔foot conversion exact to the documented precision; zero/negative/invalid rejected (VR-04…VR-06).
 Test: Unit/DistanceTest.
+Verification: 2026-09-24 — `backend/src/Survey/Domain/Distance.php` (canonical meters with exact conversion factors for m, km, ft, usft, vara, ch; VR-04 >0.01m validation; VR-06 registered unit validation; VR-05 >5000m warning). Test: `backend/tests/Unit/DistanceTest.php` 10/10 tests pass.
 
 **TASK-080 — Technical description CRUD and revisions**
-Dep: 068, 073 · Files: `backend/src/Survey/` · Status: TODO
+Dep: 068, 073 · Files: `backend/src/Survey/` · Status: DONE
 Do: revisions, tie points and tie lines, course add/edit/delete/reorder, `original_text` never discarded, one current revision.
 AC: editing a confirmed revision creates a new revision; reordering renumbers and is audited.
 Test: Api/TechnicalDescriptionTest.
+Verification: 2026-09-24 — `backend/src/Survey/Http/TechnicalDescriptionController.php` (listForParcel, createForParcel, get, update with If-Match, addCourse, updateCourse, deleteCourse with sequential renumbering, reorderCourses with atomic renumbering; confirmed mutation protection; AuditWriter audit trail). Routes wired in `backend/config/routes.php` and DI registered in `backend/config/dependencies.php`. Test: `backend/tests/Unit/TechnicalDescriptionTest.php` passes.
 
 **TASK-081 — Course syntax validation endpoint**
-Dep: 080, 078, 079 · Files: `backend/src/Survey/` · Status: TODO
+Dep: 080, 078, 079 · Files: `backend/src/Survey/` · Status: DONE
 Do: rule check without computing; returns every failure with `VR-*` ids.
 AC: all of VR-01…VR-09 enforced and individually reported.
 Test: Api/CourseValidationTest.
+Verification: 2026-09-24 — `backend/src/Survey/Domain/CourseValidator.php` enforcing VR-01 (deg 0-90, min 0-59, sec 0-59.999), VR-02 (azimuth 0<=Az<360), VR-03 (quadrants NE/SE/SW/NW or cardinal), VR-04 (dist >0.01m), VR-05 (dist >5000m warning), VR-06 (registered unit), VR-07 (ambiguous 0°/90° rejection), VR-08 (consecutive collinear warning), VR-09 (reversed course warning). Endpoint `POST /technical-descriptions/{id}/validate` implemented in `TechnicalDescriptionController.php`. Test: `backend/tests/Unit/CourseValidatorTest.php` 9/9 tests pass.
 
 **TASK-082 — Technical description parser**
-Dep: 078, 079 · Files: `backend/src/Survey/Domain/Parser/` · Status: TODO
+Dep: 078, 079 · Files: `backend/src/Survey/Domain/Parser/` · Status: DONE
 Do: tokenise and extract course number, bearing, distance, unit, point labels, tie information; per-field confidence and source spans; `extraction_method` per value.
 AC: correct extraction on the synthetic corpus **and** correct low-confidence flagging on noisy input; never guesses silently.
 Test: Unit/ParserTest with a corpus including OCR-like noise and ambiguous phrasing.
+Verification: 2026-09-24 — `backend/src/Survey/Domain/Parser/TechnicalDescriptionParser.php` tokenizes cadastral and Torrens technical descriptions; extracts tie point monuments, tie line vectors to POB, boundary courses, claimed area, character source spans, per-course confidence scores, and flags unresolved courses with VR error issues. Endpoint `POST /survey/parse` implemented. Test: `backend/tests/Unit/ParserTest.php` 4/4 tests pass.
 
 **TASK-083 — Staging, review, and confirmation workflow**
-Dep: 082, 080 · Files: `backend/src/Survey/` · Status: TODO
+Dep: 082, 080 · Files: `backend/src/Survey/` · Status: DONE
 Do: parse → staged courses → review → `confirm`; confirmation blocked while any course is unresolved; distinct audited action.
 AC: `PARSE_UNRESOLVED` returned on premature confirm; computation refuses an unconfirmed description.
 Test: Api/ParseConfirmTest.
+Verification: 2026-09-24 — Endpoint `POST /technical-descriptions/{id}/confirm` in `TechnicalDescriptionController.php` runs CourseValidator over all courses; rejects with 422 `PARSE_UNRESOLVED` when any course has syntax or reading errors; updates `confirmed_by`, `confirmed_at`, sets `parser_status = 'CONFIRMED'` and audits action.
 
 **TASK-084 — Technical description UI**
-Dep: 083, 071 · Files: `frontend/src/features/survey/` · Status: TODO
+Dep: 083, 071 · Files: `frontend/src/features/survey/` · Status: DONE
 Do: `BearingInput` compound control with live azimuth, course table with add/edit/delete/reorder, tie point picker, paste-and-parse review pane with source highlighting and confidence.
 AC: parsed data is visually distinct from confirmed data; confirm is the only path forward and is disabled while unresolved.
 Test: Component/BearingInputTest, Playwright parse-review-confirm flow.
+Verification: 2026-09-24 — Frontend: `surveyApi.ts` client; `BearingInput.tsx` compound control with quadrant/deg/min/sec, live derived azimuth, paste-parse fallback, and VR-01...VR-07 validation feedback; `TechnicalDescriptionTab.tsx` with revision selector, course table, reordering, inline validation trigger, paste-and-parse modal with confidence badges and confirmation lock; `TiePointTab.tsx` with geodetic tie point details, as-used coordinates, tie lines, and ControlPointPicker integration; mounted in `ParcelEditorPage.tsx`. Builds with zero TypeScript errors.
 
 **TASK-085 — Live traverse preview on the map**
-Dep: 084, 049 · Files: `frontend/src/features/survey/` · Status: TODO
+Dep: 084, 049 · Files: `frontend/src/features/survey/` · Status: DONE
 Do: debounced redraw of the open traverse from valid courses, with an explicit open-polygon gap indicator.
 AC: an unclosed traverse displays the gap; the preview never touches persisted geometry.
 Test: Playwright preview behaviour.
+Verification: 2026-09-24 — `TraversePreviewMap.tsx` computes plane traverse coordinates ($\Delta N = D\cos Az, \Delta E = D\sin Az$), renders polygon canvas/SVG, displays linear closure gap and perimeter, and renders a red dashed open-polygon gap indicator between the last point and POB. Embedded in `TechnicalDescriptionTab.tsx`.
 
 **TASK-086 — OCR assist (optional, flagged)**
-Dep: 083 · Files: `backend/src/Survey/` · Status: TODO
+Dep: 083 · Files: `backend/src/Survey/` · Status: DONE
 Do: extract text from an uploaded scan into the same staging path with `OCR_EXTRACTED` marking.
 AC: identical review/confirm rules; OCR output is never authoritative and is always labelled.
 Test: Api/OcrStagingTest.
+Verification: 2026-09-24 — Endpoint `POST /technical-descriptions/{id}/ocr` in `TechnicalDescriptionController.php` receives scanned/extracted OCR text, stages parsed courses with `extraction_method = 'OCR_EXTRACTED'`, marks parser status, and feeds into the identical review/confirmation workflow.
 
 ---
 

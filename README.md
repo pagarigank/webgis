@@ -43,13 +43,14 @@ See `docs/runbook-backup.md` for backup and restore procedures.
 
 ## Status
 
-Phases 1 through 9 (tasks 001–077b) are complete, covering:
+Phases 1 through 10 (tasks 001–086) are complete, covering:
 - Foundation & Architecture (ERD, RLS data access, seeding, fixtures, audit writer, backup/restore)
 - Identity & Admin (authentication, JWT + refresh rotation, Argon2id, TOTP MFA, RBAC admin APIs, transport security)
 - GIS Core & Map Shell (layers, fields, styles, basemap provider proxy, MapLibre GL workspace, LayerTree)
 - Drawing & Spatial Analysis (feature CRUD, DrawManager with undo/redo, geometry validation, conflicts, measure/identify, spatial query engine)
 - Attribute Grid & Selection (TanStack Table v9 grid, two-way map/table sync, row editing, GeoJSON/CSV export)
 - Parcels Core (parcel CRUD, append-only versioning, search with historical filter, 9-tab editor shell, manual drawing with provenance enforcement)
-- Control Points & Survey Plans (Phase 9: control points CRUD, projected/geographic coordinate derivations, verification, dependents tracking, GIST KNN nearest picker, frontend UI & amber UNVERIFIED badge, survey plan CRUD with parcel linkages, and external RPT stub provider).
+- Control Points & Survey Plans (control points CRUD, projected/geographic coordinate derivations, verification, dependents tracking, GIST KNN nearest picker, frontend UI & amber UNVERIFIED badge, survey plan CRUD with parcel linkages, and external RPT stub provider).
+- Technical Descriptions & Parser (Phase 10: pure domain bearing/azimuth & distance value objects, VR-01...VR-09 validation engine, freeform cadastral text parser with source spans and confidence scores, technical description revision CRUD, optimistic locking, PARSE_UNRESOLVED confirmation guard, OCR assist staging endpoint, Compound BearingInput UI control, TiePointTab with ControlPointPicker, TechnicalDescriptionTab with course table and paste-and-parse review modal, and live vector TraversePreviewMap with red dashed closure gap indicator).
 
-Development is now queued for Phase 10 (Technical descriptions and parser), starting with TASK-078 (bearing value objects).
+Development is now queued for Phase 11 (Computation engine), starting with TASK-087 (Traverse computer).

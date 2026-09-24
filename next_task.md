@@ -1,6 +1,6 @@
-**TASK-078 — Bearing value objects and parsing (pure domain)**
-Dep: 014 · Files: `backend/src/Survey/Domain/Bearing.php`, `backend/src/Survey/Domain/Azimuth.php`, `backend/tests/Unit/BearingTest.php` · Status: TODO
-Do: `Bearing`, `Azimuth`; parse quadrant DMS, quadrant decimal, azimuth DMS/decimal, cardinal; normalise to azimuth; keep the original string untouched.
-AC: quadrant↔azimuth conversion exact to 1e-9 in all four quadrants and at boundaries; ambiguous 0°/90° rejected (VR-07); round-trip stable.
-Test: Unit/BearingTest — known-answer vectors, malformed inputs, boundary cases. Written first.
-Entry criteria: Phase 9 (Control points and survey plans, tasks 073–077b) is DONE.
+**TASK-087 — Traverse computer (pure domain)**
+Dep: 078, 079 · Files: `backend/src/Survey/Domain/TraverseComputer.php`, `backend/tests/Unit/TraverseComputerTest.php` · Status: TODO
+Do: tie point → tie line(s) → POB → successive courses; ΔN = D·cos(Az), ΔE = D·sin(Az) in plane coordinates.
+AC: vertices match hand-computed benchmarks to 1 mm on every fixture.
+Test: Unit/TraverseComputerTest (known-answer vectors). Written first.
+Entry criteria: Phase 10 (Technical descriptions and parser, tasks 078–086) is DONE.
