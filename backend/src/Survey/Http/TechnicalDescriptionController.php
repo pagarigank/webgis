@@ -92,8 +92,11 @@ class TechnicalDescriptionController
         $pobLabel = isset($body['point_of_beginning_label']) ? (string) $body['point_of_beginning_label'] : '1';
         $surveyRef = isset($body['survey_reference']) ? (string) $body['survey_reference'] : null;
         $makeCurrent = (bool) ($body['is_current'] ?? true);
-
-        $this->pdo->beginTransaction();
+        $startedTx = false;
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+            $startedTx = true;
+        }
         try {
             // Calculate next revision
             $revStmt = $this->pdo->prepare('SELECT COALESCE(MAX(revision), 0) + 1 FROM app.technical_descriptions WHERE parcel_id = :pid');
@@ -154,17 +157,19 @@ class TechnicalDescriptionController
                 }
             }
 
-            $this->audit->writeFromSession($this->pdo, 'technical_description.create', 'app.technical_descriptions', (string) $tdId, [
+            $this->audit->writeFromSession('INSERT', 'app.technical_descriptions', (string) $tdId, null, [
                 'parcel_id' => $parcelId,
                 'revision' => $nextRevision,
                 'source_type' => $sourceType,
             ]);
 
-            $this->pdo->commit();
+            if ($startedTx && $this->pdo->inTransaction()) {
+                $this->pdo->commit();
+            }
 
             return $this->get($request, $response, ['id' => (string) $tdId]);
         } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
+            if ($startedTx && $this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
             throw $e;
@@ -246,7 +251,7 @@ class TechnicalDescriptionController
             ':id' => $id,
         ]);
 
-        $this->audit->writeFromSession($this->pdo, 'technical_description.update', 'app.technical_descriptions', (string) $id, [
+        $this->audit->writeFromSession('UPDATE', 'app.technical_descriptions', (string) $id, null, [
             'bearing_reference' => $bRef,
             'distance_unit' => $dUnit,
         ]);
@@ -279,22 +284,22 @@ class TechnicalDescriptionController
 
         $cData = [
             'seq' => $body['seq'] ?? $nextSeq,
-            'from_point_label' => $body['from_point_label'] ?? (string) $nextSeq,
-            'to_point_label' => $body['to_point_label'] ?? (string) ($nextSeq + 1),
-            'bearing' => $body['bearing'] ?? null,
+            'from_point_label' => $body['from_point_label'] ?? $body['from_corner'] ?? $body['from'] ?? (string) $nextSeq,
+            'to_point_label' => $body['to_point_label'] ?? $body['to_corner'] ?? $body['to'] ?? (string) ($nextSeq + 1),
+            'bearing' => $body['bearing'] ?? $body['bearing_raw'] ?? null,
             'quadrant' => $body['quadrant'] ?? null,
             'deg' => $body['deg'] ?? null,
             'min' => $body['min'] ?? null,
             'sec' => $body['sec'] ?? null,
             'azimuth_dd' => $body['azimuth_dd'] ?? null,
-            'distance' => $body['distance'] ?? $body['distance_m'] ?? null,
+            'distance' => $body['distance'] ?? $body['distance_raw'] ?? $body['distance_m'] ?? null,
             'unit' => $body['unit'] ?? $td['distance_unit'] ?? 'm',
             'remarks' => $body['remarks'] ?? null,
         ];
 
         $courseId = $this->insertCourseRow($id, $cData);
 
-        $this->audit->writeFromSession($this->pdo, 'technical_description.course_add', 'app.technical_description_courses', (string) $courseId, [
+        $this->audit->writeFromSession('INSERT', 'app.technical_description_courses', (string) $courseId, null, [
             'technical_description_id' => $id,
             'seq' => $cData['seq'],
         ]);
@@ -384,7 +389,7 @@ class TechnicalDescriptionController
             ':td_id' => $tdId,
         ]);
 
-        $this->audit->writeFromSession($this->pdo, 'technical_description.course_update', 'app.technical_description_courses', (string) $courseId, [
+        $this->audit->writeFromSession('UPDATE', 'app.technical_description_courses', (string) $courseId, null, [
             'technical_description_id' => $tdId,
         ]);
 
@@ -408,7 +413,11 @@ class TechnicalDescriptionController
             throw new ApiError('CONFLICT', 'Cannot delete course from confirmed technical description', 409);
         }
 
-        $this->pdo->beginTransaction();
+        $startedTx = false;
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+            $startedTx = true;
+        }
         try {
             $delStmt = $this->pdo->prepare('DELETE FROM app.technical_description_courses WHERE id = :cid AND technical_description_id = :td_id');
             $delStmt->execute([':cid' => $courseId, ':td_id' => $tdId]);
@@ -423,14 +432,16 @@ class TechnicalDescriptionController
                 $updateSeq->execute([':seq' => $idx + 1, ':id' => $cId]);
             }
 
-            $this->audit->writeFromSession($this->pdo, 'technical_description.course_delete', 'app.technical_description_courses', (string) $courseId, [
+            $this->audit->writeFromSession('DELETE', 'app.technical_description_courses', (string) $courseId, [
                 'technical_description_id' => $tdId,
-            ]);
+            ], null);
 
-            $this->pdo->commit();
+            if ($startedTx && $this->pdo->inTransaction()) {
+                $this->pdo->commit();
+            }
             return $this->get($request, $response, ['id' => (string) $tdId]);
         } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
+            if ($startedTx && $this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
             throw $e;
@@ -458,7 +469,11 @@ class TechnicalDescriptionController
             throw new ApiError('VALIDATION_FAILED', 'course_ids array is required', 400);
         }
 
-        $this->pdo->beginTransaction();
+        $startedTx = false;
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+            $startedTx = true;
+        }
         try {
             // Use temporary negative sequence numbers to avoid unique constraint clash
             $tempStmt = $this->pdo->prepare('UPDATE app.technical_description_courses SET seq = :neg_seq WHERE id = :id AND technical_description_id = :td_id');
@@ -471,14 +486,16 @@ class TechnicalDescriptionController
                 $finalStmt->execute([':seq' => $idx + 1, ':id' => (int) $cId, ':td_id' => $tdId]);
             }
 
-            $this->audit->writeFromSession($this->pdo, 'technical_description.course_reorder', 'app.technical_descriptions', (string) $tdId, [
+            $this->audit->writeFromSession('UPDATE', 'app.technical_descriptions', (string) $tdId, null, [
                 'new_order' => $courseIds,
             ]);
 
-            $this->pdo->commit();
+            if ($startedTx && $this->pdo->inTransaction()) {
+                $this->pdo->commit();
+            }
             return $this->get($request, $response, ['id' => (string) $tdId]);
         } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
+            if ($startedTx && $this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
             throw $e;
@@ -585,7 +602,11 @@ class TechnicalDescriptionController
             ]);
         }
 
-        $this->pdo->beginTransaction();
+        $startedTx = false;
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+            $startedTx = true;
+        }
         try {
             $upStmt = $this->pdo->prepare(
                 'UPDATE app.technical_descriptions SET '
@@ -598,14 +619,16 @@ class TechnicalDescriptionController
             $confCourses = $this->pdo->prepare('UPDATE app.technical_description_courses SET is_confirmed = true WHERE technical_description_id = :id');
             $confCourses->execute([':id' => $id]);
 
-            $this->audit->writeFromSession($this->pdo, 'technical_description.confirm', 'app.technical_descriptions', (string) $id, [
+            $this->audit->writeFromSession('CONFIRM', 'app.technical_descriptions', (string) $id, null, [
                 'confirmed_courses_count' => count($rows),
             ]);
 
-            $this->pdo->commit();
+            if ($startedTx && $this->pdo->inTransaction()) {
+                $this->pdo->commit();
+            }
             return $this->get($request, $response, $args);
         } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
+            if ($startedTx && $this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
             throw $e;
@@ -631,7 +654,11 @@ class TechnicalDescriptionController
 
         $parseResult = $this->parser->parse($ocrText, 'OCR_EXTRACTED', 'm');
 
-        $this->pdo->beginTransaction();
+        $startedTx = false;
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+            $startedTx = true;
+        }
         try {
             $upStmt = $this->pdo->prepare(
                 'UPDATE app.technical_descriptions SET '
@@ -655,15 +682,17 @@ class TechnicalDescriptionController
                 $this->insertCourseRow($id, $c);
             }
 
-            $this->audit->writeFromSession($this->pdo, 'technical_description.ocr_assist', 'app.technical_descriptions', (string) $id, [
+            $this->audit->writeFromSession('OCR_STAGING', 'app.technical_descriptions', (string) $id, null, [
                 'courses_count' => count($parseResult['courses']),
                 'status' => $parseResult['parser_status'],
             ]);
 
-            $this->pdo->commit();
+            if ($startedTx && $this->pdo->inTransaction()) {
+                $this->pdo->commit();
+            }
             return $this->get($request, $response, $args);
         } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
+            if ($startedTx && $this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
             throw $e;

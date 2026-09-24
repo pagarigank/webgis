@@ -119,5 +119,17 @@ return [
 
     \App\Survey\Http\TechnicalDescriptionController::class => \DI\autowire(\App\Survey\Http\TechnicalDescriptionController::class)
         ->constructorParameter('audit', \DI\get(AuditWriter::class)),
+
+    // ---- Phase 11 Computation Engine & CRS Transformations ----
+    \App\Core\Crs\CoordinateTransformationService::class => \DI\autowire(\App\Core\Crs\CoordinateTransformationService::class),
+    \App\Core\Crs\Http\CoordinateTransformationController::class => \DI\autowire(\App\Core\Crs\Http\CoordinateTransformationController::class),
+
+    \App\Survey\Domain\TraverseComputer::class => \DI\autowire(\App\Survey\Domain\TraverseComputer::class),
+    \App\Survey\Domain\ClosureCalculator::class => \DI\autowire(\App\Survey\Domain\ClosureCalculator::class),
+    \App\Survey\Domain\AreaCalculator::class => \DI\autowire(\App\Survey\Domain\AreaCalculator::class),
+    \App\Survey\Domain\ComputeCrsGuard::class => \DI\autowire(\App\Survey\Domain\ComputeCrsGuard::class),
+
+    \App\Survey\Application\SurveyComputationService::class => \DI\autowire(\App\Survey\Application\SurveyComputationService::class),
+    \App\Survey\Http\ComputationController::class => \DI\autowire(\App\Survey\Http\ComputationController::class),
 ];
 

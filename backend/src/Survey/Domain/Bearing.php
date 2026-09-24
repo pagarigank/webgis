@@ -222,6 +222,14 @@ final class Bearing
         throw new InvalidArgumentException("VR-01: Could not parse bearing '{$input}'. Expected formats: 'N 25°30\'00\" E', 'N 25.5 E', or 'DUE NORTH'.");
     }
 
+    /**
+     * Alias for parse()
+     */
+    public static function fromString(string $input): self
+    {
+        return self::parse($input);
+    }
+
     public function getType(): string
     {
         return $this->type;

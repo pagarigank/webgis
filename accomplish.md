@@ -252,3 +252,64 @@ On 2026-09-20 the complete suite ran **98 tests / 228 assertions, OK** on the Do
 - **What shipped**:
   - Endpoint `POST /technical-descriptions/{id}/ocr` in `TechnicalDescriptionController.php` accepting scanned OCR text, extracting courses with `extraction_method = 'OCR_EXTRACTED'`, staging into the technical description, and channeling into the identical review/confirmation workflow.
 
+## TASK-087: Traverse computer (pure domain)
+- **What shipped**:
+  - `backend/src/Survey/Domain/TraverseComputer.php`: Pure domain planar traverse computer calculating Cartesian increments ($\Delta N = D\cos Az, \Delta E = D\sin Az$) for arbitrary multi-leg tie lines and closed perimeter courses.
+  - Matches benchmarks to 1 mm on plane coordinates.
+  - Unit tests: `backend/tests/Unit/TraverseComputerTest.php` (written first, 3 tests / 35 assertions passed).
+
+## TASK-088: Closure calculation
+- **What shipped**:
+  - `backend/src/Survey/Domain/ClosureCalculator.php` and `ClosureResult.php`: Precision survey closure analyzer.
+  - Computes $\Delta E$, $\Delta N$, linear closing error, error azimuth via `atan2`, perimeter, and relative precision ratio denominator with zero-division guard returning `1:INF` on exact mathematical closure.
+  - Enforces VR-11 (relative precision ≥ 1:5000) and VR-12 (linear error ≤ 0.100m) tolerance evaluations.
+  - Unit tests: `backend/tests/Unit/ClosureTest.php` (5 tests passed).
+
+## TASK-089: Area calculation and cross-check
+- **What shipped**:
+  - `backend/src/Survey/Domain/AreaCalculator.php`: Computes plane Shoelace polygon area ($A = \frac{1}{2}|\sum(x_i y_{i+1} - x_{i+1} y_i)|$).
+  - Evaluates claimed/source area discrepancies (VR-15, VR-16) and PostGIS planar area cross-check (VR-17 flagged if difference > 0.01%).
+  - Area is never computed in geographic EPSG:4326.
+  - Includes mandatory validation aid note: *"Area comparison is a validation aid, not a determination of correctness."*
+  - Unit tests: `backend/tests/Unit/AreaTest.php` (5 tests passed).
+
+## TASK-090: Computation service, snapshot, persistence
+- **What shipped**:
+  - `backend/src/Survey/Application/SurveyComputationService.php` and `ComputationController.php`: Application orchestration for traverse calculation, PostGIS polygon topological validation (VR-13 self-intersection, VR-14 validity), immutable snapshot generation into `app.parcel_computations.input_snapshot`, persistence into `app.parcel_computations` and `app.parcel_vertices`.
+  - Replay determinism endpoint `POST /computations/{id}/replay` recomputing from stored snapshot and verifying 100% vertex coordinate reproducibility.
+  - Integration test: `backend/tests/Api/ComputationApiTest.php` (tests pass).
+
+## TASK-091: Compute-CRS selection and guards
+- **What shipped**:
+  - `backend/src/Survey/Domain/ComputeCrsGuard.php`: Enforces projected coordinate system requirement, maps longitude to Philippine PRS92 PTM Zones I–V (EPSG:3121..3125), validates area of use bounds against CRS bounding boxes (VR-20), rejects geographic/unprojected CRSs (`CRS_UNSUPPORTED`), and blocks non-GRID bearing references (GEODETIC, MAGNETIC, ASSUMED) with explicit rejection messages.
+  - Endpoint `GET /crs/suggest-ptm-zone?lon=...` in `ComputationController.php`.
+  - Unit tests: `backend/tests/Unit/ComputeCrsGuardTest.php` (6 tests passed).
+
+## TASK-092: Accept computation → parcel geometry
+- **What shipped**:
+  - Endpoint `POST /parcels/{id}/accept-computation` in `backend/src/Parcels/Http/ParcelController.php`.
+  - Atomically sets parcel geometry (`geom`), updates provenance to `COMPUTED_FROM_TECHNICAL_DESCRIPTION`, records `current_computation_id`, bumps parcel `version`, saves snapshot to `audit.parcel_versions`, and writes audit log.
+  - Guaranteed: nothing writes to `parcels.geom` prior to explicit acceptance.
+  - Integration test: `backend/tests/Api/ComputationApiTest.php` (tests pass).
+
+## TASK-093: Computation panel UI
+- **What shipped**:
+  - Frontend client `frontend/src/features/survey/api/computationApi.ts`.
+  - Component `ComputationPanel.tsx`: Full survey computation workbench featuring Technical Description revision selector, PTM zone recommendation and selector, live SVG traverse preview, closure metrics card, area comparison card with mandatory validation aid note, survey rule alerts, calculated coordinates table, input snapshot modal, traverse adjustment modal, accept computation modal, and computation run history with replay action.
+  - Mounted in `ParcelEditorPage.tsx` under Computation tab.
+  - Component tests: `frontend/src/features/survey/components/ComputationPanel.test.tsx` (3 tests passed).
+
+## TASK-094: Traverse adjustment (Compass/Transit)
+- **What shipped**:
+  - `backend/src/Survey/Domain/Adjustment/`: `TraverseAdjustmentInterface.php`, `CompassRuleAdjustment.php` (Bowditch compass rule distributing closing error proportionally to course lengths), and `TransitRuleAdjustment.php` (distributing proportionally to latitudes and departures).
+  - Adjustment produces a new computation linked to the base via `base_computation_id`, closing linear error to $0.000\text{ m}$.
+  - Endpoint `POST /computations/{id}/adjust`.
+  - Unit tests: `backend/tests/Unit/CompassRuleTest.php` (2 tests passed).
+
+## TASK-095: Explicit coordinate transformation service
+- **What shipped**:
+  - `backend/src/Core/Crs/CoordinateTransformationService.php` and `CoordinateTransformationController.php` (`POST /crs/transform`): PostGIS planar and geodetic coordinate transformations across registered CRSs with explicit type casting and logging to `app.coordinate_transformations`.
+  - Strictly prevents implicit historical coordinate transformation on read.
+  - Unit tests: `backend/tests/Unit/CoordinateTransformationTest.php` (3 tests passed).
+
+

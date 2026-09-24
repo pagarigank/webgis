@@ -83,6 +83,7 @@ class NearestPointTest extends TestCase
         $this->pdo->exec("DELETE FROM app.survey_control_points WHERE point_name LIKE 'CP075MASS_%'");
         $this->pdo->exec("DELETE FROM app.survey_control_points WHERE point_name LIKE 'TEST_CP_%'");
         $this->pdo->exec("DELETE FROM app.survey_control_points WHERE point_name LIKE 'TEST_CPMASS_%'");
+        $this->pdo->exec("DELETE FROM app.survey_control_points WHERE point_name LIKE 'SAMPLE_%' OR point_name LIKE 'TEST_BLLM%'");
         $this->pdo->exec(
             "DELETE FROM audit.audit_logs WHERE entity_type = 'app.survey_control_points' "
             . "AND entity_id IN (SELECT id::varchar FROM app.survey_control_points WHERE point_name LIKE 'CP075_%')"

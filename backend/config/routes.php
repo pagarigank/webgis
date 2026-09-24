@@ -105,6 +105,8 @@ return function (App $app) {
               ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
         $group->delete('/parcels/{id}', \App\Parcels\Http\ParcelController::class . ':delete')
               ->add($parcelAuthed('parcel.delete'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels/{id}/accept-computation', \App\Parcels\Http\ParcelController::class . ':acceptComputation')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
 
         // ---- Parcel versioning (TASK-069) ----
         $group->get('/parcels/{id}/versions', \App\Parcels\Http\ParcelController::class . ':versions')
@@ -262,6 +264,27 @@ return function (App $app) {
             ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
         $group->post('/technical-descriptions/{id:[0-9]+}/ocr', $td . ':ocrAssist')
             ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+
+        // ---- Survey Computation Engine (Phase 11, TASK-087..095) ----
+        $comp = \App\Survey\Http\ComputationController::class;
+        $group->post('/parcels/{id}/calculate', $comp . ':calculate')
+            ->add($tdAuthed('survey.create'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}/computations', $comp . ':listForParcel')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/computations/{id:[0-9]+}', $comp . ':get')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/computations/{id:[0-9]+}/snapshot', $comp . ':getSnapshot')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/computations/{id:[0-9]+}/replay', $comp . ':replay')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/computations/{id:[0-9]+}/adjust', $comp . ':adjust')
+            ->add($tdAuthed('survey.create'))->add(AuthenticateMiddleware::class);
+        $group->get('/crs/suggest', $comp . ':suggestZone')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
+
+        // ---- Explicit Coordinate Transformations (TASK-095) ----
+        $group->post('/crs/transform', \App\Core\Crs\Http\CoordinateTransformationController::class . ':transform')
+            ->add($tdAuthed('survey.view'))->add(AuthenticateMiddleware::class);
     });
 };
 

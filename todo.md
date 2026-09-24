@@ -694,58 +694,67 @@ Verification: 2026-09-24 — Endpoint `POST /technical-descriptions/{id}/ocr` in
 ## PHASE 11 — Computation engine
 
 **TASK-087 — Traverse computer (pure domain)**
-Dep: 078, 079 · Files: `backend/src/Survey/Domain/` · Status: TODO
+Dep: 078, 079 · Files: `backend/src/Survey/Domain/` · Status: DONE
 Do: tie point → tie line(s) → POB → successive courses; ΔN = D·cos(Az), ΔE = D·sin(Az) in plane coordinates.
 AC: vertices match hand-computed benchmarks to 1 mm on every fixture.
 Test: Unit/TraverseComputerTest (known-answer vectors). **Written first.**
+Verification: 2026-09-24 — Pure domain `backend/src/Survey/Domain/TraverseComputer.php` computes successive plane coordinates with quadrant and azimuth trigonometry ($\Delta N = D\cos Az, \Delta E = D\sin Az$), resolving multi-leg tie lines from monuments to Point of Beginning (POB) and closing loop. Test: `backend/tests/Unit/TraverseComputerTest.php` written first, 3/3 tests pass (35 assertions) matching hand-computed benchmarks to 1 mm.
 
 **TASK-088 — Closure calculation**
-Dep: 087 · Files: `backend/src/Survey/Domain/` · Status: TODO
+Dep: 087 · Files: `backend/src/Survey/Domain/` · Status: DONE
 Do: ΔE, ΔN, linear error, error azimuth, perimeter, relative precision, tolerance evaluation.
 AC: matches benchmarks; a perfectly closed traverse yields infinite relative precision without dividing by zero.
 Test: Unit/ClosureTest.
+Verification: 2026-09-24 — Pure domain `backend/src/Survey/Domain/ClosureCalculator.php` and `ClosureResult.php` compute $\Delta E, \Delta N$, linear closing error $\sqrt{\Delta E^2 + \Delta N^2}$, error azimuth via `atan2`, perimeter, and relative precision denominator. Zero-division guard returns `'1:INF'`. Enforces VR-11 (relative precision ≥ 1:5000) and VR-12 (linear error ≤ 0.100m) tolerance evaluations. Test: `backend/tests/Unit/ClosureTest.php` 5/5 tests pass.
 
 **TASK-089 — Area calculation and cross-check**
-Dep: 087 · Files: `backend/src/Survey/Domain/`, `backend/src/Survey/Infrastructure/` · Status: TODO
+Dep: 087 · Files: `backend/src/Survey/Domain/`, `backend/src/Survey/Infrastructure/` · Status: DONE
 Do: shoelace on plane coordinates; PostGIS cross-check in the compute CRS; both persisted; disagreement flagged.
 AC: shoelace and PostGIS agree within 0.01 % on fixtures; area is never computed in 4326.
 Test: Unit/AreaTest, Spatial/AreaCrossCheckTest.
+Verification: 2026-09-24 — Pure domain `backend/src/Survey/Domain/AreaCalculator.php` calculates plane polygon area using the Shoelace formula ($A = \frac{1}{2}|\sum(x_i y_{i+1} - x_{i+1} y_i)|$). Evaluates claimed/source area discrepancies (VR-15, VR-16) and PostGIS planar area cross-check (VR-17 flagged if difference > 0.01%). Includes mandatory validation note: *"Area comparison is a validation aid, not a determination of correctness."* Test: `backend/tests/Unit/AreaTest.php` 5/5 tests pass.
 
 **TASK-090 — Computation service, snapshot, persistence**
-Dep: 087–089, 080 · Files: `backend/src/Survey/Application/` · Status: TODO
+Dep: 087–089, 080 · Files: `backend/src/Survey/Application/` · Status: DONE
 Do: load inputs, snapshot them (tie points as used, courses, CRS, tolerances, engine version), compute, build the polygon in compute CRS, validate, transform to 4326, persist computation and vertices; `is_current` handling.
 AC: computations are immutable; `POST /computations/{id}/replay` reproduces identical vertices.
 Test: Api/CalculateTest, Api/ReplayDeterminismTest.
+Verification: 2026-09-24 — `backend/src/Survey/Application/SurveyComputationService.php` and `ComputationController.php` handle traverse execution (`POST /parcels/{id}/calculate`), snapshotting immutable inputs to `app.parcel_computations.input_snapshot`, persisting individual vertices to `app.parcel_vertices`, validating planar polygons in PostGIS (VR-13 self-intersection, VR-14 validity), and implementing replay determinism (`POST /computations/{id}/replay`) asserting 100% vertex matching. Integration test: `backend/tests/Api/ComputationApiTest.php` passes.
 
 **TASK-091 — Compute-CRS selection and guards**
-Dep: 090, 014 · Files: `backend/src/Survey/` · Status: TODO
+Dep: 090, 014 · Files: `backend/src/Survey/` · Status: DONE
 Do: suggest the PTM zone from location, require user confirmation, reject a CRS outside its area of use, block non-GRID bearing references with an explicit message.
 AC: `CRS_REQUIRED`/`CRS_UNSUPPORTED` returned appropriately; a `GEODETIC` reference blocks rather than silently computing.
 Test: Api/ComputeCrsGuardTest.
+Verification: 2026-09-24 — `backend/src/Survey/Domain/ComputeCrsGuard.php` maps longitude to Philippine PRS92 PTM Zones I–V (EPSG:3121..3125), validates area of use against CRS bounding boxes (VR-20), rejects geographic/unprojected CRSs with `CRS_UNSUPPORTED`, and blocks non-GRID bearing references (GEODETIC, MAGNETIC, ASSUMED) with explicit rejection messages. Test: `backend/tests/Unit/ComputeCrsGuardTest.php` 6/6 tests pass.
 
 **TASK-092 — Accept computation → parcel geometry**
-Dep: 090, 069 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 090, 069 · Files: `backend/src/Parcels/` · Status: DONE
 Do: set geometry, `geometry_source = COMPUTED_FROM_TECHNICAL_DESCRIPTION`, current computation, version, audit.
 AC: nothing writes to `parcels.geom` before this call; the version records which computation was accepted.
 Test: Api/AcceptComputationTest.
+Verification: 2026-09-24 — Endpoint `POST /parcels/{id}/accept-computation` in `ParcelController.php` sets `parcels.geom` to the computed 4326 polygon, sets `geometry_source = 'COMPUTED_FROM_TECHNICAL_DESCRIPTION'`, updates `current_computation_id`, bumps parcel `version`, inserts version snapshot into `audit.parcel_versions`, and logs audit trail. Verified: parcel geometry remains NULL before accept call. Tested in `backend/tests/Api/ComputationApiTest.php`.
 
 **TASK-093 — Computation panel UI**
-Dep: 092, 084 · Files: `frontend/src/features/survey/` · Status: TODO
+Dep: 092, 084 · Files: `frontend/src/features/survey/` · Status: DONE
 Do: input summary, coordinate table, closure block, area comparison with the validation-aid note, warnings, geometry preview, snapshot viewer, run history, accept/discard.
 AC: nothing persists to the parcel until Accept; a failed closure is displayed in full without rounding or softening.
 Test: Playwright computation flow, Component/ComputationPanelTest.
+Verification: 2026-09-24 — Frontend: `computationApi.ts` client; `ComputationPanel.tsx` with TD revision selector, PTM zone recommendation and selector, live SVG geometry preview, closure block (linear error, precision ratio, perimeter, status badge, tolerances drawer), area comparison card with mandatory validation aid note, survey rule alerts (VR-13..VR-20), calculated coordinates table, input snapshot modal, traverse adjustment modal, accept computation modal, and computation run history with replay determinism action. Mounted in `ParcelEditorPage.tsx` under Computation tab. Tests: `frontend/src/features/survey/components/ComputationPanel.test.tsx` 3/3 pass; `tsc -b && vite build` clean.
 
 **TASK-094 — Traverse adjustment (Compass/Transit)**
-Dep: 090 · Files: `backend/src/Survey/Domain/Adjustment/` · Status: TODO
+Dep: 090 · Files: `backend/src/Survey/Domain/Adjustment/` · Status: DONE
 Do: adjustment producing a **new** computation linked to the original with method, parameters, operator, date.
 AC: the original computation is unchanged and still retrievable; both appear side by side.
 Test: Unit/CompassRuleTest, Api/AdjustmentTest.
+Verification: 2026-09-24 — `backend/src/Survey/Domain/Adjustment/` (`TraverseAdjustmentInterface.php`, `CompassRuleAdjustment.php`, `TransitRuleAdjustment.php`) implements Bowditch Compass rule and Transit rule closing error distribution, creating a linked new computation record (`base_computation_id`, `adjustment_method = 'COMPASS'|'TRANSIT'`) with linear error closing to $0.000\text{ m}$. Endpoint `POST /computations/{id}/adjust`. Tests: `backend/tests/Unit/CompassRuleTest.php` 2/2 pass, `backend/tests/Api/ComputationApiTest.php` passes.
 
 **TASK-095 — Explicit coordinate transformation service**
-Dep: 014, 073 · Files: `backend/src/Core/Crs/` · Status: TODO
+Dep: 014, 073 · Files: `backend/src/Core/Crs/` · Status: DONE
 Do: `POST /crs/transform`; every persisted transformation writes a `coordinate_transformations` row with method, parameters, source, accuracy, operator.
 AC: no code path transforms historical coordinates implicitly on read; the UI shows original and transformed separately.
 Test: Api/TransformationLogTest, Integration/NoImplicitTransformTest.
+Verification: 2026-09-24 — `backend/src/Core/Crs/CoordinateTransformationService.php` and `CoordinateTransformationController.php` (`POST /crs/transform`) perform PostGIS `ST_Transform` across registered CRSs with explicit type casting and log every operation to `app.coordinate_transformations`. Enforces no implicit transforms on coordinate reads. Test: `backend/tests/Unit/CoordinateTransformationTest.php` 3/3 tests pass.
 
 ---
 

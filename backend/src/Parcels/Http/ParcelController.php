@@ -517,6 +517,107 @@ class ParcelController
     }
 
     /**
+     * POST /parcels/{id}/accept-computation
+     * TASK-092 — Accept computation -> parcel geometry.
+     * Sets geometry, geometry_source = 'COMPUTED_FROM_TECHNICAL_DESCRIPTION',
+     * current_computation_id, bumps version, records version row, and audits.
+     * AC: nothing writes to parcels.geom before this call; the version records
+     * which computation was accepted.
+     */
+    public function acceptComputation(Request $request, Response $response, array $args): Response
+    {
+        $uid = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+        $pid = $this->parseUuid($args, 'id');
+
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            throw new ApiError('VALIDATION_FAILED', 'Request body must be a JSON object.', 400);
+        }
+
+        $compId = (int) ($body['computation_id'] ?? 0);
+        if ($compId <= 0) {
+            throw new ApiError('VALIDATION_FAILED', 'Field computation_id is required.', 400);
+        }
+        $reason = trim((string) ($body['reason'] ?? ($body['change_reason'] ?? "Accepted computation #{$compId}")));
+
+        // Lock parcel row
+        $lock = $this->pdo->prepare("SELECT id, version, geom FROM app.parcels WHERE id = :pid AND deleted_at IS NULL FOR UPDATE");
+        $lock->execute([':pid' => $pid]);
+        $parcelRow = $lock->fetch(PDO::FETCH_ASSOC);
+        if ($parcelRow === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+
+        // Verify computation exists, belongs to this parcel, and has geometry
+        $cStmt = $this->pdo->prepare("SELECT id, parcel_id, computed_area_sqm, geom FROM app.parcel_computations WHERE id = :id");
+        $cStmt->execute([':id' => $compId]);
+        $compRow = $cStmt->fetch(PDO::FETCH_ASSOC);
+        if ($compRow === false) {
+            throw new ApiError('NOT_FOUND', 'Computation not found', 404);
+        }
+        if ((string) $compRow['parcel_id'] !== $pid) {
+            throw new ApiError('VALIDATION_FAILED', 'Computation does not belong to this parcel.', 400);
+        }
+        if ($compRow['geom'] === null) {
+            throw new ApiError('VALIDATION_FAILED', 'Computation does not contain valid polygon geometry.', 422);
+        }
+
+        $preChange = $this->getCurrentParcel($pid);
+
+        // Update parcels table: set geom, geometry_source, current_computation_id, computed_area_sqm, version
+        $upd = $this->pdo->prepare(
+            "UPDATE app.parcels SET "
+            . "geom = ST_Multi(c.geom), "
+            . "geometry_source = 'COMPUTED_FROM_TECHNICAL_DESCRIPTION', "
+            . "current_computation_id = c.id, "
+            . "computed_area_sqm = c.computed_area_sqm, "
+            . "version = app.parcels.version + 1, "
+            . "updated_by = :uid, "
+            . "updated_at = CURRENT_TIMESTAMP "
+            . "FROM app.parcel_computations c "
+            . "WHERE app.parcels.id = :pid AND c.id = :cid "
+            . "RETURNING app.parcels.version"
+        );
+        $upd->execute([':pid' => $pid, ':cid' => $compId, ':uid' => $uid]);
+        $newVersion = (int) $upd->fetchColumn();
+
+        // Update parcel_computations is_current
+        $this->pdo->prepare("UPDATE app.parcel_computations SET is_current = false WHERE parcel_id = :pid")->execute([':pid' => $pid]);
+        $this->pdo->prepare("UPDATE app.parcel_computations SET is_current = true WHERE id = :cid")->execute([':cid' => $compId]);
+
+        $updated = $this->getCurrentParcel($pid);
+
+        // Audit & Version History
+        $summary = "Accepted computation #{$compId} -> geometry updated from technical description";
+        $snapshot = $this->snapshotForVersion($updated);
+        $snapshot['accepted_computation_id'] = $compId;
+
+        $this->writeVersion(
+            $pid,
+            $newVersion,
+            $snapshot,
+            $updated['status'],
+            'COMPUTED_FROM_TECHNICAL_DESCRIPTION',
+            $summary,
+            $reason,
+            $updated['geometry']
+        );
+
+        $this->audit->writeFromSession(
+            'UPDATE',
+            'app.parcels',
+            $pid,
+            $preChange,
+            $this->stripForAudit($updated),
+            null,
+            $reason
+        );
+
+        return Envelope::success($response, $updated, 200);
+    }
+
+    /**
      * DELETE /parcels/{id}?reason=...  | body { reason, change_reason }
      * Soft delete only: sets deleted_at, bumps version. Reason is mandatory.
      */

@@ -1,6 +1,6 @@
-**TASK-087 — Traverse computer (pure domain)**
-Dep: 078, 079 · Files: `backend/src/Survey/Domain/TraverseComputer.php`, `backend/tests/Unit/TraverseComputerTest.php` · Status: TODO
-Do: tie point → tie line(s) → POB → successive courses; ΔN = D·cos(Az), ΔE = D·sin(Az) in plane coordinates.
-AC: vertices match hand-computed benchmarks to 1 mm on every fixture.
-Test: Unit/TraverseComputerTest (known-answer vectors). Written first.
-Entry criteria: Phase 10 (Technical descriptions and parser, tasks 078–086) is DONE.
+**TASK-096 — Survey validation service**
+Dep: 090, 073 · Files: `backend/src/Survey/Application/` · Status: TODO
+Do: the full checklist — TD parsed and confirmed, tie point found, tie point verified, CRS identified, bearings valid, distances valid, polygon closed, geometry valid, area computed, area vs source, overlap with existing parcels, minimum vertices — each pass/warn/fail with a rule id.
+AC: every check in `specification.md` FR-125 present; results persisted with the computation.
+Test: Api/ValidationTest (one case triggering each check).
+Entry criteria: Phase 11 (Computation engine, tasks 087–095) is DONE.

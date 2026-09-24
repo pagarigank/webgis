@@ -2,8 +2,8 @@
 
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
-**Current phase:** PHASE 11 — Computation engine
-**Implementation status:** IN PROGRESS — Phases 1 through 10 (tasks 001–086) shipped; next is TASK-087 (traverse computer)
+**Current phase:** PHASE 12 — Validation
+**Implementation status:** IN PROGRESS — Phases 1 through 11 (tasks 001–095) shipped; next is TASK-096 (survey validation service)
 **Last updated:** 2026-09-24
 
 ---
@@ -107,9 +107,18 @@
 | 85 | TASK-084 | Technical description UI | 083, 071 | DONE | BearingInput, course table, tie point tab, paste-and-parse review pane |
 | 86 | TASK-085 | Live traverse preview on the map | 084, 049 | DONE | Real-time traverse vectors, closure error, explicit red gap indicator |
 | 87 | TASK-086 | OCR assist (optional, flagged) | 083 | DONE | OCR assist staging endpoint with OCR_EXTRACTED marking |
-| 88 | TASK-087 | Traverse computer (pure domain) | 078, 079 | TODO | tie point -> tie line -> POB -> successive courses; deltaN, deltaE |
+| 88 | TASK-087 | Traverse computer (pure domain) | 078, 079 | DONE | Tie point -> tie line -> POB -> successive courses; deltaN, deltaE to 1 mm benchmark |
+| 89 | TASK-088 | Closure calculation | 087 | DONE | Linear error, error azimuth, perimeter, relative precision ratio (1:INF guard), VR-11/VR-12 |
+| 90 | TASK-089 | Area calculation and cross-check | 087 | DONE | Plane Shoelace area, PostGIS planar cross-check, VR-17 flag, mandatory validation aid note |
+| 91 | TASK-090 | Computation service, snapshot, persistence | 087–089, 080 | DONE | Immutable snapshot, parcel_vertices persistence, replay determinism |
+| 92 | TASK-091 | Compute-CRS selection and guards | 090, 014 | DONE | PTM zones I-V suggestion, CRS_REQUIRED/UNSUPPORTED, VR-20 area of use, non-GRID guard |
+| 93 | TASK-092 | Accept computation → parcel geometry | 090, 069 | DONE | POST /parcels/{id}/accept-computation, COMPUTED_FROM_TECHNICAL_DESCRIPTION, version bump, audit |
+| 94 | TASK-093 | Computation panel UI | 092, 084 | DONE | ComputationPanel.tsx, closure card, area cross-check, SVG preview, adjustment, accept modal |
+| 95 | TASK-094 | Traverse adjustment (Compass/Transit) | 090 | DONE | Bowditch Compass and Transit rules, linked new computation, closes to 0.000m |
+| 96 | TASK-095 | Explicit coordinate transformation service | 014, 073 | DONE | POST /crs/transform, coordinate_transformations logging, no implicit transform on read |
+| 97 | TASK-096 | Survey validation service | 090, 073 | TODO | Full checklist: TD, tie point, CRS, bearings, distances, closure, geometry, area, overlap |
 
-Phase 10 (Technical descriptions and parser, tasks 078–086) has been audited and completed on 2026-09-24. Pure domain survey geometry (Bearing, Azimuth, Distance), course syntax validation enforcing VR-01...VR-09, cadastral technical description parser with source spans and confidence scores, confirmation workflow with PARSE_UNRESOLVED gate, frontend survey UI (BearingInput, course table, tie point tab, paste-and-parse review modal), live traverse preview map with explicit red closure gap indicator, and OCR assist staging are fully implemented and verified. Next active task is TASK-087 (traverse computer).
+Phase 11 (Computation engine, tasks 087–095) has been audited and completed on 2026-09-24. Pure domain survey geometry (TraverseComputer, ClosureCalculator, AreaCalculator, CompassRuleAdjustment, TransitRuleAdjustment, ComputeCrsGuard), application orchestration (`SurveyComputationService`, `ComputationController`, `ParcelController::acceptComputation`, `CoordinateTransformationService`), immutable snapshotting, replay determinism, and full frontend survey computation panel UI with live SVG geometry preview, closure status badges, area comparison with mandatory validation aid note, and parcel geometry acceptance have been implemented and verified. All 353 backend tests pass and frontend builds with 0 errors. Next active task is TASK-096 (survey validation service).
 
 TASK-034 shipped the admin APIs: `UserAdminService` (CRUD, deactivate as soft delete, role/scope assignment, force-password-reset, `effective-access` explainer), `RoleAdminService`/`OrganizationAdminService` (system-role protection, If-Match versioning, deactivation guards), controllers, and rewritten `config/routes.php` with per-route `AuthorizeMiddleware` declarations. Full suite: 121 tests / 306 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56).
 

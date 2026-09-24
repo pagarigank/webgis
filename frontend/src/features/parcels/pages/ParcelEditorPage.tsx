@@ -7,6 +7,7 @@ import { InformationTab } from '../components/InformationTab';
 import { SurveyPlanTab } from '../components/SurveyPlanTab';
 import { TechnicalDescriptionTab } from '../../survey/components/TechnicalDescriptionTab';
 import { TiePointTab } from '../../survey/components/TiePointTab';
+import { ComputationPanel } from '../../survey/components/ComputationPanel';
 import { ParcelPreviewMap } from '../components/ParcelPreviewMap';
 import { ParcelMeta } from '../components/badges';
 import { Modal } from '../../../components/dialogs/Modal';
@@ -208,8 +209,11 @@ export function ParcelEditorPage() {
                             )}
                             {activeTab === 'tiepoint' && <TiePointTab parcelId={id} />}
                             {activeTab === 'techdesc' && <TechnicalDescriptionTab parcelId={id} />}
+                            {activeTab === 'computation' && (
+                                <ComputationPanel parcelId={id} parcel={parcel} onAccepted={() => void refetch()} />
+                            )}
                             {activeTab === 'history' && <HistoryTab id={id} />}
-                            {(activeTab === 'title' || activeTab === 'computation'
+                            {(activeTab === 'title'
                                 || activeTab === 'validation' || activeTab === 'documents') && (
                                 <ComingSoon tabLabel={PARCEL_TABS.find((t) => t.key === activeTab)!.label} />
                             )}

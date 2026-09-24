@@ -137,6 +137,11 @@ final class Distance
         return $this->canonicalMeters;
     }
 
+    public function getMeters(): float
+    {
+        return $this->canonicalMeters;
+    }
+
     public function toUnit(string $unit): float
     {
         $normalized = self::normalizeUnit($unit);
