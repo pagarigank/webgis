@@ -793,16 +793,20 @@ Verification: 2026-09-24 — Frontend: `validationApi.ts` client; `ValidationPan
 ## PHASE 13 — Workflow and approval
 
 **TASK-100 — Workflow engine**
-Dep: 020, 030 · Files: `backend/src/Parcels/Workflow/` · Status: TODO
+Dep: 020, 030 · Files: `backend/src/Parcels/Workflow/` · Status: DONE
 Do: table-driven state machine with permission checks, guards, mandatory reasons, history, notifications.
 AC: an illegal transition is rejected server-side regardless of the request; guards evaluate computation and validation state.
 Test: Unit/StateMachineTest, Api/TransitionPermissionTest.
+Verification: 2026-09-24 - `backend/src/Parcels/Workflow/WorkflowEngine.php` (NEW): table-driven engine reading `app.workflow_transitions` (definition PARCEL_APPROVAL, seeded in SystemSeeder with the full FR-135 matrix - 9 states, 12 transitions with per-transition permission, requires_reason/requires_comment, guard_expression). Illegal/unknown actions rejected server-side with `INVALID_TRANSITION` 422 regardless of payload; permission gate per transition row (PERMISSION_DENIED 403); FR-137 reason/comment enforcement; `validation_passed` guard re-evaluates the TASK-096 checklist at execution time and maps closure failures to `CLOSURE_EXCEEDS_TOLERANCE`; unknown guard names fail closed. History in `app.approval_actions` + audit.audit_logs via AuditWriter; FR-140 notifications to the parcel creator (actor excluded) in app.notifications. `backend/src/Parcels/Http/WorkflowController.php` (NEW): POST/GET `/parcels/{id}/transitions`, GET `/parcels/{id}/transitions/history`. SystemSeeder reconciles legacy partial workflow rows idempotently. Tests: `Unit/StateMachineTest` (8), `Api/TransitionPermissionTest` (5), `Api/WorkflowFlowTest` (5, incl. full DRAFT→…→PUBLISHED flow and approval-blocked-by-revalidation). Full suite 390 green.
 
 **TASK-101 — Parcel transitions API**
-Dep: 100, 098 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 100, 098 · Files: `backend/src/Parcels/` · Status: DONE
 Do: submit, review, return, verify, approve, publish, archive; approval records the accepted computation id and TD revision.
 AC: approval is impossible while a blocking validation failure exists; every transition is audited with actor, reason, and comment.
 Test: Api/WorkflowFlowTest.
+Verification: 2026-09-24 - Covered by the TASK-100 engine + WorkflowController: all FR-135 actions (SUBMIT, START_REVIEW, RETURN, VERIFY, APPROVE, PUBLISH, ARCHIVE) are transition rows; APPROVE stores accepted_computation_id on approval_actions (asserted in WorkflowFlowTest); the validation guard re-runs at APPROVE time so a computation corrupted after SUBMIT blocks with `CLOSURE_EXCEEDS_TOLERANCE` and the parcel stays VERIFIED; every action audited with actor/reason/comment; RETURN without reason rejected (FR-137); RETURNED→SUBMITTED cycle re-runs the guard. `Api/WorkflowFlowTest` 5/5 green (44 assertions).
+
+Note (interim guard): since TASK-100, `ParcelController::update` rejects PATCH status transitions outside DRAFT↔RETURNED (`INVALID_STATE`), so `POST /parcels/{id}/transitions` is the only transition path; `ValidationController::submit` (TASK-098) remains as a thin DRAFT/RETURNED→SUBMITTED entry that delegates to the same checklist.
 
 **TASK-102 — Editing approved records**
 Dep: 101, 069 · Files: `backend/src/Parcels/` · Status: TODO

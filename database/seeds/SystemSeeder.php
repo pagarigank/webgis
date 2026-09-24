@@ -50,54 +50,88 @@ class SystemSeeder extends AbstractSeed
             ON CONFLICT (key) DO NOTHING
         ");
 
-        // 4. Base Workflows (Parcel Approval)
+        // 4. Base Workflows (Parcel Approval) — full FR-135 state machine
+        // (TASK-100). Idempotent: legacy partial rows are reconciled by
+        // DELETE + re-INSERT so every environment converges on the same
+        // table-driven transition matrix.
         $this->execute("
             INSERT INTO app.workflow_definitions (code, entity_type, name, is_active)
             VALUES ('PARCEL_APPROVAL', 'PARCEL', 'Parcel Approval Workflow', true)
             ON CONFLICT (code) DO NOTHING
         ");
-        
-        // Workflow States
-        $this->execute("
-            INSERT INTO app.workflow_states (definition_id, code, name, is_initial, is_terminal, display_order)
-            SELECT d.id, 'DRAFT', 'Draft', true, false, 10
-            FROM app.workflow_definitions d WHERE d.code = 'PARCEL_APPROVAL'
-            ON CONFLICT (definition_id, code) DO NOTHING
-        ");
 
         $this->execute("
-            INSERT INTO app.workflow_states (definition_id, code, name, is_initial, is_terminal, display_order)
-            SELECT d.id, 'SUBMITTED', 'Submitted for Review', false, false, 20
-            FROM app.workflow_definitions d WHERE d.code = 'PARCEL_APPROVAL'
-            ON CONFLICT (definition_id, code) DO NOTHING
+            DELETE FROM app.workflow_transitions
+            WHERE definition_id = (SELECT id FROM app.workflow_definitions WHERE code = 'PARCEL_APPROVAL')
         ");
-        
         $this->execute("
-            INSERT INTO app.workflow_states (definition_id, code, name, is_initial, is_terminal, display_order)
-            SELECT d.id, 'APPROVED', 'Approved', false, true, 30
-            FROM app.workflow_definitions d WHERE d.code = 'PARCEL_APPROVAL'
-            ON CONFLICT (definition_id, code) DO NOTHING
+            DELETE FROM app.workflow_states
+            WHERE definition_id = (SELECT id FROM app.workflow_definitions WHERE code = 'PARCEL_APPROVAL')
         ");
 
-        // Workflow Transitions
-        $this->execute("
-            INSERT INTO app.workflow_transitions (definition_id, from_state_id, to_state_id, action_code, required_permission)
-            SELECT d.id, s1.id, s2.id, 'SUBMIT', 'PARCEL_SUBMIT'
-            FROM app.workflow_definitions d
-            JOIN app.workflow_states s1 ON s1.definition_id = d.id AND s1.code = 'DRAFT'
-            JOIN app.workflow_states s2 ON s2.definition_id = d.id AND s2.code = 'SUBMITTED'
-            WHERE d.code = 'PARCEL_APPROVAL'
-            ON CONFLICT (definition_id, from_state_id, action_code) DO NOTHING
-        ");
+        $states = [
+            // code, name, is_initial, is_terminal, display_order
+            ['DRAFT', 'Draft', true, false, 10],
+            ['SUBMITTED', 'Submitted for Review', false, false, 20],
+            ['UNDER_REVIEW', 'Under Review', false, false, 30],
+            ['RETURNED', 'Returned to Draft', false, false, 40],
+            ['VERIFIED', 'Verified', false, false, 50],
+            ['APPROVED', 'Approved', false, false, 60],
+            ['PUBLISHED', 'Published', false, false, 70],
+            ['ARCHIVED', 'Archived', false, true, 80],
+            ['SUPERSEDED', 'Superseded', false, true, 90],
+        ];
+        foreach ($states as $i => [$code, $name, $isInitial, $isTerminal, $order]) {
+            $stmt = $this->getAdapter()->getConnection()->prepare("
+                INSERT INTO app.workflow_states (definition_id, code, name, is_initial, is_terminal, display_order)
+                SELECT d.id, :code, :name, :is_initial, :is_terminal, :display_order
+                FROM app.workflow_definitions d WHERE d.code = 'PARCEL_APPROVAL'
+                ON CONFLICT (definition_id, code) DO NOTHING
+            ");
+            $stmt->execute([
+                ':code' => $code, ':name' => $name,
+                ':is_initial' => $isInitial ? 'true' : 'false',
+                ':is_terminal' => $isTerminal ? 'true' : 'false',
+                ':display_order' => $order,
+            ]);
+        }
 
-        $this->execute("
-            INSERT INTO app.workflow_transitions (definition_id, from_state_id, to_state_id, action_code, required_permission)
-            SELECT d.id, s1.id, s2.id, 'APPROVE', 'PARCEL_APPROVE'
-            FROM app.workflow_definitions d
-            JOIN app.workflow_states s1 ON s1.definition_id = d.id AND s1.code = 'SUBMITTED'
-            JOIN app.workflow_states s2 ON s2.definition_id = d.id AND s2.code = 'APPROVED'
-            WHERE d.code = 'PARCEL_APPROVAL'
-            ON CONFLICT (definition_id, from_state_id, action_code) DO NOTHING
-        ");
+        // Transition matrix: [action, from, to, permission, requires_reason,
+        // requires_comment, guard]. Guards are named keys resolved by
+        // WorkflowEngine (TASK-100); 'validation_passed' evaluates the
+        // TASK-096 checklist and blocks on any blocking failure.
+        $transitions = [
+            ['SUBMIT',       'DRAFT',        'SUBMITTED',   'parcel.submit',  false, false, 'validation_passed'],
+            ['SUBMIT',       'RETURNED',     'SUBMITTED',   'parcel.submit',  false, false, 'validation_passed'],
+            ['START_REVIEW', 'SUBMITTED',    'UNDER_REVIEW','parcel.review',  false, false, null],
+            ['RETURN',       'SUBMITTED',    'RETURNED',    'parcel.review',  true,  false, null],
+            ['RETURN',       'UNDER_REVIEW', 'RETURNED',    'parcel.review',  true,  false, null],
+            ['VERIFY',       'UNDER_REVIEW', 'VERIFIED',    'parcel.verify',  false, false, null],
+            ['APPROVE',      'VERIFIED',     'APPROVED',    'parcel.approve', false, true,  'validation_passed'],
+            ['PUBLISH',      'APPROVED',     'PUBLISHED',   'parcel.publish', false, false, null],
+            ['ARCHIVE',      'DRAFT',        'ARCHIVED',    'parcel.archive', true,  false, null],
+            ['ARCHIVE',      'RETURNED',     'ARCHIVED',    'parcel.archive', true,  false, null],
+            ['ARCHIVE',      'APPROVED',     'ARCHIVED',    'parcel.archive', true,  false, null],
+            ['ARCHIVE',      'PUBLISHED',    'ARCHIVED',    'parcel.archive', true,  false, null],
+        ];
+        foreach ($transitions as [$action, $from, $to, $perm, $reqReason, $reqComment, $guard]) {
+            $stmt = $this->getAdapter()->getConnection()->prepare("
+                INSERT INTO app.workflow_transitions
+                    (definition_id, from_state_id, to_state_id, action_code, required_permission, requires_reason, requires_comment, guard_expression)
+                SELECT d.id, s1.id, s2.id, :action, :perm, :req_reason, :req_comment, :guard
+                FROM app.workflow_definitions d
+                JOIN app.workflow_states s1 ON s1.definition_id = d.id AND s1.code = :from
+                JOIN app.workflow_states s2 ON s2.definition_id = d.id AND s2.code = :to
+                WHERE d.code = 'PARCEL_APPROVAL'
+                ON CONFLICT (definition_id, from_state_id, action_code) DO NOTHING
+            ");
+            $stmt->execute([
+                ':action' => $action, ':from' => $from, ':to' => $to,
+                ':perm' => $perm,
+                ':req_reason' => $reqReason ? 'true' : 'false',
+                ':req_comment' => $reqComment ? 'true' : 'false',
+                ':guard' => $guard,
+            ]);
+        }
     }
 }

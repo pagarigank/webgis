@@ -110,6 +110,17 @@ return function (App $app) {
         $group->get('/parcels/{id}/overlaps', \App\Parcels\Http\ParcelController::class . ':overlaps')
               ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
 
+        // ---- Workflow engine (Phase 13, TASK-100) ----
+        // Permissions are enforced per-transition inside WorkflowEngine from
+        // the workflow_transitions table; the route middleware only requires
+        // parcel.view so callers can list the actions available to them.
+        $group->get('/parcels/{id}/transitions', \App\Parcels\Http\WorkflowController::class . ':available')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels/{id}/transitions', \App\Parcels\Http\WorkflowController::class . ':transition')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}/transitions/history', \App\Parcels\Http\WorkflowController::class . ':history')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+
         // ---- Phase 12 Survey Validation & Submission Guards (TASK-096..098) ----
         $group->post('/parcels/{id}/validate', \App\Survey\Http\ValidationController::class . ':validate')
               ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
