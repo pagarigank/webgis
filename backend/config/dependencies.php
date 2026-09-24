@@ -146,5 +146,16 @@ return [
         ->constructorParameter('validationService', \DI\get(\App\Survey\Application\SurveyValidationService::class))
         ->constructorParameter('audit', \DI\get(\App\Audit\AuditWriter::class)),
     \App\Parcels\Http\WorkflowController::class => \DI\autowire(\App\Parcels\Http\WorkflowController::class),
+
+    // ---- Phase 14 History, versioning UI, documents ----
+    \App\Parcels\Domain\VersionDiffService::class => \DI\autowire(\App\Parcels\Domain\VersionDiffService::class),
+    \App\Parcels\Http\HistoryTimelineController::class => \DI\autowire(\App\Parcels\Http\HistoryTimelineController::class),
+
+    // Documents storage: base dir OUTSIDE the web root, configurable.
+    'documents.storage_dir' => \DI\env('DOCUMENTS_STORAGE_DIR', '/var/www/document-storage'),
+    \App\Documents\DocumentService::class => \DI\autowire(\App\Documents\DocumentService::class)
+        ->constructorParameter('storageDir', \DI\get('documents.storage_dir'))
+        ->constructorParameter('signingKey', \DI\get('jwtSecret')),
+    \App\Documents\Http\DocumentController::class => \DI\autowire(\App\Documents\Http\DocumentController::class),
 ];
 

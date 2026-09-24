@@ -27,6 +27,7 @@ class ParcelController
     private AuditWriter $audit;
     private ?\App\Survey\Application\SurveyValidationService $validationService;
     private ?\App\Parcels\Domain\OverlapDetector $overlapDetector;
+    private \App\Parcels\Domain\VersionDiffService $versionDiff;
 
     /**
      * FR-199 / TASK-072 — provenance values that assert the geometry came from
@@ -46,12 +47,14 @@ class ParcelController
         PDO $pdo,
         AuditWriter $audit,
         ?\App\Survey\Application\SurveyValidationService $validationService = null,
-        ?\App\Parcels\Domain\OverlapDetector $overlapDetector = null
+        ?\App\Parcels\Domain\OverlapDetector $overlapDetector = null,
+        ?\App\Parcels\Domain\VersionDiffService $versionDiff = null
     ) {
         $this->pdo = $pdo;
         $this->audit = $audit;
         $this->validationService = $validationService;
         $this->overlapDetector = $overlapDetector;
+        $this->versionDiff = $versionDiff ?? new \App\Parcels\Domain\VersionDiffService();
     }
 
     private function resolveUser(Request $request): int
@@ -941,6 +944,73 @@ class ParcelController
         $this->writeVersion($pid, $newVersion, $this->snapshotForVersion($restored), $restored['status'], $restored['provenance'], $summary, $reason, $restored['geometry']);
 
         return Envelope::success($response, $restored);
+    }
+
+    /**
+     * GET /parcels/{id}/versions/{v}/compare?against={v2}
+     *
+     * TASK-105 — field-level diff and geometry diff between two versions.
+     * Defaults to comparing version v against the current version.
+     */
+    public function compare(Request $request, Response $response, array $args): Response
+    {
+        $this->resolveUser($request);
+        $pid = $this->parseUuid($args, 'id');
+        $vA = (int) ($args['v'] ?? 0);
+        $vB = (int) ($request->getQueryParams()['against'] ?? 0);
+
+        if ($vA < 1) {
+            throw new ApiError('VALIDATION_FAILED', 'Version must be a positive integer', 400);
+        }
+
+        $this->assertParcelKeyExists($pid);
+
+        if ($vB < 1) {
+            $cur = $this->pdo->prepare('SELECT version FROM app.parcels WHERE id = :pid');
+            $cur->execute([':pid' => $pid]);
+            $vB = (int) $cur->fetchColumn();
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT version, snapshot, ST_AsGeoJSON(geom) AS geometry FROM audit.parcel_versions WHERE parcel_id = :pid AND version IN (:a, :b)'
+        );
+        $stmt->execute([':pid' => $pid, ':a' => min($vA, $vB), ':b' => max($vA, $vB)]);
+        $rows = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $rows[(int) $r['version']] = $r;
+        }
+        if (!isset($rows[$vA]) || !isset($rows[$vB])) {
+            throw new ApiError('NOT_FOUND', 'One or both parcel versions were not found', 404);
+        }
+
+        $old = json_decode((string) $rows[min($vA, $vB)]['snapshot'], true) ?: [];
+        $new = json_decode((string) $rows[max($vA, $vB)]['snapshot'], true) ?: [];
+
+        $oldGeom = $this->extractRing($rows[min($vA, $vB)]['geometry']);
+        $newGeom = $this->extractRing($rows[max($vA, $vB)]['geometry']);
+
+        $result = $this->versionDiff->diff($old, $new, $oldGeom, $newGeom);
+
+        return Envelope::success($response, [
+            'parcel_id'      => $pid,
+            'from_version'   => min($vA, $vB),
+            'to_version'     => max($vA, $vB),
+            'field_changes'  => $result['fields'],
+            'geometry_diff'  => $result['geometry'],
+        ], 200);
+    }
+
+    /** @return array<int, array{0:float,1:float}>|null */
+    private function extractRing(?string $geojson): ?array
+    {
+        if ($geojson === null || $geojson === '') {
+            return null;
+        }
+        $decoded = json_decode($geojson, true);
+        if (!is_array($decoded)) {
+            return null;
+        }
+        return $this->versionDiff->exteriorRing($decoded);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────

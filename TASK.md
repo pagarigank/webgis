@@ -2,9 +2,9 @@
 
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
-**Current phase:** PHASE 13 — Workflow and approval
-**Implementation status:** IN PROGRESS — Phases 1 through 12 (tasks 001–099) shipped; TASK-100/101 (workflow engine + transitions API) DONE; next is TASK-102 (editing approved records)
-**Last updated:** 2026-09-24 (Phase 13 TASK-100/101 shipped)
+**Current phase:** PHASE 14 — History, versioning UI, documents
+**Implementation status:** IN PROGRESS — Phases 1 through 12 (001–099) + Phase 13 TASK-100/101 (workflow engine) + Phase 14 TASK-104/105/106/107/108 (timeline, diff, restore, documents) shipped; remaining: TASK-102, TASK-103, UI passes
+**Last updated:** 2026-09-24 (Phase 14 TASK-104..108 shipped; 415 backend tests green)
 
 ---
 

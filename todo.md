@@ -825,34 +825,39 @@ Test: Playwright two-role approval flow.
 ## PHASE 14 — History, versioning UI, documents
 
 **TASK-104 — Merged history timeline API**
-Dep: 069, 025, 101 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 069, 025, 101 · Files: `backend/src/Parcels/` · Status: DONE
 Do: versions + audit + workflow merged chronologically per record; single-entity audit bundle export.
 AC: "everything ever done to parcel X" returns a complete, ordered record.
 Test: Api/HistoryTimelineTest.
+Verification: 2026-09-24 - `HistoryTimelineController.php` (NEW): GET `/parcels/{id}/timeline` merges audit.parcel_versions (VERSION), audit.audit_logs (AUDIT), and app.approval_actions (WORKFLOW) into one stream sorted newest-first with actor, action, detail, old/new values; GET `/parcels/{id}/timeline/export` returns the same bundle as an attachment JSON file (parcel.lineage.view). Test: `Api/HistoryTimelineTest` 3/3 green.
 
-**TASK-105 — Version comparison and geometry diff**
-Dep: 104 · Files: backend + `frontend/src/components/common/` · Status: TODO
+**TASK-105 — Version comparison and geometry diff (backend)**
+Dep: 104 · Files: backend + `frontend/src/components/common/` · Status: DONE (backend; map rendering deferred to TASK-103 UI work)
 Do: field-level diff and geometry diff (added/removed/moved vertices) rendered on the map.
 AC: a moved vertex is visually identified; attribute changes are listed field by field.
 Test: Unit/GeometryDiffTest, Playwright history view.
+Verification: 2026-09-24 - `VersionDiffService.php` (NEW, pure domain): position-based vertex pairing identifying moved/added/removed vertices with from/to coordinates, exterior-ring extraction for Polygon/MultiPolygon (closing point dropped), field-level snapshot diff listing changed fields only. Endpoint GET `/parcels/{id}/versions/{v}/compare?against={v2}` (parcel.lineage.view) returns field_changes + geometry_diff. Test: `Unit/GeometryDiffTest` 7/7 (moved-vertex identification with from/to, added/removed, whole-geometry add/remove, ring extraction, field diff). Map overlay rendering lands with the Phase 14 UI pass (TASK-103 batch).
 
 **TASK-106 — Version restore**
-Dep: 105 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 105 · Files: `backend/src/Parcels/` · Status: DONE
 Do: restore creates a **new** version from an old snapshot, with reason; never deletes or rewrites history.
 AC: restore is additive; the version sequence remains monotonic.
 Test: Api/RestoreTest.
+Verification: 2026-09-24 - Implemented in TASK-069 (`ParcelController::restore`); verified against TASK-106 ACs: restore creates a NEW version (v4 from v2), sequence [1,2,3,4] monotonic, historical rows byte-identical after restore (append-only proven), If-Match 428/409 enforced, reason recorded, geometry brought back from historical version. Test: `Api/RestoreTest` 4/4 green.
 
 **TASK-107 — Document upload, storage, linking**
-Dep: 020, 030 · Files: `backend/src/Documents/` · Status: TODO
+Dep: 020, 030 · Files: `backend/src/Documents/` · Status: DONE
 Do: multipart upload with extension + MIME sniff + magic-byte validation, size cap, SHA-256 de-duplication, random storage keys outside the web root, classification, entity links.
 AC: a disguised executable is rejected; identical files de-duplicate; no filesystem path is ever exposed.
 Test: Api/UploadValidationTest.
+Verification: 2026-09-24 - `DocumentService.php` (NEW): extension allow-list (PDF/JPEG/PNG/TIFF per FR-156), magic-byte signature check (ELF disguised as .pdf rejected with MAGIC_BYTES), finfo MIME sniff (octet-stream inconclusive tolerated after exact magic match; dangerous/conflicting types rejected), 25 MB cap, SHA-256 de-duplication (second identical upload returns the same row with de_duplicated=true), randomised 32-hex storage keys under DOCUMENTS_STORAGE_DIR (outside web root; storage_key stripped from every API response), classification PUBLIC/INTERNAL/RESTRICTED/SENSITIVE_PERSONAL, document_links with ON CONFLICT. Controller POST /documents (multipart), GET /documents/{id}, POST /documents/{id}/links. Migration `20260924000001` adds app.document_download_tokens. Test: `Api/UploadValidationTest` 6/6 green.
 
 **TASK-108 — Signed download and classification enforcement**
-Dep: 107 · Files: `backend/src/Documents/` · Status: TODO
+Dep: 107 · Files: `backend/src/Documents/` · Status: DONE
 Do: short-lived single-use signed URLs; classification checked server-side; restricted downloads audited.
 AC: an expired or reused link fails; an unauthorised classification returns `NOT_FOUND`.
 Test: Api/DocumentAccessTest.
+Verification: 2026-09-24 - HMAC-SHA256 over (doc id, expiry, nonce) with the JWT secret; nonce persisted in app.document_download_tokens and atomically claimed on consume (single-use, expired/reused → 404); tampered signature → 404; minting or consuming a RESTRICTED/SENSITIVE_PERSONAL document without document.download_restricted → 404 (existence hidden, never 403); restricted downloads audited (FR-150). Endpoints POST /documents/{id}/download-token, GET /documents/{id}/download?token=. Test: `Api/DocumentAccessTest` 5/5 green (round-trip bytes, reuse, expiry, tamper, classification).
 
 **TASK-109 — Documents UI**
 Dep: 108, 071 · Files: `frontend/src/features/documents/` · Status: TODO

@@ -136,6 +136,28 @@ return function (App $app) {
               ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
         $group->post('/parcels/{id}/versions/{v:[0-9]+}/restore', \App\Parcels\Http\ParcelController::class . ':restore')
               ->add($parcelAuthed('parcel.version.restore'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}/versions/{v:[0-9]+}/compare', \App\Parcels\Http\ParcelController::class . ':compare')
+              ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
+
+        // ---- History timeline (Phase 14, TASK-104) ----
+        $group->get('/parcels/{id}/timeline', \App\Parcels\Http\HistoryTimelineController::class . ':timeline')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}/timeline/export', \App\Parcels\Http\HistoryTimelineController::class . ':export')
+              ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
+
+        // ---- Documents (Phase 14, TASK-107/108) ----
+        $docs = \App\Documents\Http\DocumentController::class;
+        $group->post('/documents', $docs . ':upload')
+              ->add(\App\Core\Http\Middleware\RateLimitMiddleware::class)
+              ->add(AuthenticateMiddleware::class);
+        $group->get('/documents/{id:[0-9a-f-]{36}}', $docs . ':get')
+              ->add(AuthenticateMiddleware::class);
+        $group->post('/documents/{id:[0-9a-f-]{36}}/links', $docs . ':link')
+              ->add(AuthenticateMiddleware::class);
+        $group->post('/documents/{id:[0-9a-f-]{36}}/download-token', $docs . ':mintDownloadToken')
+              ->add(AuthenticateMiddleware::class);
+        $group->get('/documents/{id:[0-9a-f-]{36}}/download', $docs . ':download')
+              ->add(AuthenticateMiddleware::class);
 
                 // ---- Spatial queries (TASK-063) ----
         $group->post('/spatial/query', \App\GIS\Http\SpatialQueryController::class . ':query')
