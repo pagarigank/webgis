@@ -131,5 +131,13 @@ return [
 
     \App\Survey\Application\SurveyComputationService::class => \DI\autowire(\App\Survey\Application\SurveyComputationService::class),
     \App\Survey\Http\ComputationController::class => \DI\autowire(\App\Survey\Http\ComputationController::class),
+
+    // ---- Phase 12 Survey Validation & Submission Guards ----
+    \App\Parcels\Domain\OverlapDetector::class => \DI\autowire(\App\Parcels\Domain\OverlapDetector::class),
+    \App\Survey\Application\SurveyValidationService::class => \DI\autowire(\App\Survey\Application\SurveyValidationService::class),
+    \App\Survey\Http\ValidationController::class => \DI\autowire(\App\Survey\Http\ValidationController::class)
+        ->constructorParameter('audit', \DI\get(AuditWriter::class)),
+    \App\Parcels\Http\ParcelController::class => \DI\autowire(\App\Parcels\Http\ParcelController::class)
+        ->constructorParameter('validationService', \DI\get(\App\Survey\Application\SurveyValidationService::class)),
 ];
 

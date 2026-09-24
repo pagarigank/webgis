@@ -25,6 +25,7 @@ class ParcelController
 {
     private PDO $pdo;
     private AuditWriter $audit;
+    private ?\App\Survey\Application\SurveyValidationService $validationService;
 
     /**
      * FR-199 / TASK-072 — provenance values that assert the geometry came from
@@ -37,10 +38,14 @@ class ParcelController
         'TRANSFORMED_FROM_HISTORICAL_SURVEY',
     ];
 
-    public function __construct(PDO $pdo, AuditWriter $audit)
-    {
+    public function __construct(
+        PDO $pdo,
+        AuditWriter $audit,
+        ?\App\Survey\Application\SurveyValidationService $validationService = null
+    ) {
         $this->pdo = $pdo;
         $this->audit = $audit;
+        $this->validationService = $validationService;
     }
 
     private function resolveUser(Request $request): int

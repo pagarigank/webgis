@@ -8,6 +8,7 @@ import { SurveyPlanTab } from '../components/SurveyPlanTab';
 import { TechnicalDescriptionTab } from '../../survey/components/TechnicalDescriptionTab';
 import { TiePointTab } from '../../survey/components/TiePointTab';
 import { ComputationPanel } from '../../survey/components/ComputationPanel';
+import { ValidationPanel } from '../../survey/components/ValidationPanel';
 import { ParcelPreviewMap } from '../components/ParcelPreviewMap';
 import { ParcelMeta } from '../components/badges';
 import { Modal } from '../../../components/dialogs/Modal';
@@ -212,9 +213,18 @@ export function ParcelEditorPage() {
                             {activeTab === 'computation' && (
                                 <ComputationPanel parcelId={id} parcel={parcel} onAccepted={() => void refetch()} />
                             )}
+                            {activeTab === 'validation' && (
+                                <ValidationPanel
+                                    parcelId={id}
+                                    parcel={parcel}
+                                    onSubmitted={() => void refetch()}
+                                    onNavigateTab={(targetTab) => {
+                                        navigate(`/parcels/${id}/${targetTab}`);
+                                    }}
+                                />
+                            )}
                             {activeTab === 'history' && <HistoryTab id={id} />}
-                            {(activeTab === 'title'
-                                || activeTab === 'validation' || activeTab === 'documents') && (
+                            {(activeTab === 'title' || activeTab === 'documents') && (
                                 <ComingSoon tabLabel={PARCEL_TABS.find((t) => t.key === activeTab)!.label} />
                             )}
                         </div>

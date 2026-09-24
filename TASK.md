@@ -2,8 +2,8 @@
 
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
-**Current phase:** PHASE 12 — Validation
-**Implementation status:** IN PROGRESS — Phases 1 through 11 (tasks 001–095) shipped; next is TASK-096 (survey validation service)
+**Current phase:** PHASE 13 — Workflow and approval
+**Implementation status:** IN PROGRESS — Phases 1 through 12 (tasks 001–099) shipped; next is TASK-100 (workflow engine)
 **Last updated:** 2026-09-24
 
 ---
@@ -115,10 +115,13 @@
 | 93 | TASK-092 | Accept computation → parcel geometry | 090, 069 | DONE | POST /parcels/{id}/accept-computation, COMPUTED_FROM_TECHNICAL_DESCRIPTION, version bump, audit |
 | 94 | TASK-093 | Computation panel UI | 092, 084 | DONE | ComputationPanel.tsx, closure card, area cross-check, SVG preview, adjustment, accept modal |
 | 95 | TASK-094 | Traverse adjustment (Compass/Transit) | 090 | DONE | Bowditch Compass and Transit rules, linked new computation, closes to 0.000m |
-| 96 | TASK-095 | Explicit coordinate transformation service | 014, 073 | DONE | POST /crs/transform, coordinate_transformations logging, no implicit transform on read |
-| 97 | TASK-096 | Survey validation service | 090, 073 | TODO | Full checklist: TD, tie point, CRS, bearings, distances, closure, geometry, area, overlap |
+| 97 | TASK-096 | Survey validation service | 090, 073 | DONE | Full 12-point FR-125 checklist, VR-01..VR-20, persistent result, API tests green |
+| 98 | TASK-097 | Overlap detection | 096, 019 | DONE | GIST spatial query, geodesic area, sliver threshold (0.05 m²), non-archived filter |
+| 99 | TASK-098 | Submission guards | 096 | DONE | POST /parcels/{id}/submit, 422 CLOSURE_EXCEEDS_TOLERANCE / VALIDATION_FAILED, warning propagation |
+| 100 | TASK-099 | Validation panel UI | 098, 093 | DONE | ValidationPanel.tsx, FR-125 checklist, FR-126 expanded warnings, FR-127 note, overlap table |
+| 101 | TASK-100 | Workflow engine | 020, 030 | TODO | Table-driven state machine with permission checks, guards, mandatory reasons, history |
 
-Phase 11 (Computation engine, tasks 087–095) has been audited and completed on 2026-09-24. Pure domain survey geometry (TraverseComputer, ClosureCalculator, AreaCalculator, CompassRuleAdjustment, TransitRuleAdjustment, ComputeCrsGuard), application orchestration (`SurveyComputationService`, `ComputationController`, `ParcelController::acceptComputation`, `CoordinateTransformationService`), immutable snapshotting, replay determinism, and full frontend survey computation panel UI with live SVG geometry preview, closure status badges, area comparison with mandatory validation aid note, and parcel geometry acceptance have been implemented and verified. All 353 backend tests pass and frontend builds with 0 errors. Next active task is TASK-096 (survey validation service).
+Phase 12 (Validation, tasks 096–099) has been audited and completed on 2026-09-24. Survey validation service (`SurveyValidationService.php`), spatial overlap detector (`OverlapDetector.php`), submission guards (`ValidationController::submit`), and full frontend validation panel UI (`ValidationPanel.tsx`) with FR-125 12-point checklist, FR-126 expanded warnings, FR-127 mandatory validation aid note, and overlap analysis table have been fully implemented, tested, and verified. All 366 backend PHPUnit tests pass and all 52 frontend Vitest tests pass with clean production bundle build. Next active task is TASK-100 (workflow engine).
 
 TASK-034 shipped the admin APIs: `UserAdminService` (CRUD, deactivate as soft delete, role/scope assignment, force-password-reset, `effective-access` explainer), `RoleAdminService`/`OrganizationAdminService` (system-role protection, If-Match versioning, deactivation guards), controllers, and rewritten `config/routes.php` with per-route `AuthorizeMiddleware` declarations. Full suite: 121 tests / 306 assertions green on the Docker stack (PHP 8.3.33, PHPUnit 11.5.56).
 

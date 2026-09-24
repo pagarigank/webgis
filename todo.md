@@ -761,28 +761,32 @@ Verification: 2026-09-24 — `backend/src/Core/Crs/CoordinateTransformationServi
 ## PHASE 12 — Validation
 
 **TASK-096 — Survey validation service**
-Dep: 090, 073 · Files: `backend/src/Survey/Application/` · Status: TODO
+Dep: 090, 073 · Files: `backend/src/Survey/Application/` · Status: DONE
 Do: the full checklist — TD parsed and confirmed, tie point found, tie point verified, CRS identified, bearings valid, distances valid, polygon closed, geometry valid, area computed, area vs source, overlap with existing parcels, minimum vertices — each pass/warn/fail with a rule id.
 AC: every check in `specification.md` FR-125 present; results persisted with the computation.
 Test: Api/ValidationTest (one case triggering each check).
+Verification: 2026-09-24 — `backend/src/Survey/Application/SurveyValidationService.php` implements the complete 12-point FR-125 checklist: TD confirmed (`VR-TD-CONFIRMED`), tie point found (`VR-TIE-FOUND`), tie point verified (`VR-19`), CRS within area of use (`VR-20`), bearing reference & course syntax (`VR-01..09`), closed polygon within tolerance (`VR-11, 12`), geometry topology & simplicity (`VR-13, 14`), computed area plausibility (`VR-15`), area comparison vs source (`VR-16, 17`) with mandatory FR-127 validation aid note, minimum $\ge 3$ vertices (`VR-10`), and cadastral overlap detection (`VR-18`). Results persisted to `app.parcel_computations.validation_result`. Controller: `ValidationController.php` (`POST /parcels/{id}/validate`, `GET /parcels/{id}/validation`). Tests: `backend/tests/Api/ValidationTest.php` 5/5 pass.
 
 **TASK-097 — Overlap detection**
-Dep: 096, 019 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 096, 019 · Files: `backend/src/Parcels/` · Status: DONE
 Do: `ST_Intersects`/`ST_Area(ST_Intersection)` against non-archived parcels with a sliver threshold; returns the overlapping parcel list.
 AC: uses the GIST index; reports area and identifies each overlapping parcel.
 Test: Spatial/OverlapTest.
+Verification: 2026-09-24 — `backend/src/Parcels/Domain/OverlapDetector.php` performs GIST-indexed spatial queries (`ST_Intersects`, geodesic `ST_Area(ST_Intersection(...)::geography)`), computes overlapping area in $m^2$ and percentage of subject parcel, distinguishes interior polygon overlaps from adjacent boundary-touching lines ($0\text{ m}^2$), filters slivers ($\le 0.05\text{ m}^2$), and excludes ARCHIVED/SUPERSEDED parcels. Hermetic spatial test `backend/tests/Spatial/OverlapTest.php` 4/4 pass (12 assertions).
 
 **TASK-098 — Submission guards**
-Dep: 096 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 096 · Files: `backend/src/Parcels/` · Status: DONE
 Do: block submission on any blocking failure with the specific reason; carry warnings forward to reviewers.
 AC: a blocking error returns `CLOSURE_EXCEEDS_TOLERANCE` or `VALIDATION_FAILED` naming the rule; warnings persist to approval.
 Test: Api/SubmitGuardTest.
+Verification: 2026-09-24 — `ValidationController::submit` (`POST /parcels/{id}/submit`) enforces complete survey validation before parcel status transition to `SUBMITTED`. Rejects with `CLOSURE_EXCEEDS_TOLERANCE` (422) naming linear error and tolerance if traverse closure fails, or `VALIDATION_FAILED` (422) naming rule ID for other blocking failures. Carries forward warnings (e.g. `VR-18` overlap, `VR-19` unverified tie point) into `audit.parcel_versions` and audit logs. Blocks re-submission of invalid statuses (400 `INVALID_STATE`). Tested in `backend/tests/Api/SubmitGuardTest.php` 4/4 pass.
 
 **TASK-099 — Validation panel UI**
-Dep: 098, 093 · Files: `frontend/src/features/survey/` · Status: TODO
+Dep: 098, 093 · Files: `frontend/src/features/survey/` · Status: DONE
 Do: checklist with pass/warn/fail, rule ids, expanded warnings by default, no dismiss-all, "show me" actions that highlight the cause.
 AC: warnings cannot be collapsed away or suppressed; blocking errors disable submission and explain why.
 Test: Playwright validation panel.
+Verification: 2026-09-24 — Frontend: `validationApi.ts` client; `ValidationPanel.tsx` with top status banner, 12-point checklist table displaying PASS/WARN/FAIL status badges and rule IDs (`VR-01` through `VR-20`), warnings expanded by default without dismiss-all (FR-126), "Show me" action buttons navigating to relevant tabs (`techdesc`, `tiepoint`, `computation`), area comparison card with mandatory FR-127 validation aid note, overlap analysis table (VR-18), and "Submit for Review" button disabled on blocking failures opening submission confirmation modal. Mounted in `ParcelEditorPage.tsx` under the Validation tab. Tests: `frontend/src/features/survey/components/ValidationPanel.test.tsx` 5/5 pass; full Vitest suite 52/52 pass; `tsc -b && vite build` clean.
 
 ---
 

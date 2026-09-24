@@ -49,9 +49,10 @@ final class CourseValidator
             $bearingObj = null;
             $azimuthDd = null;
 
-            if (isset($c['bearing']) && is_string($c['bearing']) && trim($c['bearing']) !== '') {
+            $rawBearing = $c['bearing'] ?? $c['bearing_raw'] ?? $c['original_bearing'] ?? $c['normalized_bearing'] ?? null;
+            if (is_string($rawBearing) && trim($rawBearing) !== '') {
                 try {
-                    $bearingObj = Bearing::parse($c['bearing']);
+                    $bearingObj = Bearing::parse($rawBearing);
                     $azimuthDd = $bearingObj->toAzimuth()->toDecimalDegrees();
                 } catch (InvalidArgumentException $e) {
                     $msg = $e->getMessage();
@@ -70,8 +71,8 @@ final class CourseValidator
                         'message' => $msg,
                     ];
                 }
-            } elseif (isset($c['quadrant'])) {
-                $quadrant = strtoupper(trim((string) $c['quadrant']));
+            } elseif (isset($c['quadrant']) || isset($c['bearing_quadrant'])) {
+                $quadrant = strtoupper(trim((string) ($c['quadrant'] ?? $c['bearing_quadrant'])));
                 $deg = isset($c['deg']) ? (int) $c['deg'] : null;
                 $min = isset($c['min']) ? (int) $c['min'] : 0;
                 $sec = isset($c['sec']) ? (float) $c['sec'] : 0.0;

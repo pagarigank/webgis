@@ -108,6 +108,14 @@ return function (App $app) {
         $group->post('/parcels/{id}/accept-computation', \App\Parcels\Http\ParcelController::class . ':acceptComputation')
               ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
 
+        // ---- Phase 12 Survey Validation & Submission Guards (TASK-096..098) ----
+        $group->post('/parcels/{id}/validate', \App\Survey\Http\ValidationController::class . ':validate')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}/validation', \App\Survey\Http\ValidationController::class . ':getLatest')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels/{id}/submit', \App\Survey\Http\ValidationController::class . ':submit')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+
         // ---- Parcel versioning (TASK-069) ----
         $group->get('/parcels/{id}/versions', \App\Parcels\Http\ParcelController::class . ':versions')
               ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);

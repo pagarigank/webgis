@@ -306,10 +306,28 @@ On 2026-09-20 the complete suite ran **98 tests / 228 assertions, OK** on the Do
   - Endpoint `POST /computations/{id}/adjust`.
   - Unit tests: `backend/tests/Unit/CompassRuleTest.php` (2 tests passed).
 
-## TASK-095: Explicit coordinate transformation service
+## TASK-096: Survey validation service
 - **What shipped**:
-  - `backend/src/Core/Crs/CoordinateTransformationService.php` and `CoordinateTransformationController.php` (`POST /crs/transform`): PostGIS planar and geodetic coordinate transformations across registered CRSs with explicit type casting and logging to `app.coordinate_transformations`.
-  - Strictly prevents implicit historical coordinate transformation on read.
-  - Unit tests: `backend/tests/Unit/CoordinateTransformationTest.php` (3 tests passed).
+  - `backend/src/Survey/Application/SurveyValidationService.php`: Implements complete 12-point FR-125 checklist: TD confirmation (`VR-TD-CONFIRMED`), tie point found (`VR-TIE-FOUND`), tie point verified (`VR-19`), CRS within area of use (`VR-20`), bearing reference & course syntax (`VR-01..09`), closed polygon within tolerance (`VR-11, 12`), geometry topology & simplicity (`VR-13, 14`), computed area plausibility (`VR-15`), area comparison vs source (`VR-16, 17`) with mandatory FR-127 validation aid note, minimum $\ge 3$ vertices (`VR-10`), and cadastral overlap detection (`VR-18`). Results persisted to `app.parcel_computations.validation_result`.
+  - `ValidationController.php`: Endpoints `POST /parcels/{id}/validate` and `GET /parcels/{id}/validation`.
+  - Tests: `backend/tests/Api/ValidationTest.php` (5 tests passed).
+
+## TASK-097: Overlap detection
+- **What shipped**:
+  - `backend/src/Parcels/Domain/OverlapDetector.php`: PostGIS GIST-indexed spatial queries (`ST_Intersects`, geodesic `ST_Area(ST_Intersection(...)::geography)`), computes overlapping area in $m^2$ and percentage of subject parcel, distinguishes interior polygon overlaps from adjacent boundary-touching lines ($0\text{ m}^2$), filters slivers ($\le 0.05\text{ m}^2$), and excludes ARCHIVED/SUPERSEDED parcels.
+  - Tests: `backend/tests/Spatial/OverlapTest.php` (4 tests passed, 12 assertions).
+
+## TASK-098: Submission guards
+- **What shipped**:
+  - `ValidationController::submit` (`POST /parcels/{id}/submit`): Enforces full validation checklist before parcel transition to `SUBMITTED`. Rejects with `CLOSURE_EXCEEDS_TOLERANCE` (422) if traverse closure fails, or `VALIDATION_FAILED` (422) for other blocking failures. Carries forward warnings (e.g. `VR-18` overlap, `VR-19` unverified tie point) into `audit.parcel_versions` and audit logs. Blocks re-submission of invalid statuses (400 `INVALID_STATE`).
+  - Tests: `backend/tests/Api/SubmitGuardTest.php` (4 tests passed).
+
+## TASK-099: Validation panel UI
+- **What shipped**:
+  - Frontend client `frontend/src/features/survey/api/validationApi.ts`.
+  - Component `ValidationPanel.tsx`: Top status banner, 12-point checklist table displaying PASS/WARN/FAIL status badges and rule IDs (`VR-01` through `VR-20`), warnings expanded by default without dismiss-all (FR-126), "Show me" action buttons navigating to relevant tabs (`techdesc`, `tiepoint`, `computation`), area comparison card with mandatory FR-127 validation aid note, overlap analysis table (VR-18), and "Submit for Review" button disabled on blocking failures opening submission confirmation modal.
+  - Mounted in `ParcelEditorPage.tsx` under the Validation tab, replacing the placeholder.
+  - Component tests: `frontend/src/features/survey/components/ValidationPanel.test.tsx` (5 tests passed). Full frontend Vitest suite: 52/52 passed; `npm run build` clean.
+
 
 
