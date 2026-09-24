@@ -3,8 +3,8 @@
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
 **Current phase:** PHASE 14 — History, versioning UI, documents
-**Implementation status:** IN PROGRESS — Phases 1 through 12 (001–099) + Phase 13 TASK-100/101 (workflow engine) + Phase 14 TASK-104/105/106/107/108 (timeline, diff, restore, documents) shipped; remaining: TASK-102, TASK-103, UI passes
-**Last updated:** 2026-09-24 (Phase 14 TASK-104..108 shipped; 415 backend tests green)
+**Implementation status:** IN PROGRESS — Phases 1 through 12 (001–099) + Phase 13 TASK-100/101 (workflow engine) + TASK-102 (approved-edit cycle) + Phase 14 TASK-104/105/106/107/108 (timeline, diff, restore, documents) shipped; remaining: TASK-103 (workflow UI + reviewer inbox), version-compare/history UI pass
+**Last updated:** 2026-09-24 (TASK-102 approved-edit cycle shipped; 420 backend tests green)
 
 ---
 
@@ -120,6 +120,8 @@
 | 99 | TASK-098 | Submission guards | 096 | DONE | POST /parcels/{id}/submit, 422 CLOSURE_EXCEEDS_TOLERANCE / VALIDATION_FAILED, warning propagation |
 | 100 | TASK-099 | Validation panel UI | 098, 093 | DONE | ValidationPanel.tsx, FR-125 checklist, FR-126 expanded warnings, FR-127 note, overlap table |
 | 101 | TASK-100 | Workflow engine | 020, 030 | DONE | Table-driven engine, FR-135 matrix seeded, guards/permissions/reasons/notifications; 390 tests green |
+| 102 | TASK-102 | Editing approved records (FR-141) | 101, 069 | DONE | REOPEN transition + approved-edit cycle in PATCH; approved version preserved; 420 tests green |
+| 103 | TASK-103 | Workflow UI, reviewer inbox, notifications | 101, 071 | TODO | action bar with permitted transitions only, reason/comment prompts, reviewer inbox, notification bell |
 
 Phase 12 (Validation, tasks 096–099) has been audited and completed on 2026-09-24. Survey validation service (`SurveyValidationService.php`), spatial overlap detector (`OverlapDetector.php`), submission guards (`ValidationController::submit`), and full frontend validation panel UI (`ValidationPanel.tsx`) with FR-125 12-point checklist, FR-126 expanded warnings, FR-127 mandatory validation aid note, and overlap analysis table have been fully implemented, tested, and verified. All 366 backend PHPUnit tests pass and all 52 frontend Vitest tests pass with clean production bundle build. Next active task is TASK-100 (workflow engine).
 

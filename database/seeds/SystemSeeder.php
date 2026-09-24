@@ -82,11 +82,18 @@ class SystemSeeder extends AbstractSeed
             ['SUPERSEDED', 'Superseded', false, true, 90],
         ];
         foreach ($states as $i => [$code, $name, $isInitial, $isTerminal, $order]) {
+            // Upsert-only: workflow_instances.workflow_state_id references these
+            // rows, so a DELETE would break every database that already ran a
+            // transition. display_order still refreshes on re-seed.
             $stmt = $this->getAdapter()->getConnection()->prepare("
                 INSERT INTO app.workflow_states (definition_id, code, name, is_initial, is_terminal, display_order)
                 SELECT d.id, :code, :name, :is_initial, :is_terminal, :display_order
                 FROM app.workflow_definitions d WHERE d.code = 'PARCEL_APPROVAL'
-                ON CONFLICT (definition_id, code) DO NOTHING
+                ON CONFLICT (definition_id, code) DO UPDATE
+                    SET name = EXCLUDED.name,
+                        is_initial = EXCLUDED.is_initial,
+                        is_terminal = EXCLUDED.is_terminal,
+                        display_order = EXCLUDED.display_order
             ");
             $stmt->execute([
                 ':code' => $code, ':name' => $name,
@@ -113,6 +120,11 @@ class SystemSeeder extends AbstractSeed
             ['ARCHIVE',      'RETURNED',     'ARCHIVED',    'parcel.archive', true,  false, null],
             ['ARCHIVE',      'APPROVED',     'ARCHIVED',    'parcel.archive', true,  false, null],
             ['ARCHIVE',      'PUBLISHED',    'ARCHIVED',    'parcel.archive', true,  false, null],
+            // TASK-102 / FR-141 — editing an APPROVED record runs this reopen
+            // through the engine before the edit applies. The target state is
+            // overridden by the WORKFLOW_APPROVED_EDIT_TARGET_STATE setting
+            // (default DRAFT); requires_reason mirrors the FR-137 family.
+            ['REOPEN',       'APPROVED',     'DRAFT',       'parcel.approve', true,  false, null],
         ];
         foreach ($transitions as [$action, $from, $to, $perm, $reqReason, $reqComment, $guard]) {
             $stmt = $this->getAdapter()->getConnection()->prepare("

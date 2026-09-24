@@ -1,8 +1,15 @@
-**TASK-102 — Editing approved records**
-Dep: 101, 069 · Files: `backend/src/Parcels/` · Status: TODO
-Do: editing an APPROVED parcel creates a new version and returns it to the configured state; the approved version stays intact.
-AC: the previously approved version remains retrievable and unchanged.
-Test: Api/ApprovedEditTest.
-Entry criteria: TASK-100/101 (workflow engine + transitions API) and Phase 14 TASK-104..108 are DONE. Next: TASK-102 (approved-edit cycle), then TASK-103 (workflow UI + reviewer inbox), then the version-compare/history UI pass.
+**TASK-103 — Workflow UI, reviewer inbox, notifications**
+Dep: 101, 071 · Files: `frontend/src/features/parcels/` · Status: TODO
+Do: action bar with permitted transitions only, reason/comment prompts, reviewer inbox, notification bell.
+AC: unavailable transitions are absent; a return requires a reason before the request is sent.
+Test: Playwright two-role approval flow.
+Entry criteria: TASK-100/101 (engine + transitions API), TASK-102 (approved-edit cycle), and Phase 14 TASK-104..108 are DONE. Next: TASK-103 (workflow UI + reviewer inbox + notification bell), then the version-compare/history UI pass (version-compare + geometry-diff map overlay + timeline rendering, deferred from TASK-105).
 
-Completed (2026-09-24): TASK-100/101 (workflow engine + transitions API); TASK-104 merged history timeline; TASK-105 version compare + geometry diff (backend); TASK-106 restore verified; TASK-107 document upload/validation/de-dup; TASK-108 signed single-use downloads with classification enforcement. Full suite: 415 backend tests green.
+Backend API surface for TASK-103 (all shipped and tested):
+- `GET /parcels/{id}/transitions` — available actions annotated with `allowed` for the caller (unavailable actions are absent, FR-103).
+- `POST /parcels/{id}/transitions` — `{ action, reason, comment }`; REOPEN (approved-edit) is a seeded row appearing for APPROVED parcels with `parcel.approve`.
+- `GET /parcels/{id}/transitions/history` — approval actions, newest first.
+- `GET /notifications` surface: engine writes `app.notifications` (type `WORKFLOW_<ACTION>`) to the parcel creator on every transition; a read/unread bell endpoint may still be needed (check `notifications` routes before assuming).
+- `requires_reason` / `requires_comment` per action drive the reason prompt (FR-137).
+
+Completed (2026-09-24): TASK-100/101 (workflow engine + transitions API); TASK-102 approved-edit cycle (REOPEN transition, approved-version preservation, configured target state via WORKFLOW_APPROVED_EDIT_TARGET_STATE); TASK-104 merged history timeline; TASK-105 version compare + geometry diff (backend); TASK-106 restore verified; TASK-107 document upload/validation/de-dup; TASK-108 signed single-use downloads with classification enforcement. Full suite: 420 backend tests green.

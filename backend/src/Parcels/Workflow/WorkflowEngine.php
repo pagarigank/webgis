@@ -32,6 +32,19 @@ final class WorkflowEngine
     /** Guards are allow-listed; unknown guard names in data fail closed. */
     private const GUARDS = ['validation_passed'];
 
+    /**
+     * TASK-102 / FR-141 — the approved-edit reopen action. Seeded as a normal
+     * transition row; editing an APPROVED parcel executes it through the
+     * engine so the cycle stays permission-gated, audited, and data-driven.
+     */
+    public const APPROVED_EDIT_ACTION = 'REOPEN';
+
+    /**
+     * TASK-102 / FR-141 — system setting holding the state an APPROVED parcel
+     * returns to when it is reopened for editing (default DRAFT).
+     */
+    public const APPROVED_EDIT_TARGET_SETTING = 'WORKFLOW_APPROVED_EDIT_TARGET_STATE';
+
     public function __construct(
         private readonly PDO $pdo,
         private readonly \App\RBAC\PermissionResolver $permissions,
@@ -194,6 +207,143 @@ final class WorkflowEngine
         );
         $stmt->execute([':pid' => $parcelId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * TASK-102 / FR-141 — approved-edit cycle (reopen).
+     *
+     * Editing an APPROVED parcel must create a new version and return the
+     * record to the configured workflow state while the previously approved
+     * version stays intact. The status change is a workflow transition, not a
+     * silent field write: this method drives the seeded REOPEN transition
+     * through the same permission gate, reason rule (FR-137), history, audit,
+     * and notification path as every other action, then appends a dedicated
+     * audit.parcel_versions row (status = to_state, change_reason = $reason)
+     * so the approved version itself is never rewritten.
+     *
+     * The transition row is looked up by action + from-state from the seeded
+     * matrix; its to_state is overridden by WORKFLOW_APPROVED_EDIT_TARGET_STATE
+     * when that setting names a non-terminal state of this definition. Only
+     * the reason (the why of the edit) is caller input; no request field can
+     * influence the target state or the permission (FR-136 default-deny).
+     *
+     * Must run inside the caller's transaction (the parcel row is locked with
+     * FOR UPDATE). Returns the applied transition for response decoration.
+     *
+     * @return array{from_state:string,to_state:string,action_code:string}
+     */
+    public function reopenApprovedRecord(string $parcelId, int $userId, string $reason): array
+    {
+        $parcel = $this->loadParcelForUpdate($parcelId);
+        if ($parcel['status'] !== 'APPROVED') {
+            throw new ApiError('INVALID_STATE', 'Only APPROVED parcels follow the approved-edit cycle.', 400);
+        }
+
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw new ApiError(
+                'VALIDATION_FAILED',
+                'Editing an approved record requires a change_reason for the reopen.',
+                422,
+                ['fields' => [['field' => 'change_reason', 'rule' => 'FR-141']]]
+            );
+        }
+
+        $definition = $this->loadDefinition();
+        $fromState = $this->loadState($definition, $parcel['status']);
+        $toStateCode = $this->approvedEditTargetState($definition);
+
+        // The transition row must exist for (REOPEN, APPROVED); its permission
+        // and reason rules apply exactly as seeded.
+        $stmt = $this->pdo->prepare(
+            'SELECT t.*, s2.code AS to_state
+             FROM app.workflow_transitions t
+             JOIN app.workflow_states s2 ON s2.id = t.to_state_id
+             WHERE t.definition_id = :def AND t.from_state_id = :from
+               AND UPPER(t.action_code) = :action
+             LIMIT 1'
+        );
+        $stmt->execute([':def' => $definition['id'], ':from' => $fromState['id'], ':action' => self::APPROVED_EDIT_ACTION]);
+        $transition = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($transition === false) {
+            throw new ApiError(
+                'INVALID_TRANSITION',
+                sprintf('Action %s is not defined from state APPROVED; run the system seeder.', self::APPROVED_EDIT_ACTION),
+                422,
+                ['from_state' => $fromState['code'], 'action' => self::APPROVED_EDIT_ACTION]
+            );
+        }
+
+        // Permission gate — the workflow table names the code (seeded:
+        // parcel.approve); the caller must hold it.
+        $requiredPermission = (string) $transition['required_permission'];
+        if (!in_array($requiredPermission, $this->effectivePermissions($userId), true)) {
+            throw new ApiError('PERMISSION_DENIED', sprintf('%s is required to edit an approved record.', $requiredPermission), 403);
+        }
+
+        $this->upsertInstance($definition['id'], $parcelId, (int) $transition['to_state_id']);
+
+        $upd = $this->pdo->prepare(
+            'UPDATE app.parcels
+             SET status = :status, version = version + 1, updated_by = :uid, updated_at = CURRENT_TIMESTAMP
+             WHERE id = :pid'
+        );
+        $upd->execute([':status' => $toStateCode, ':uid' => $userId, ':pid' => $parcelId]);
+
+        // History, audit, and notification — the REOPEN is a first-class
+        // workflow action carrying the edit's reason (FR-137).
+        $this->recordAction(
+            $definition['id'],
+            $parcelId,
+            $fromState['code'],
+            $toStateCode,
+            self::APPROVED_EDIT_ACTION,
+            $userId,
+            ['reason' => $reason],
+        );
+
+        $this->notify($parcelId, $userId, self::APPROVED_EDIT_ACTION, $fromState['code'], $toStateCode);
+
+        return [
+            'from_state'  => $fromState['code'],
+            'to_state'    => $toStateCode,
+            'action_code' => self::APPROVED_EDIT_ACTION,
+        ];
+    }
+
+    /**
+     * Target state of the approved-edit cycle: WORKFLOW_APPROVED_EDIT_TARGET_STATE
+     * when it names a non-terminal state of the definition, else DRAFT
+     * (defaults documented in the setting's description).
+     */
+    private function approvedEditTargetState(array $definition): string
+    {
+        $stmt = $this->pdo->prepare("SELECT value FROM app.system_settings WHERE key = :key LIMIT 1");
+        $stmt->execute([':key' => self::APPROVED_EDIT_TARGET_SETTING]);
+        $raw = $stmt->fetchColumn();
+        $configured = null;
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $candidate = is_array($decoded) ? ($decoded['value'] ?? null) : $decoded;
+            if (is_string($candidate) && $candidate !== '') {
+                $configured = strtoupper($candidate);
+            }
+        }
+
+        if ($configured !== null) {
+            $stmt = $this->pdo->prepare(
+                'SELECT code FROM app.workflow_states
+                 WHERE definition_id = :def AND code = :code AND is_terminal = false
+                 LIMIT 1'
+            );
+            $stmt->execute([':def' => $definition['id'], ':code' => $configured]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row !== false) {
+                return (string) $row['code'];
+            }
+        }
+
+        return 'DRAFT';
     }
 
     // ---------------------------------------------------------------------

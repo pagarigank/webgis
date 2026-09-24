@@ -28,6 +28,7 @@ class ParcelController
     private ?\App\Survey\Application\SurveyValidationService $validationService;
     private ?\App\Parcels\Domain\OverlapDetector $overlapDetector;
     private \App\Parcels\Domain\VersionDiffService $versionDiff;
+    private ?\App\Parcels\Workflow\WorkflowEngine $workflowEngine;
 
     /**
      * FR-199 / TASK-072 — provenance values that assert the geometry came from
@@ -48,13 +49,15 @@ class ParcelController
         AuditWriter $audit,
         ?\App\Survey\Application\SurveyValidationService $validationService = null,
         ?\App\Parcels\Domain\OverlapDetector $overlapDetector = null,
-        ?\App\Parcels\Domain\VersionDiffService $versionDiff = null
+        ?\App\Parcels\Domain\VersionDiffService $versionDiff = null,
+        ?\App\Parcels\Workflow\WorkflowEngine $workflowEngine = null
     ) {
         $this->pdo = $pdo;
         $this->audit = $audit;
         $this->validationService = $validationService;
         $this->overlapDetector = $overlapDetector;
         $this->versionDiff = $versionDiff ?? new \App\Parcels\Domain\VersionDiffService();
+        $this->workflowEngine = $workflowEngine;
     }
 
     private function resolveUser(Request $request): int
@@ -373,6 +376,13 @@ class ParcelController
      * Partial update. Body: { ..., change_reason } — reason is optional for
      * attribute edits (TASK-069 records version rows); geometry/status changes
      * are version-numbered by the caller next.
+     *
+     * TASK-102 / FR-141 — editing an APPROVED parcel first runs the REOPEN
+     * workflow transition: the edit is refused without change_reason, requires
+     * the REOPEN permission (seeded parcel.approve), returns the parcel to the
+     * configured state (WORKFLOW_APPROVED_EDIT_TARGET_STATE, default DRAFT),
+     * and the previously approved version stays intact. Because the reopen
+     * bumps the version, the caller's If-Match must be the approved version.
      */
     public function update(Request $request, Response $response, array $args): Response
     {
@@ -381,7 +391,7 @@ class ParcelController
         $pid = $this->parseUuid($args, 'id');
 
         // Verify existence + lock + read version + pre-change provenance (FR-199).
-        $lock = $this->pdo->prepare("SELECT id, version, parcel_code, geometry_source, survey_plan_id FROM app.parcels WHERE id = :pid AND deleted_at IS NULL FOR UPDATE");
+        $lock = $this->pdo->prepare("SELECT id, version, parcel_code, status, geometry_source, survey_plan_id FROM app.parcels WHERE id = :pid AND deleted_at IS NULL FOR UPDATE");
         $lock->execute([':pid' => $pid]);
         $row = $lock->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {
@@ -389,6 +399,14 @@ class ParcelController
         }
         $currentVersion = (int) $row['version'];
 
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            throw new ApiError('VALIDATION_FAILED', 'Request body must be a JSON object', 400);
+        }
+
+        // Optimistic concurrency against the version the caller saw (on an
+        // APPROVED parcel that is the approved version — the reopen consumes
+        // it below, before the edit applies).
         $ifMatch = $request->getHeaderLine('If-Match');
         if ($ifMatch === '') {
             throw new ApiError('PRECONDITION_REQUIRED', 'An If-Match header with the current version is required for updates.', 428);
@@ -397,9 +415,43 @@ class ParcelController
             throw new ApiError('VERSION_CONFLICT', 'This parcel was modified by another user.', 409, ['current_version' => $currentVersion]);
         }
 
-        $body = $request->getParsedBody();
-        if (!is_array($body)) {
-            throw new ApiError('VALIDATION_FAILED', 'Request body must be a JSON object', 400);
+        // TASK-102 / FR-141 — an APPROVED record must be reopened through the
+        // workflow engine before any edit applies. Everything the reopen needs
+        // is already in hand (status, version, reason); it runs inside this
+        // request transaction, before the attribute UPDATE below.
+        if ($row['status'] === 'APPROVED') {
+            // The target state is configuration, never a request field (FR-136):
+            // reject explicit status changes before the reopen consumes the
+            // caller's If-Match.
+            if (array_key_exists('status', $body)) {
+                throw new ApiError(
+                    'INVALID_STATE',
+                    'Status transitions are workflow-controlled; the approved-edit target state is configured, not requested (FR-141).',
+                    400
+                );
+            }
+            if ($this->workflowEngine === null) {
+                throw new ApiError('INTERNAL_ERROR', 'Workflow engine is not available for the approved-edit cycle.', 500);
+            }
+            $reason = trim((string) ($body['change_reason'] ?? ($body['reason'] ?? '')));
+
+            // The workflow engine bumps versions without writing version rows,
+            // so the approved state would otherwise never be retrievable.
+            // Capture it as an append-only row BEFORE the reopen flips status;
+            // later edits never rewrite this row (FR-141 AC).
+            $approvedState = $this->getCurrentParcel($pid);
+            $this->writeVersion(
+                $pid,
+                $currentVersion,
+                $this->snapshotForVersion($approvedState),
+                'APPROVED',
+                $approvedState['provenance'],
+                'Approved record reopened for editing; approved state preserved',
+                $reason,
+                $approvedState['geometry']
+            );
+
+            $reopen = $this->workflowEngine->reopenApprovedRecord($pid, $uid, $reason);
         }
 
         $allowed = ['lot_number', 'block_number', 'title_number_ref', 'tax_declaration_no', 'source_area_sqm', 'source_area_unit', 'psgc_barangay', 'psgc_municipality', 'psgc_province', 'location_description', 'status', 'provenance', 'geometry_source', 'remarks', 'geometry', 'org_id', 'source_document_id', 'survey_plan_id', 'change_reason'];

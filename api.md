@@ -468,6 +468,26 @@ GET        /parcels/{id}/versions/{v}      full snapshot incl. geometry
 POST       /parcels/{id}/versions/{v}/restore
 POST       /parcels/{id}/transitions       { action, reason, comment }
 GET        /parcels/{id}/lineage?direction=both&depth=5
+
+### 8.1 Approved-edit cycle (FR-141, TASK-102)
+
+Editing an APPROVED parcel with `PATCH /parcels/{id}` first runs the seeded
+`REOPEN` workflow transition, then applies the edit:
+
+- `change_reason` (or `reason`) is **mandatory** — 422 `VALIDATION_FAILED` without it.
+- The reopen is permission-gated (`parcel.approve` in the seed matrix) — 403
+  `PERMISSION_DENIED` without it. The route still requires `parcel.update`.
+- The parcel returns to the configured state —
+  `WORKFLOW_APPROVED_EDIT_TARGET_STATE` (`system_settings`, default `DRAFT`) —
+  and the edit lands as a further version bump.
+- The previously approved `audit.parcel_versions` row remains intact and
+  retrievable; `GET /parcels/{id}/transitions/history` records the `REOPEN`
+  with the change reason; the creator is notified (`WORKFLOW_REOPEN`).
+- `If-Match` must carry the approved version; the response carries the
+  reopened + edited state and the new version.
+- An explicit `status` field in the PATCH body of an APPROVED parcel is still
+  rejected (400 `INVALID_STATE`); the target state is configuration, never a
+  request field (FR-136).
 GET        /parcels/{id}/documents         POST /parcels/{id}/documents
 ```
 

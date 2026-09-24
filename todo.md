@@ -809,10 +809,11 @@ Verification: 2026-09-24 - Covered by the TASK-100 engine + WorkflowController: 
 Note (interim guard): since TASK-100, `ParcelController::update` rejects PATCH status transitions outside DRAFT↔RETURNED (`INVALID_STATE`), so `POST /parcels/{id}/transitions` is the only transition path; `ValidationController::submit` (TASK-098) remains as a thin DRAFT/RETURNED→SUBMITTED entry that delegates to the same checklist.
 
 **TASK-102 — Editing approved records**
-Dep: 101, 069 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 101, 069 · Files: `backend/src/Parcels/` · Status: DONE
 Do: editing an APPROVED parcel creates a new version and returns it to the configured state; the approved version stays intact.
 AC: the previously approved version remains retrievable and unchanged.
 Test: Api/ApprovedEditTest.
+Verification: 2026-09-24 - Seeded `REOPEN` transition (APPROVED→DRAFT, `parcel.approve`, reason required) in SystemSeeder (workflow states now upsert-only so re-seeding cannot break `workflow_instances` FKs). `WorkflowEngine::reopenApprovedRecord()` runs the cycle through the engine — permission gate, FR-137 reason rule, approval_actions history, FR-140 creator notification — with the target state overridable by the `WORKFLOW_APPROVED_EDIT_TARGET_STATE` setting (validated non-terminal state of the definition, default DRAFT). `ParcelController::update()` on an APPROVED parcel: rejects an explicit `status` field BEFORE the reopen (FR-136), verifies If-Match against the approved version, captures the approved state as an append-only `audit.parcel_versions` row (the engine never wrote version rows, so the approved state was otherwise unretrievable — this row satisfies the FR-141 AC), runs the reopen, then applies the edit (+2 version total: reopen + edit). api.md §8.1 documents the contract. Tests: `Api/ApprovedEditTest` 5/5 (new version + configured state, approved version preserved retrievable+byte-identical, reason mandatory, permission-gated 403 PERMISSION_DENIED for a `parcel.update`-only encoder, PATCH-status rejection, configured target state). Full suite 420 green.
 
 **TASK-103 — Workflow UI, reviewer inbox, notifications**
 Dep: 101, 071 · Files: `frontend/src/features/parcels/` · Status: TODO

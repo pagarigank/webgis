@@ -37,6 +37,7 @@ class StateMachineTest extends TestCase
         ['VERIFY',       'UNDER_REVIEW', 'VERIFIED',    'parcel.verify',  false, false, null],
         ['APPROVE',      'VERIFIED',     'APPROVED',    'parcel.approve', false, true,  'validation_passed'],
         ['PUBLISH',      'APPROVED',     'PUBLISHED',   'parcel.publish', false, false, null],
+        ['REOPEN',       'APPROVED',     'DRAFT',       'parcel.approve', true,  false, null],
         ['ARCHIVE',      'DRAFT',        'ARCHIVED',    'parcel.archive', true,  false, null],
         ['ARCHIVE',      'RETURNED',     'ARCHIVED',    'parcel.archive', true,  false, null],
         ['ARCHIVE',      'APPROVED',     'ARCHIVED',    'parcel.archive', true,  false, null],

@@ -139,7 +139,8 @@ return [
         ->constructorParameter('audit', \DI\get(AuditWriter::class)),
     \App\Parcels\Http\ParcelController::class => \DI\autowire(\App\Parcels\Http\ParcelController::class)
         ->constructorParameter('validationService', \DI\get(\App\Survey\Application\SurveyValidationService::class))
-        ->constructorParameter('overlapDetector', \DI\get(\App\Parcels\Domain\OverlapDetector::class)),
+        ->constructorParameter('overlapDetector', \DI\get(\App\Parcels\Domain\OverlapDetector::class))
+        ->constructorParameter('workflowEngine', \DI\get(\App\Parcels\Workflow\WorkflowEngine::class)),
 
     // ---- Phase 13 Workflow engine (TASK-100) ----
     \App\Parcels\Workflow\WorkflowEngine::class => \DI\autowire(\App\Parcels\Workflow\WorkflowEngine::class)
