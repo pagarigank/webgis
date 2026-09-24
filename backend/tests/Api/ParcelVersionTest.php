@@ -135,10 +135,12 @@ class ParcelVersionTest extends TestCase
         $created = $this->apiCreate('VER_TEST_0002');
         $id = $created['data']['id'];
 
-        $v2 = $this->apiUpdate($id, 1, ['status' => 'SUBMITTED', 'change_reason' => 'Preparing for review']);
+        // Attribute edits only: status transitions are workflow-controlled
+        // (FR-136) and no longer accepted via PATCH.
+        $v2 = $this->apiUpdate($id, 1, ['tax_declaration_no' => 'TD-2026-001', 'change_reason' => 'Registered tax declaration']);
         $this->assertSame(2, $v2['data']['version']);
 
-        $v3 = $this->apiUpdate($id, 2, ['tax_declaration_no' => 'TD-2026-099', 'change_reason' => 'Registered tax declaration']);
+        $v3 = $this->apiUpdate($id, 2, ['location_description' => 'Beside the barangay hall', 'change_reason' => 'Location clarification']);
         $this->assertSame(3, $v3['data']['version']);
 
         $rows = $this->versionRows($id);
@@ -184,7 +186,7 @@ class ParcelVersionTest extends TestCase
     {
         $created = $this->apiCreate('VER_TEST_0005');
         $id = $created['data']['id'];
-        $this->apiUpdate($id, 1, ['status' => 'SUBMITTED']);
+        $this->apiUpdate($id, 1, ['lot_number' => 'LOT-NEWEST-FIRST']);
 
         $request = $this->apiRequest('GET', '/api/v1/parcels/' . $id . '/versions?page=1&per_page=10');
         $response = $this->getAppInstance()->handle($request);
@@ -195,8 +197,8 @@ class ParcelVersionTest extends TestCase
         $this->assertCount(2, $body['data']['data']);
         $this->assertSame([2, 1], array_column($body['data']['data'], 'version'));
         $this->assertSame(2, $body['data']['data'][0]['version']);
-        $this->assertSame('SUBMITTED', $body['data']['data'][0]['status']);
-        $this->assertStringContainsString('status: DRAFT -> SUBMITTED', $body['data']['data'][0]['change_summary']);
+        $this->assertSame('DRAFT', $body['data']['data'][0]['status']);
+        $this->assertStringContainsString('lot_number: null -> LOT-NEWEST-FIRST', $body['data']['data'][0]['change_summary']);
     }
 
     public function testListVersionsRequiresLineagePermission()
@@ -340,7 +342,7 @@ class ParcelVersionTest extends TestCase
     {
         $created = $this->apiCreate('VER_TEST_0014');
         $id = $created['data']['id'];
-        $this->apiUpdate($id, 1, ['status' => 'SUBMITTED']);
+        $this->apiUpdate($id, 1, ['block_number' => 'BLK-APPEND-ONLY']);
 
         // Re-inserting an existing version must be rejected by the unique(parcel_id, version) index.
         $duplicate = $this->pdo->prepare('INSERT INTO audit.parcel_versions (parcel_id, version, snapshot) VALUES (:pid, 1, \'{}\')');

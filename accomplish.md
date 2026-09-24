@@ -1,5 +1,11 @@
 # Accomplishments
 
+## Phase 8–12 audit fixes (2026-09-24)
+- **What shipped**: (G-1) interim workflow guard in `ParcelController::update()` — status transitions via PATCH are restricted to DRAFT↔RETURNED (`INVALID_STATE` otherwise), closing the second, unguarded submit path; the frontend editor Submit button now calls `validationApi.submitParcel()` (`POST /parcels/{id}/submit`) so the TASK-098 validation guard always runs. (G-4) removed the crash-looping `worker` compose service (its `backend/bin/worker.php` entrypoint never existed) and documented re-add conditions in `docker-compose.yml`. (G-5) new `GET /parcels/{id}/overlaps` endpoint reusing `OverlapDetector` — GIST-indexed overlap list with geodesic area, percentage, sliver classification, `?sliver_threshold_sqm=` override, 404 on unknown parcel, 400 on invalid threshold, `parcel.view` permission; DI wired for the detector. Tests: `tests/Api/ParcelOverlapsTest.php` (6 tests); three `ParcelVersionTest` cases that abused PATCH-status as a version bump re-pointed to attribute edits.
+- **Decisions made**: chose an interim backend guard over waiting for TASK-100 because the bypass made the Phase 12 guard advisory; PATCH guard will be superseded by the workflow engine's transition table. The 403 body on the overlaps route is the Slim error shape (like ParcelSearchTest), so the permission test asserts status only.
+- **Failed approaches**: initial overlaps permission test reused `createMockUser` — the shared 'testuser'/'SURVEY_OFFICER' fixture rows accumulate grants across tests, so parcel.view leaked in; fixed with a dedicated user/role/org inserted in-test.
+- **Follow-up items**: TASK-100 must keep `ValidationController::submit` as the only DRAFT→SUBMITTED path; deferred audit gaps G-2/G-3/G-6/G-7/G-8/G-9 remain open.
+
 ## TASK-012: CI pipeline
 - **What shipped**: Created GitHub Actions workflow (`.github/workflows/ci.yml`). Configured jobs to check out the repository, run PHPStan, PHP-CS-Fixer, and PHPUnit (against a PostGIS sidecar) for the backend. Configured parallel jobs for Vite build, Prettier formatting check, Oxlint, and Vitest for the frontend. Added composer and npm vulnerability scans.
 - **Decisions made**: Added a PostGIS service container directly to the backend test job so migrations can be run on a true spatial database.

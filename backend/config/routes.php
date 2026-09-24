@@ -107,6 +107,8 @@ return function (App $app) {
               ->add($parcelAuthed('parcel.delete'))->add(AuthenticateMiddleware::class);
         $group->post('/parcels/{id}/accept-computation', \App\Parcels\Http\ParcelController::class . ':acceptComputation')
               ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}/overlaps', \App\Parcels\Http\ParcelController::class . ':overlaps')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
 
         // ---- Phase 12 Survey Validation & Submission Guards (TASK-096..098) ----
         $group->post('/parcels/{id}/validate', \App\Survey\Http\ValidationController::class . ':validate')

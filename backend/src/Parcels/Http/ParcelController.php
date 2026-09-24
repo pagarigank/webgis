@@ -26,12 +26,16 @@ class ParcelController
     private PDO $pdo;
     private AuditWriter $audit;
     private ?\App\Survey\Application\SurveyValidationService $validationService;
+    private ?\App\Parcels\Domain\OverlapDetector $overlapDetector;
 
     /**
      * FR-199 / TASK-072 — provenance values that assert the geometry came from
      * official survey data. Relabelling a parcel to any of these requires survey
      * data attached (survey_plan_id) and a recorded justification (change_reason).
      */
+    /** Default sliver threshold (m²) for GET /parcels/{id}/overlaps (TASK-097). */
+    private const DEFAULT_SLIVER_THRESHOLD = 0.05;
+
     private const SURVEY_DERIVED_SOURCES = [
         'SURVEY_COORDINATES',
         'COMPUTED_FROM_TECHNICAL_DESCRIPTION',
@@ -41,11 +45,13 @@ class ParcelController
     public function __construct(
         PDO $pdo,
         AuditWriter $audit,
-        ?\App\Survey\Application\SurveyValidationService $validationService = null
+        ?\App\Survey\Application\SurveyValidationService $validationService = null,
+        ?\App\Parcels\Domain\OverlapDetector $overlapDetector = null
     ) {
         $this->pdo = $pdo;
         $this->audit = $audit;
         $this->validationService = $validationService;
+        $this->overlapDetector = $overlapDetector;
     }
 
     private function resolveUser(Request $request): int
@@ -452,6 +458,25 @@ class ParcelController
 
         if (array_key_exists('status', $body)) {
             $this->assertStatus((string) $body['status']);
+            // Interim workflow guard (FR-135a / FR-136; audit G-1). Until the
+            // TASK-100 state machine routes every transition, PATCH /parcels/{id}
+            // must not become a second, unguarded submit/approve path: only the
+            // DRAFT <-> RETURNED attribute-edit loop is writable here. DRAFT ->
+            // SUBMITTED goes through the validated POST /parcels/{id}/submit
+            // (ValidationController::submit); SUPERSEDED is set exclusively by a
+            // committed split/consolidation (FR-135a).
+            if ((string) $body['status'] !== $row['status']) {
+                $from = (string) $row['status'];
+                $to = (string) $body['status'];
+                $editable = ['DRAFT', 'RETURNED'];
+                if (!in_array($from, $editable, true) || !in_array($to, $editable, true)) {
+                    throw new ApiError(
+                        'INVALID_STATE',
+                        sprintf('Status transitions are workflow-controlled; use the workflow endpoints (cannot PATCH %s -> %s).', $from, $to),
+                        400
+                    );
+                }
+            }
             $sets[] = 'status = :status';
             $params[':status'] = (string) $body['status'];
         }
@@ -626,6 +651,44 @@ class ParcelController
      * DELETE /parcels/{id}?reason=...  | body { reason, change_reason }
      * Soft delete only: sets deleted_at, bumps version. Reason is mandatory.
      */
+    /**
+     * GET /parcels/{id}/overlaps
+     *
+     * TASK-097 — neighbour/overlap detection for a single parcel (FR-061):
+     * GIST-indexed ST_Intersects against non-archived/non-superseded parcels,
+     * geodesic overlap area in m², sliver classification, self excluded.
+     * Optional ?sliver_threshold_sqm= overrides the default 0.05 m².
+     */
+    public function overlaps(Request $request, Response $response, array $args): Response
+    {
+        $uid = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+        $pid = $this->parseUuid($args, 'id');
+
+        if ($this->overlapDetector === null) {
+            throw new ApiError('INTERNAL_ERROR', 'Overlap detector is not available.', 500);
+        }
+
+        $exists = $this->pdo->prepare('SELECT 1 FROM app.parcels WHERE id = :pid AND deleted_at IS NULL');
+        $exists->execute([':pid' => $pid]);
+        if ($exists->fetchColumn() === false) {
+            throw new ApiError('NOT_FOUND', 'Parcel not found', 404);
+        }
+
+        $qp = $request->getQueryParams();
+        $threshold = self::DEFAULT_SLIVER_THRESHOLD;
+        if (isset($qp['sliver_threshold_sqm']) && $qp['sliver_threshold_sqm'] !== '') {
+            if (!is_numeric($qp['sliver_threshold_sqm']) || (float) $qp['sliver_threshold_sqm'] < 0) {
+                throw new ApiError('VALIDATION_FAILED', 'sliver_threshold_sqm must be a non-negative number', 400);
+            }
+            $threshold = (float) $qp['sliver_threshold_sqm'];
+        }
+
+        $result = $this->overlapDetector->detectOverlaps($pid, null, $threshold);
+
+        return Envelope::success($response, $result, 200);
+    }
+
     public function delete(Request $request, Response $response, array $args): Response
     {
         $uid  = $this->resolveUser($request);

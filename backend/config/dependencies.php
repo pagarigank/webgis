@@ -138,6 +138,7 @@ return [
     \App\Survey\Http\ValidationController::class => \DI\autowire(\App\Survey\Http\ValidationController::class)
         ->constructorParameter('audit', \DI\get(AuditWriter::class)),
     \App\Parcels\Http\ParcelController::class => \DI\autowire(\App\Parcels\Http\ParcelController::class)
-        ->constructorParameter('validationService', \DI\get(\App\Survey\Application\SurveyValidationService::class)),
+        ->constructorParameter('validationService', \DI\get(\App\Survey\Application\SurveyValidationService::class))
+        ->constructorParameter('overlapDetector', \DI\get(\App\Parcels\Domain\OverlapDetector::class)),
 ];
 

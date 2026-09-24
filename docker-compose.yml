@@ -13,7 +13,6 @@ services:
       - php-fpm
     networks:
       - app-network
-
   php-fpm:
     build:
       context: .
@@ -49,26 +48,10 @@ services:
     networks:
       - app-network
 
-  worker:
-    build:
-      context: .
-      dockerfile: docker/php/Dockerfile
-    command: php /var/www/html/bin/worker.php
-    volumes:
-      - ./backend:/var/www/html
-      - documents:/var/www/html/storage/documents
-    environment:
-      - APP_ENV=${APP_ENV:-local}
-      - APP_DEBUG=${APP_DEBUG:-true}
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=${DB_NAME:-webgis}
-      - DB_USER=${DB_USER:-app_rw}
-      - DB_PASS=${DB_PASS:-change_me_in_production}
-    networks:
-      - app-network
-    depends_on:
-      - postgres
+  # Audit partition rollover worker (TASK-025) is NOT yet implemented
+  # (backend/bin/worker.php does not exist — audit G-4); re-add a worker
+  # service here only once that script ships, or partitions must be created
+  # manually per the TASK-020 follow-up note.
 
 volumes:
   pgdata:

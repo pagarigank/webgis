@@ -9,6 +9,7 @@ import { TechnicalDescriptionTab } from '../../survey/components/TechnicalDescri
 import { TiePointTab } from '../../survey/components/TiePointTab';
 import { ComputationPanel } from '../../survey/components/ComputationPanel';
 import { ValidationPanel } from '../../survey/components/ValidationPanel';
+import { validationApi } from '../../survey/api/validationApi';
 import { ParcelPreviewMap } from '../components/ParcelPreviewMap';
 import { ParcelMeta } from '../components/badges';
 import { Modal } from '../../../components/dialogs/Modal';
@@ -94,7 +95,11 @@ export function ParcelEditorPage() {
         setSaveState(SAVE_SAVING);
         setConflictMessage(null);
         try {
-            await parcelApi.update(id, { status: 'SUBMITTED', change_reason: SUBMIT_REASON }, parcel.version);
+            // Audit G-1: submit through the validated workflow endpoint
+            // (POST /parcels/{id}/submit) so the TASK-098 submission guard runs
+            // and warnings are carried forward — never via PATCH (which no
+            // longer accepts status transitions).
+            await validationApi.submitParcel(id, SUBMIT_REASON);
             setFormDirty(false);
             setSaveState(SAVE_SAVED);
             setSavedAt(nowLabel());
@@ -102,8 +107,8 @@ export function ParcelEditorPage() {
         } catch (err) {
             setSaveState(SAVE_IDLE);
             if (axios.isAxiosError(err)) {
-                const data = err.response?.data as { success?: boolean; message?: string; detail?: string } | undefined;
-                setConflictMessage(data?.detail ?? data?.message ?? err.message);
+                const data = err.response?.data as { success?: boolean; message?: string; detail?: string; error?: { message?: string } } | undefined;
+                setConflictMessage(data?.error?.message ?? data?.detail ?? data?.message ?? err.message);
             } else {
                 setConflictMessage('Workflow action failed.');
             }
