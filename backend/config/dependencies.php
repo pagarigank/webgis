@@ -148,6 +148,16 @@ return [
         ->constructorParameter('audit', \DI\get(\App\Audit\AuditWriter::class)),
     \App\Parcels\Http\WorkflowController::class => \DI\autowire(\App\Parcels\Http\WorkflowController::class),
 
+    // ---- Phase 15 Split, consolidation, lineage (TASK-111..115) ----
+    \App\Parcels\Domain\SplitValidator::class => \DI\autowire(\App\Parcels\Domain\SplitValidator::class),
+    \App\Parcels\Application\SplitService::class => \DI\autowire(\App\Parcels\Application\SplitService::class)
+        ->constructorParameter('audit', \DI\get(AuditWriter::class)),
+    \App\Parcels\Http\SplitController::class => \DI\autowire(\App\Parcels\Http\SplitController::class),
+    \App\Parcels\Domain\ConsolidationValidator::class => \DI\autowire(\App\Parcels\Domain\ConsolidationValidator::class),
+    \App\Parcels\Application\ConsolidationService::class => \DI\autowire(\App\Parcels\Application\ConsolidationService::class)
+        ->constructorParameter('audit', \DI\get(AuditWriter::class)),
+    \App\Parcels\Http\ConsolidationController::class => \DI\autowire(\App\Parcels\Http\ConsolidationController::class),
+
     // ---- Phase 14 History, versioning UI, documents ----
     \App\Parcels\Domain\VersionDiffService::class => \DI\autowire(\App\Parcels\Domain\VersionDiffService::class),
     \App\Parcels\Http\HistoryTimelineController::class => \DI\autowire(\App\Parcels\Http\HistoryTimelineController::class),

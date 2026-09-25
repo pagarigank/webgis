@@ -28,7 +28,9 @@ class ParcelSchemaTest extends TestCase
         ");
 
         $this->expectException(PDOException::class);
-        $this->expectExceptionMessageMatches('/ck_no_self/');
+        // Migration 20260925000001 adds the VR-45 cycle-guard trigger, which
+        // fires before the ck_no_self CHECK backstop.
+        $this->expectExceptionMessageMatches('/VR-45/');
 
         // Try to insert a self-referencing relationship
         $this->pdo->exec("

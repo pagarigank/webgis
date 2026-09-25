@@ -2,9 +2,9 @@
 
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
-**Current phase:** PHASE 14 — History, versioning UI, documents
-**Implementation status:** IN PROGRESS — Phases 1 through 12 (001–099) + Phase 13 TASK-100/101 (workflow engine) + TASK-102 (approved-edit cycle) + Phase 14 TASK-104/105/106/107/108 (timeline, diff, restore, documents) shipped; remaining: TASK-103 (workflow UI + reviewer inbox), version-compare/history UI pass
-**Last updated:** 2026-09-24 (TASK-102 approved-edit cycle shipped; 420 backend tests green)
+**Current phase:** PHASE 15 — Split, consolidation, lineage (backend shipped; UI pending)
+**Implementation status:** IN PROGRESS — Phases 1 through 14 (001–108) + TASK-103 (workflow UI, reviewer inbox, notifications — Docker-verified) + Phase 15 backend TASK-111/112/113/114/115/119/120 (split, consolidation, lineage, historical filters, TD-derived split) shipped and verified on the Docker stack; full suite 471 backend tests / 2086 assertions green, 65 frontend Vitest green, tsc/vite clean. Remaining: TASK-116/117/118 (split/consolidation/lineage UI), TASK-104a (version-compare/history UI pass), then Phase 16 (import/export).
+**Last updated:** 2026-09-25 (Phase 15 backend + TASK-103 verified on Docker — 471 tests green; fixed parcel_operations.idempotency_key, VR-45 cycle-guard trigger applied, consolidation union/code-order bugs, split-line BOX regex, rate-limit bucket isolation in tests)
 
 ---
 
@@ -121,7 +121,22 @@
 | 100 | TASK-099 | Validation panel UI | 098, 093 | DONE | ValidationPanel.tsx, FR-125 checklist, FR-126 expanded warnings, FR-127 note, overlap table |
 | 101 | TASK-100 | Workflow engine | 020, 030 | DONE | Table-driven engine, FR-135 matrix seeded, guards/permissions/reasons/notifications; 390 tests green |
 | 102 | TASK-102 | Editing approved records (FR-141) | 101, 069 | DONE | REOPEN transition + approved-edit cycle in PATCH; approved version preserved; 420 tests green |
-| 103 | TASK-103 | Workflow UI, reviewer inbox, notifications | 101, 071 | TODO | action bar with permitted transitions only, reason/comment prompts, reviewer inbox, notification bell |
+| 103 | TASK-103 | Workflow UI, reviewer inbox, notifications | 101, 071 | DONE | WorkflowActionBar (allowed transitions only, FR-103 reason/comment gates), GET /notifications + mark-read, NotificationBell, /parcels/inbox; backend suite Docker-verified (471 green) |
+| 104 | TASK-104 | Merged history timeline API | 069, 100 | DONE | GET /parcels/{id}/timeline + JSON bundle export (versions + audit + approvals) |
+| 105 | TASK-105 | Version compare + geometry diff | 104 | DONE | VersionDiffService (vertex pairing: moved/added/removed) + GET /parcels/{id}/versions/{v}/compare |
+| 106 | TASK-106 | Version restore | 105 | DONE | Additive restore, If-Match, monotonic versions, geometry round-trip verified |
+| 107 | TASK-107 | Document upload + validation | 020 | DONE | Magic-byte/MIME/size guards, SHA-256 de-dup, randomised storage keys; migration 20260924000001 |
+| 108 | TASK-108 | Signed document downloads | 107 | DONE | HMAC single-use tokens, classification enforcement, restricted downloads audited |
+| 111 | TASK-111 | Split validation rules (VR-35…VR-39) | 019, 089 | DONE | SplitValidator: per-rule fixtures; alias fix overlap_sqm→overlap_area_sqm; hull-based VR-42 metric |
+| 112 | TASK-112 | Split service (dry run + commit) | 111, 069 | DONE | Four methods, idempotency, failAfterChildren seam; BOX-regex fix in tests; ON CONFLICT version guard |
+| 113 | TASK-113 | Consolidation validation rules (VR-40…VR-44) | 111 | DONE | ConsolidationValidator: probe/measureOverlaps, SRID-gated geography cast, VR-44 before spatial rules |
+| 114 | TASK-114 | Consolidation service (dry run + commit) | 113 | DONE | Input-order parents, CTE-based union insert, dry-run Polygon payload, failAfterNewParcel seam |
+| 115 | TASK-115 | Lineage API | 112, 114 | DONE | Generation-depth BFS (siblings at depth 1), truncation flags, VR-45 cycle-guard trigger in migration 20260925000001 |
+| 116 | TASK-116 | Split UI | 112, 071 | TODO | |
+| 117 | TASK-117 | Consolidation UI | 114, 116 | TODO | |
+| 118 | TASK-118 | Lineage view | 115 | TODO | |
+| 119 | TASK-119 | Historical record handling | 115 | DONE | Parcel list excludes SUPERSEDED/ARCHIVED by default; Api/HistoricalFilterTest |
+| 120 | TASK-120 | Split/consolidation from survey data | 112, 090 | DONE | TD-derived children carry COMPUTED_FROM_TECHNICAL_DESCRIPTION + own closure; uncomputed TD rejected 400 |
 
 Phase 12 (Validation, tasks 096–099) has been audited and completed on 2026-09-24. Survey validation service (`SurveyValidationService.php`), spatial overlap detector (`OverlapDetector.php`), submission guards (`ValidationController::submit`), and full frontend validation panel UI (`ValidationPanel.tsx`) with FR-125 12-point checklist, FR-126 expanded warnings, FR-127 mandatory validation aid note, and overlap analysis table have been fully implemented, tested, and verified. All 366 backend PHPUnit tests pass and all 52 frontend Vitest tests pass with clean production bundle build. Next active task is TASK-100 (workflow engine).
 

@@ -1,15 +1,15 @@
-**TASK-103 — Workflow UI, reviewer inbox, notifications**
-Dep: 101, 071 · Files: `frontend/src/features/parcels/` · Status: TODO
-Do: action bar with permitted transitions only, reason/comment prompts, reviewer inbox, notification bell.
-AC: unavailable transitions are absent; a return requires a reason before the request is sent.
-Test: Playwright two-role approval flow.
-Entry criteria: TASK-100/101 (engine + transitions API), TASK-102 (approved-edit cycle), and Phase 14 TASK-104..108 are DONE. Next: TASK-103 (workflow UI + reviewer inbox + notification bell), then the version-compare/history UI pass (version-compare + geometry-diff map overlay + timeline rendering, deferred from TASK-105).
+**TASK-121 — OGR adapter and format detection** (Phase 16 opener)
+Dep: 007 · Files: `backend/src/Core/Geo/` · Status: TODO
+Do: `ogr2ogr` subprocess wrapper with timeouts, sandboxed temp dirs, and format probing; never invoked inside an open transaction.
+AC: a malformed archive fails cleanly with a useful message; no shell injection is possible.
+Test: Unit/OgrAdapterTest, Integration/OgrFormatTest.
 
-Backend API surface for TASK-103 (all shipped and tested):
-- `GET /parcels/{id}/transitions` — available actions annotated with `allowed` for the caller (unavailable actions are absent, FR-103).
-- `POST /parcels/{id}/transitions` — `{ action, reason, comment }`; REOPEN (approved-edit) is a seeded row appearing for APPROVED parcels with `parcel.approve`.
-- `GET /parcels/{id}/transitions/history` — approval actions, newest first.
-- `GET /notifications` surface: engine writes `app.notifications` (type `WORKFLOW_<ACTION>`) to the parcel creator on every transition; a read/unread bell endpoint may still be needed (check `notifications` routes before assuming).
-- `requires_reason` / `requires_comment` per action drive the reason prompt (FR-137).
+Entry criteria: Phase 15 backend (TASK-111/112/113/114/115/119/120) verified on the Docker stack — full suite 471 backend tests / 2086 assertions green; frontend 65 Vitest + tsc + vite clean. Committed 2026-09-25 together with TASK-103 verification (workflow UI / reviewer inbox / notifications).
 
-Completed (2026-09-24): TASK-100/101 (workflow engine + transitions API); TASK-102 approved-edit cycle (REOPEN transition, approved-version preservation, configured target state via WORKFLOW_APPROVED_EDIT_TARGET_STATE); TASK-104 merged history timeline; TASK-105 version compare + geometry diff (backend); TASK-106 restore verified; TASK-107 document upload/validation/de-dup; TASK-108 signed single-use downloads with classification enforcement. Full suite: 420 backend tests green.
+First steps for TASK-121:
+1. Check whether GDAL `ogr2ogr`/`ogrinfo` exists inside the php-fpm image (`docker compose exec php-fpm sh -c "command -v ogr2ogr"`). If absent, decide: add to the Dockerfile vs pure-PHP probing with graceful degradation (the task's AC only requires clean failure + no shell injection, so a pure-PHP probe with an ogr2ogr fast-path is acceptable if GDAL is not installable).
+2. `backend/src/Core/Geo/OgrAdapter.php` — command builder (argument array via `escapeshellarg`/proc_open, never string concatenation), timeout (proc_terminate + partial-output discard), sandboxed temp dir (`sys_get_temp_dir()` + random subdir, removed in finally), structured result (format, layer list, feature count, CRS, error message).
+3. Format detection: magic bytes/extension probe first (GeoJSON/CSV/ZIP shapefile/GPKG/KML), OGR probe second; malformed archives must fail with a useful message, never a PHP warning/500.
+4. Tests: `Unit/OgrAdapterTest` (command construction, injection attempts, timeout, temp-dir cleanup — mockable executor so GDAL is not needed for unit tests), `Integration/OgrFormatTest` (real fixtures if GDAL is present in the image; skip gracefully with a marked-skipped note when it is not).
+
+Previous task (done 2026-09-25): TASK-103 + Phase 15 backend — see accomplish.md. TASK-104a (version-compare/history UI pass) and TASK-116/117/118 (split/consolidation/lineage UI) remain queued behind Phase 16 unless the sponsor reorders.

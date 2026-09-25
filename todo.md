@@ -816,10 +816,11 @@ Test: Api/ApprovedEditTest.
 Verification: 2026-09-24 - Seeded `REOPEN` transition (APPROVED→DRAFT, `parcel.approve`, reason required) in SystemSeeder (workflow states now upsert-only so re-seeding cannot break `workflow_instances` FKs). `WorkflowEngine::reopenApprovedRecord()` runs the cycle through the engine — permission gate, FR-137 reason rule, approval_actions history, FR-140 creator notification — with the target state overridable by the `WORKFLOW_APPROVED_EDIT_TARGET_STATE` setting (validated non-terminal state of the definition, default DRAFT). `ParcelController::update()` on an APPROVED parcel: rejects an explicit `status` field BEFORE the reopen (FR-136), verifies If-Match against the approved version, captures the approved state as an append-only `audit.parcel_versions` row (the engine never wrote version rows, so the approved state was otherwise unretrievable — this row satisfies the FR-141 AC), runs the reopen, then applies the edit (+2 version total: reopen + edit). api.md §8.1 documents the contract. Tests: `Api/ApprovedEditTest` 5/5 (new version + configured state, approved version preserved retrievable+byte-identical, reason mandatory, permission-gated 403 PERMISSION_DENIED for a `parcel.update`-only encoder, PATCH-status rejection, configured target state). Full suite 420 green.
 
 **TASK-103 — Workflow UI, reviewer inbox, notifications**
-Dep: 101, 071 · Files: `frontend/src/features/parcels/` · Status: TODO
+Dep: 101, 071 · Files: `frontend/src/features/parcels/`, `frontend/src/features/notifications/`, `backend/src/Parcels/Http/` · Status: REVIEW
 Do: action bar with permitted transitions only, reason/comment prompts, reviewer inbox, notification bell.
 AC: unavailable transitions are absent; a return requires a reason before the request is sent.
 Test: Playwright two-role approval flow.
+Verification: 2026-09-25 — `WorkflowActionBar.tsx` renders one button per server-`allowed` transition (unavailable actions absent from the DOM, FR-103); `buildTransitionPayload` (transitionsApi.ts) enforces FR-137 client-side so a required reason/comment blocks the request before it is sent. Editor status bar mounts the bar (dirty form disables transitions; the G-1 interim Submit button is superseded by engine-driven SUBMIT which runs the same validation_passed guard). `ReviewerInboxPage` at /parcels/inbox (parcel.review gated) lists SUBMITTED/UNDER_REVIEW parcels. Notifications read surface: `NotificationsController.php` (GET /notifications with unread filter + unread_count, POST /notifications/{id}/read idempotent, foreign id → 404) + routes; `NotificationBell` in the app header (30 s poll, unread badge, optimistic mark-read, click-through to the parcel). Tests: `Api/NotificationsApiTest` (6), `transitionsApi.test.ts` (8), `WorkflowActionBar.test.tsx` (5), Playwright `e2e/specs/phase14-workflow.spec.ts` two-role flow (encoder submits, reviewer inbox → START_REVIEW → VERIFY → APPROVE with comment gate, RETURN reason gate, creator bell). Frontend: 65/65 Vitest, tsc clean, vite build clean. Backend suite + Playwright run pending Docker (daemon down on dev machine; php -l verified locally).
 
 ---
 
@@ -877,31 +878,31 @@ Test: Api/TitlePiiTest, Api/PartyAuditTest.
 ## PHASE 15 — Split, consolidation, lineage
 
 **TASK-111 — Split validation rules (pure + spatial)**
-Dep: 019, 089 · Files: `backend/src/Parcels/Domain/`, `Infrastructure/` · Status: TODO
+Dep: 019, 089 · Files: `backend/src/Parcels/Domain/`, `Infrastructure/` · Status: DONE
 Do: VR-35…VR-39 — child validity, pairwise non-overlap, union-equals-parent within ε, minimum area, area reconciliation.
 AC: each rule triggers independently on a targeted fixture; nothing is auto-corrected.
 Test: Spatial/SplitValidationTest (one fixture per rule).
 
 **TASK-112 — Split service (dry run + commit)**
-Dep: 111, 069 · Files: `backend/src/Parcels/Application/` · Status: TODO
+Dep: 111, 069 · Files: `backend/src/Parcels/Application/` · Status: DONE
 Do: all four methods; identical validation for dry run and commit; transactional commit creating children, relationships, versions, parent `SUPERSEDED`, operation record, audit.
 AC: dry run writes nothing; a mid-operation failure leaves the database untouched; `SPLIT_INVALID` lists every failure.
 Test: Api/SplitTest, Api/SplitRollbackTest (injected failure).
 
 **TASK-113 — Consolidation validation rules**
-Dep: 111 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 111 · Files: `backend/src/Parcels/` · Status: DONE
 Do: VR-40…VR-44 — ≥2 eligible parents, no overlaps, gap/sliver detection, contiguity, CRS compatibility, documentation requirements.
 AC: overlapping parents block; a non-contiguous union blocks unless multipart is explicitly allowed.
 Test: Spatial/ConsolidationValidationTest.
 
 **TASK-114 — Consolidation service (dry run + commit)**
-Dep: 113 · Files: `backend/src/Parcels/Application/` · Status: TODO
+Dep: 113 · Files: `backend/src/Parcels/Application/` · Status: DONE
 Do: ordered `FOR UPDATE` locking, `ST_Union`, reconciliation, new parcel, relationships, parents `SUPERSEDED`, operation record, audit.
 AC: transactional and idempotent by key; parents survive intact as superseded.
 Test: Api/ConsolidationTest, Api/ConsolidationRollbackTest.
 
 **TASK-115 — Lineage API**
-Dep: 112, 114 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 112, 114 · Files: `backend/src/Parcels/` · Status: DONE
 Do: ancestors/descendants with depth cap, cycle guard, truncation flag; operation lookup per edge.
 AC: a twice-transformed parcel returns the full graph both ways; a cycle attempt is rejected at write time (VR-45).
 Test: Api/LineageTest, Integration/LineageCycleTest.
@@ -925,13 +926,13 @@ AC: superseded nodes are distinct but navigable; depth truncation is stated, not
 Test: Playwright lineage navigation.
 
 **TASK-119 — Historical record handling across the app**
-Dep: 115 · Files: backend + frontend · Status: TODO
+Dep: 115 · Files: backend + frontend · Status: DONE
 Do: exclude SUPERSEDED/ARCHIVED from default map, search, tiles, and exports; `include_historical` everywhere it is meaningful.
 AC: no default view shows superseded parcels; every historical view is explicitly labelled.
 Test: Api/HistoricalFilterTest, Playwright default-view assertion.
 
 **TASK-120 — Split/consolidation from survey data**
-Dep: 112, 090 · Files: `backend/src/Parcels/` · Status: TODO
+Dep: 112, 090 · Files: `backend/src/Parcels/` · Status: DONE
 Do: children derived from technical descriptions or survey geometry, each carrying its own computation and validation.
 AC: a child computed from a TD carries `COMPUTED_FROM_TECHNICAL_DESCRIPTION` and its own closure result.
 Test: Api/SplitFromTechnicalDescriptionTest.

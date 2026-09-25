@@ -142,9 +142,11 @@ class ParcelController
             $params[':status'] = $status;
         }
 
-        // TASK-070 AC: only include_historical=true exposes SUPERSEDED parcels.
+        // TASK-070/TASK-119 AC: only include_historical=true exposes
+        // historical parcels (SUPERSEDED and ARCHIVED). Default views never
+        // show them; every historical view is explicitly opted into.
         if (!$includeHistorical) {
-            $where[] = "p.status <> 'SUPERSEDED'";
+            $where[] = "p.status NOT IN ('SUPERSEDED', 'ARCHIVED')";
         }
 
         if ($psgc !== null) {

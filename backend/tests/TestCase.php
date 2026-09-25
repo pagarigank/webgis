@@ -17,6 +17,21 @@ class TestCase extends PHPUnitTestCase
     private ?\Psr\Container\ContainerInterface $cachedContainer = null;
     private ?\PDO $cachedPdo = null;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Cross-class isolation: API tests share one identity, so the rate
+        // limiter's shared buckets (general 300/min, lineage 10/min, …)
+        // would otherwise 429 late-running classes in a full-suite pass.
+        // Tests that exercise the limiter itself build their own middleware
+        // with dedicated buckets and are unaffected by this truncation.
+        try {
+            $this->pdo()->exec('DELETE FROM app.rate_limit_entries');
+        } catch (\PDOException) {
+            // Table may not exist in narrowly-scoped unit-test runs.
+        }
+    }
+
     /** Shared container so a test class reuses one DI build. */
     protected function container(): \Psr\Container\ContainerInterface
     {

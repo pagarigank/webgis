@@ -110,6 +110,16 @@ return function (App $app) {
         $group->get('/parcels/{id}/overlaps', \App\Parcels\Http\ParcelController::class . ':overlaps')
               ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
 
+        // ---- Split, consolidation, lineage (Phase 15, TASK-111..115) ----
+        $group->post('/parcels/{id}/split', \App\Parcels\Http\SplitController::class . ':split')
+              ->add($parcelAuthed('parcel.split'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels/consolidate', \App\Parcels\Http\ConsolidationController::class . ':consolidate')
+              ->add($parcelAuthed('parcel.consolidate'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/{id}/lineage', \App\Parcels\Http\LineageController::class . ':lineage')
+              ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/operations/{operation_id:[0-9]+}', \App\Parcels\Http\OperationsController::class . ':get')
+              ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
+
         // ---- Workflow engine (Phase 13, TASK-100) ----
         // Permissions are enforced per-transition inside WorkflowEngine from
         // the workflow_transitions table; the route middleware only requires
@@ -120,6 +130,15 @@ return function (App $app) {
               ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
         $group->get('/parcels/{id}/transitions/history', \App\Parcels\Http\WorkflowController::class . ':history')
               ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+
+        // ---- Notifications (Phase 13, TASK-103; api.md §12) ----
+        // A notification is private to its recipient: user scoping happens in
+        // the controller's WHERE clause (no RLS on app.notifications), so the
+        // routes only require authentication.
+        $group->get('/notifications', \App\Parcels\Http\NotificationsController::class . ':list')
+              ->add(AuthenticateMiddleware::class);
+        $group->post('/notifications/{id:[0-9]+}/read', \App\Parcels\Http\NotificationsController::class . ':markRead')
+              ->add(AuthenticateMiddleware::class);
 
         // ---- Phase 12 Survey Validation & Submission Guards (TASK-096..098) ----
         $group->post('/parcels/{id}/validate', \App\Survey\Http\ValidationController::class . ':validate')
