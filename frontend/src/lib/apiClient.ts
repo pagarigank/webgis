@@ -2,6 +2,11 @@ import axios from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import { tokenStore } from '../auth/tokenStore';
 import { createRefreshQueue } from './refreshQueue';
+// `dead` distinguishes "the server rejected the session" from "the refresh could
+// not be completed right now". Only the former ends the session; a throttled,
+// offline, or briefly failing refresh must leave the user signed in so a later
+// request can try again.
+import { classifyRefreshError, shouldEndSession, type RefreshOutcome } from './refreshOutcome';
 
 /**
  * The single Axios instance for the whole SPA (ADR-13, frontend.md §12).
@@ -14,15 +19,17 @@ import { createRefreshQueue } from './refreshQueue';
  * - `{ success, data }` envelope unwrapping and typed error mapping;
  * - 401 → silent refresh (single flight, once per request) → retry the original.
  *
- * After a failed refresh the session is treated as dead until a real login:
- * `refreshFailed` stops the retry loop from re-entering the queue (e.g. a
- * TanStack query retry that would otherwise hit the refresh endpoint again).
+ * A refresh is retried per attempt rather than gated on a sticky failure flag.
+ * The session ends only when the refresh endpoint itself rejects the session;
+ * a throttled or briefly failing refresh leaves the user signed in so the next
+ * request can recover.
  */
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 interface RetryConfig extends InternalAxiosRequestConfig {
   _authRetried?: boolean;
+  _transientRetried?: boolean;
 }
 
 interface ApiEnvelope<T = unknown> {
@@ -38,7 +45,7 @@ const rawAuth = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-async function performRefresh(): Promise<boolean> {
+async function performRefresh(): Promise<RefreshOutcome> {
   try {
     const resp = await rawAuth.post('/auth/refresh', null, {
       headers: { 'X-CSRF-Token': tokenStore.resolveCsrfToken() ?? '' },
@@ -46,7 +53,7 @@ async function performRefresh(): Promise<boolean> {
     const envelope = resp.data as ApiEnvelope<{ access_token: string } | undefined>;
     if (envelope.success !== true || !envelope.data?.access_token) {
       tokenStore.setRefreshFailed(true);
-      return false;
+      return { ok: false, dead: true };
     }
     tokenStore.setAccessToken(envelope.data.access_token);
     const csrf = resp.headers['x-csrf-token'];
@@ -54,14 +61,20 @@ async function performRefresh(): Promise<boolean> {
       tokenStore.setCsrfToken(csrf);
     }
     tokenStore.setRefreshFailed(false);
-    return true;
-  } catch {
-    tokenStore.setRefreshFailed(true);
-    return false;
+    return { ok: true };
+  } catch (err) {
+    // A rejected session is terminal. A throttled (429) or briefly failing
+    // refresh is not: it must not end the session, and it must not stop other
+    // requests from retrying later. Only latch the terminal case.
+    const outcome = classifyRefreshError(err);
+    if (outcome.dead) {
+      tokenStore.setRefreshFailed(true);
+    }
+    return outcome;
   }
 }
 
-const refreshQueue = createRefreshQueue<boolean>(performRefresh);
+const refreshQueue = createRefreshQueue<RefreshOutcome>(performRefresh);
 
 const apiClient = axios.create({
   baseURL,
@@ -109,24 +122,48 @@ apiClient.interceptors.response.use(
     const url: string = config?.url ?? '';
     const isAuthEndpoint = /^\/auth\//.test(url);
 
-    if (
-      status === 401 &&
-      !isAuthEndpoint &&
-      !tokenStore.getRefreshFailed() &&
-      config &&
-      config._authRetried !== true
-    ) {
+    if (status === 401 && !isAuthEndpoint && config && config._authRetried !== true) {
       config._authRetried = true;
-      const refreshed = await refreshQueue();
-      if (refreshed) {
+
+      // A dead session is latched so it cannot start a refresh storm: without
+      // it, every subsequent 401 retries the refresh, each attempt presents the
+      // already-revoked cookie, and the page tears itself down. A transient
+      // failure does not latch, so throttling or a network blip still recovers
+      // on the next request. The latch is per page load, which is what makes it
+      // safe: it cannot outlive the document.
+      if (tokenStore.getRefreshFailed()) {
+        window.dispatchEvent(new Event('auth:unauthorized'));
+        return Promise.reject(error);
+      }
+
+      let outcome = await refreshQueue();
+      if (outcome.ok) {
         return apiClient(config);
       }
-    }
 
-    // If we get a 401 and we are not an auth endpoint, and the refresh failed or wasn't attempted,
-    // dispatch an event so the UI can instantly evict the user.
-    if (status === 401 && !isAuthEndpoint) {
-      window.dispatchEvent(new Event('auth:unauthorized'));
+      // A transient failure is not this request's fault, so it gets one more
+      // bounded attempt after a short pause. Without it, one throttled or
+      // briefly failing refresh failed the request outright even though a
+      // moment later the refresh would have succeeded — and because components
+      // that query during the cold-boot window (basemaps and notifications on
+      // /map) issue their requests together and share a single flight, a single
+      // unlucky failure took out all of them at once.
+      if (!outcome.dead && config._transientRetried !== true) {
+        config._transientRetried = true;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        outcome = await refreshQueue();
+        if (outcome.ok) {
+          return apiClient(config);
+        }
+      }
+
+      // Only a refresh the server actually rejected ends the session, and the
+      // verdict is the *last* attempt: a first attempt that failed transiently
+      // and a second that was rejected must still evict. A throttled or briefly
+      // failing refresh leaves the user signed in, and the next request retries.
+      if (shouldEndSession(outcome)) {
+        window.dispatchEvent(new Event('auth:unauthorized'));
+      }
     }
 
     return Promise.reject(error);

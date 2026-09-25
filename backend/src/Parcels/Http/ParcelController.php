@@ -89,8 +89,8 @@ class ParcelController
             return null;
         }
         $code = trim($code);
-        if (!preg_match('/^\d{10,12}$/', $code)) {
-            throw new ApiError('VALIDATION_FAILED', "{$field} must be a 10-12 digit PSGC code", 400);
+        if (!preg_match('/^\d{9,12}$/', $code)) {
+            throw new ApiError('VALIDATION_FAILED', "{$field} must be a 9-12 digit PSGC code", 400);
         }
         return $code;
     }

@@ -108,6 +108,53 @@ class RateLimitTest extends TestCase
         $this->assertNotEmpty($last->getHeaderLine('Content-Security-Policy'));
     }
 
+    public function testRefreshUsesItsOwnBucketAndIsNotThrottledByLoginTraffic(): void
+    {
+        $app = $this->getAppInstance();
+        $factory = new ServerRequestFactory();
+
+        // Exhaust the login bucket for this address.
+        for ($i = 0; $i < 10; $i++) {
+            $app->handle(
+                $factory->createServerRequest('POST', '/api/v1/auth/login', ['REMOTE_ADDR' => '127.0.0.12'])
+            );
+        }
+        $blockedLogin = $app->handle(
+            $factory->createServerRequest('POST', '/api/v1/auth/login', ['REMOTE_ADDR' => '127.0.0.12'])
+        );
+        $this->assertSame(429, $blockedLogin->getStatusCode(), 'login bucket should be full');
+
+        // The SPA refreshes on every cold page load, so refresh must not share
+        // the login budget. Sharing it logged real users out on a page reload.
+        $refresh = $app->handle(
+            $factory->createServerRequest('POST', '/api/v1/auth/refresh', ['REMOTE_ADDR' => '127.0.0.12'])
+        );
+        $this->assertNotSame(
+            429,
+            $refresh->getStatusCode(),
+            'refresh must not be throttled by requests to the login bucket'
+        );
+    }
+
+    public function testRefreshIsStillThrottledAtItsOwnHigherLimit(): void
+    {
+        $app = $this->getAppInstance();
+        $factory = new ServerRequestFactory();
+
+        $last = null;
+        for ($i = 0; $i < 61; $i++) {
+            $last = $app->handle(
+                $factory->createServerRequest('POST', '/api/v1/auth/refresh', ['REMOTE_ADDR' => '127.0.0.13'])
+            );
+        }
+
+        $this->assertSame(429, $last->getStatusCode(), 'refresh keeps its own ceiling');
+
+        $payload = json_decode((string) $last->getBody(), true);
+        $this->assertSame('RATE_LIMITED', $payload['error']['code']);
+        $this->assertSame('auth_refresh', $payload['error']['details']['bucket_class']);
+    }
+
     public function testDifferentAddressesUseSeparateBuckets(): void
     {
         $app = $this->getAppInstance();

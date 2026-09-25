@@ -70,9 +70,10 @@ export const ControlPointEditorPage: React.FC = () => {
       setStatus(data.status);
       setPsgcBarangay(data.psgc_barangay || '');
 
-      // Load dependents
+      // Load dependents. The endpoint returns { parcels, total }; a missing key
+      // must not leave the array state undefined (it is dereferenced below).
       const depRes = await controlPointApi.getDependents(id!);
-      setDependents(depRes.dependents);
+      setDependents(Array.isArray(depRes?.parcels) ? depRes.parcels : []);
     } catch (err: any) {
       setError(err?.message || 'Failed to load control point details.');
     } finally {

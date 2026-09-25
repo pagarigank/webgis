@@ -1248,3 +1248,47 @@ Test: n/a.
 Left untouched and verified correct: `FeatureGridPage.tsx:108` (raw `fetch`, bypasses `baseURL`), `MapShell.tsx:31` (MapLibre tile URL), `apiClient.ts:22` (the base definition), `crs.ts` (comments).
 
 **Why the audit missed it.** Static verification was green — `tsc` exit 0, 92/92 Vitest, `vite build`, `lint` 0 errors — and the Vitest suite mocks these API modules, so no test ever issued a real request. Only the browser console exposed it (`GET /api/v1/api/v1/control-points 404`). **Consequence for the Definition of Done:** a green `tsc`/Vitest/build gate is *not* evidence that a frontend route works. Any new API module must be verified by a request reaching the proxy, not only by static checks. This is the concrete cost of deferring the Playwright pass — the deferred check was the only check that could have caught it.
+
+---
+
+# UI ACCEPTANCE - Phases 5-15 (2026-09-26)
+
+The deferred browser pass. Findings are in `accomplish.md` -> "AUDIT 2"; the items below are what is still open.
+
+## Fixed in this pass
+
+| Severity | Defect | Surface | Fix |
+| --- | --- | --- | --- |
+| CRITICAL | Scope membership by `LIKE 'scope%'`; PSGC codes are prefix-nested but not prefix-complete, so a barangay scope reached every sibling barangay for read **and write** | every nested PSGC scope | `app.fn_psgc_scope_matches()` via `ref.psgc_areas.parent_code`; prefix match kept for custom codes only |
+| CRITICAL | `GLOBAL` scope satisfied the edit branch - a global viewer had write access | all authorization | `fn_user_can_see` / `fn_user_can_edit` split; `down()` restores them separately so rollback cannot reintroduce it |
+| HIGH | `auth` 10/60s covered `login`, `mfa/verify` **and** `refresh`; silent cold-boot refreshes spent the login budget and 429'd the sign-in form | login | new `auth_refresh` 60/60s class, classified before the `auth` fallback |
+| HIGH | Basemap 429 churn under cold boot (landing traffic + `/me` + silent refresh in one window) | map shell | transient vs terminal refresh handling + one bounded retry; E2E clears both auth buckets |
+| MEDIUM | PSGC validation required exactly 9 digits, rejecting valid 10-12 digit codes | parcel create/editor, survey plans, control points | widened to 9-12, backend and frontend |
+| MEDIUM | Consolidation previewed retype results from unsaved form state | `SplitTab` | reason required before preview |
+| LOW | Phase-15 spec seeded a 6-digit placeholder; wrong `package.json` E2E paths; sweep leaked control points; diagnosis probe script committed | test harness | `990101000`, paths corrected, teardown added, probe deleted |
+
+## Open - not fixed, by design
+
+| # | Item | Note |
+| --- | --- | --- |
+| U-1 | Layer-style delete endpoint | no delete surface for `layer_styles` |
+| U-2 | `POST /documents` + document link endpoint ungated | should require a document permission |
+| U-3 | `parcel.view` gate on the **mutating** validate endpoint | validate writes audit rows |
+| U-4 | `survey.view` gate on the **writing** CRS transform | |
+| U-5 | Remaining unimplemented `frontend.md` sec. 3 routes | mapped to TODO phase-tasks |
+| U-6 | Clickable "coming soon" parcel tabs | should be non-interactive until implemented |
+| U-7 | Pre-existing lint warnings | unchanged by this pass |
+| U-8 | Control-point label associations | labels not tied to the descriptions that use them |
+| U-9 | Seeded `XYZ` basemap provider emits an unsupported-licence warning | fixture should use a supported provider |
+| U-10 | PHPStan 502-error baseline | 23 test files share one `ContainerInterface|null` pattern; `src` 157. Pre-existing, not introduced here |
+
+## Known non-defects
+
+- `phase8-parcel-editor.spec.ts` failed one full run with a 90 s `locator.click` timeout and passes 3/3 in isolation. Load-induced on a single serial worker against a shared DB; recorded so a later run is not mistaken for a regression.
+- PHPStan's `PDOStatement|false` and `ContainerInterface|null` findings in `GeographicScopeTest` / `RlsTest` are the suite-wide pattern, not new.
+
+## Follow-up worth doing
+
+1. Rollback-test any future migration whose `down()` differs from its `up()` - applying it proves only half of the behaviour. `20260925000002` is the first one where that mattered.
+2. Do not defer the browser pass again. `apiClient` hard-reload 401 -> silent refresh -> retry is expected traffic by design; a QA harness must classify it as recovered rather than as a console failure, and the auth bucket cleanup must clear `auth_refresh` too or the harness manufactures the throttle it is testing.
+3. Consider asserting the `auth` / `auth_refresh` split in the client, not only in `RateLimitTest`, so a future bucket rename cannot silently re-merge them.

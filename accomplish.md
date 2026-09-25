@@ -417,3 +417,55 @@ Full cross-check of TASK-049..TASK-120 against `architecture.md`, `specification
 - **6 frontend fixes** against `frontend.md`: `/` now redirects to `/map` (sec. 3, map is the default landing surface); added a real 404 page + catch-all instead of rendering the home screen for unknown URLs; added the sec. 19 **left icon rail** (declarative, permission-filtered, absent-not-greyed, inline SVG following the existing convention - no new dependency); split `<AuthLayout>` out of `<AppLayout>` (sec. 4) so `/login` no longer renders the authenticated shell; fixed the double-active Parcels/Inbox nav state; fixed the "GIS Layers" admin tab gate (`gis.layer.create` -> `gis.layer.view`, which had hidden the layer list from read-only users); replaced raw permission string literals with the exported `permissions` constants.
 - **Verification**: backend `482 tests / 2131 assertions` OK (was 478); frontend `92 tests / 16 files` green; `tsc -b --noEmit` exit 0; `npm run build` ok; `npm run lint` 0 errors; PHPStan L8 `src` errors reduced `163 -> 157`.
 - **Open gaps recorded in `todo.md` (B-1..B-8)**, not fixed: missing layer-style delete, ungated `POST /documents` + link endpoint, `parcel.view` gate on the mutating validate endpoint, `survey.view` gate on the writing CRS transform, remaining unimplemented sec. 3 routes (all mapped to TODO phase-tasks), clickable "coming soon" parcel tabs, and pre-existing lint warnings.
+
+---
+
+# AUDIT 2 - Phases 5-15 UI acceptance pass (2026-09-26)
+
+Browser-driven acceptance over every phase 5-15 surface, run against the Docker stack with a single serial Playwright worker on a shared database. This is the pass that the previous entry explicitly deferred; it found three defects that no static check, build, or mocked unit test could reach.
+
+## 1. CRITICAL - geographic scope authorization (`database/migrations/20260925000002_fix_psgc_scope_hierarchy.php`)
+
+`app.fn_user_can_see` / `app.fn_user_can_edit` decided scope membership with `LIKE 'scope%'`. PSGC codes are hierarchical and *prefix-nested* but not *prefix-complete*: a BARANGAY code such as `990101000` is a 9-digit string that prefixes its own MUNICIPALITY and PROVINCE codes, so a barangay-scoped user matched every sibling barangay under the same city and was granted read **and write** across all of them. Conversely, nothing in the function consulted the actual hierarchy, so the relationship held or broke by string coincidence rather than by administrative fact.
+
+- Added `app.fn_psgc_scope_matches(target_code, scope_code)`, which resolves `ref.psgc_areas.parent_code` for BARANGAY/MUNICIPALITY/PROVINCE/REGION. The `LIKE` prefix match is retained *only* for custom codes, which have no row in the reference table.
+- Both authorization functions now delegate to the helper.
+- **Second, independent defect in the same functions:** the `GLOBAL` scope satisfied the edit branch, so a global *viewer* had write access everywhere. `down()` previously restored one shared template for both functions, which cannot express "sees everything, edits nothing" - the see-function then had to keep the write branch, which is how the global-write bug survived a rollback. `down()` now restores the two functions separately: `fn_user_can_see` drops the write branches entirely (all access levels pass), `fn_user_can_edit` requires `EDIT`/`APPROVE` and now also rejects `GLOBAL`. `CREATE OR REPLACE FUNCTION` cannot change a return type, which is why the see-function is narrowed rather than inverted in place.
+- The live `access_level` values are `EDIT`/`APPROVE`; the `WRITE` literal carried in the earlier migration is stale and was corrected.
+
+**Rollback was tested, not assumed.** `vendor/bin/phinx rollback -t 20260925000001` leaves `GeographicScopeTest` failing 4/11 - the hierarchy cases and the missing helper - while `testGlobalViewScopeSeesEverywhereButEditsNothing` still passes, which is precisely the proof that the corrected `down()` does not reintroduce global write. Re-applying returns 13 tests / 26 assertions green across `GeographicScopeTest` + `RlsTest`.
+
+Coverage: `tests/Integration/GeographicScopeTest.php` (11 tests / 23 assertions) - the new global-view test is written to be meaningful against *both* migration states. `tests/Integration/RlsTest.php` grants `USAGE` on `ref` and `SELECT` on `ref.psgc_areas` to the synthetic RLS role, without which the policy could not evaluate the hierarchy at all.
+
+## 2. HIGH - login-page refresh shared the login rate-limit bucket
+
+The `auth` class was a single 10-per-60s budget covering `login`, `mfa/verify` and `refresh`. The SPA refreshes silently on every cold boot, so ordinary browser reloads spent the budget reserved for credential submission and returned 429 to the sign-in form - a user who had never mistyped a password could be locked out of logging in. Split into `auth` (10/60s) and `auth_refresh` (60/60s), classified ahead of the generic `auth` fallback. `RateLimitTest` pins both the isolation and the new ceiling (7 tests / 20 assertions).
+
+## 3. HIGH - basemap flake under cold boot
+
+`MapShell` loads `/basemaps` on mount, so a hard reload fired the landing page's requests, the bootstrap `/me` call and the silent refresh inside one window; the resulting 429 churn appeared as an intermittent console error in the map shell.
+
+- Client: a terminal refresh rejection (401/403, or a malformed envelope) is distinguished from a transient one (429/5xx/network), and a transient failure is retried once before the session is evicted - a 429 must never log a user out. Previously any failure latched the session closed.
+- Harness: the E2E auth cleanup clears `auth\\_refresh:%` alongside `auth:%`. The suite had been re-creating the very throttling it was diagnosing.
+
+## 4. MEDIUM - validation and form-ordering defects
+
+- PSGC validation demanded exactly 9 digits, rejecting legitimate 10-12 digit codes on parcel create/editor, survey plans and control points. All 22 reference codes *are* 9 digits, which is why static review and the seeded fixtures both looked correct. Widened to 9-12 in the three backend controllers and two frontend pages.
+- `SplitTab` ran the retype preview against unsaved form state, so consolidation previewed a result the operator had not yet justified. Reordered to require the reason first.
+- The phase-15 spec seeded a 6-digit placeholder instead of a real reference hierarchy code; now `990101000`.
+- `frontend/package.json` E2E script paths were wrong.
+
+## 5. Verification
+
+- Backend: `495 tests / 2 159 assertions` OK, 2 deprecations (was 492 / 2 152; +3 new tests). A full accidental `phinx rollback -t 0` was executed during runner discovery and fully recovered by re-migrating; the 495-test green run is the post-recovery state.
+- Rollback gate: 4/11 failing against the rolled-back functions, green after re-apply.
+- Frontend: `92 tests / 16 files` green; `tsc -b --noEmit` exit 0; form-QA sweep 15 tests green.
+- Full Playwright: 40 tests; five of six consecutive runs fully green. The sixth failed an unrelated `locator.click` 90 s timeout in `phase8-parcel-editor.spec.ts`, which passes 3/3 in isolation - load-induced under a shared serial runner, not a functional regression.
+- Data hygiene: 0 active `E2E%` parcels, 0 active `E2E%` control points, 0 `PROBE%` rows after the run. The sweep now tears down its own control points; a diagnosis probe script was deleted.
+- PHPStan: 502-error pre-existing baseline (23 test files share one `ContainerInterface|null` pattern). `RateLimitMiddleware.php` contributes 0; no touched file gains an error.
+
+## 6. Open gaps recorded in `todo.md`, not fixed
+
+Layer-style delete; ungated `POST /documents` + link endpoint; `parcel.view` gate on the mutating validate endpoint; `survey.view` gate on the writing CRS transform; remaining unimplemented sec. 3 routes; clickable "coming soon" parcel tabs; pre-existing lint warnings; control-point label associations; unsupported seeded `XYZ` basemap provider warning.
+
+**Standing lesson:** the rate limiter, the authorization functions and the form validators were each individually plausible, each fully unit-covered, and all three wrong in a way only a real browser against a real database revealed. Two are security-relevant. And a migration whose `down()` does not match its `up()` has to be rollback-tested against the suite - applying it proves only half of it.

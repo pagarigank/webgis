@@ -60,6 +60,14 @@ class RlsTest extends TestCase
             \$\$;
             GRANT USAGE ON SCHEMA app TO test_app_rw;
             GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app TO test_app_rw;
+
+            -- The geographic data-scope helpers (app.fn_user_can_see /
+            -- app.fn_user_can_edit) resolve a parcel's PSGC code through
+            -- ref.psgc_areas, so a role subject to RLS needs read access to the
+            -- reference geography. Production roles app_rw / app_ro are granted
+            -- this in 20260920000010; the synthetic role must mirror them.
+            GRANT USAGE ON SCHEMA ref TO test_app_rw;
+            GRANT SELECT ON ref.psgc_areas TO test_app_rw;
         ");
     }
 

@@ -287,15 +287,38 @@ export function SplitTab({ parcel }: SplitTabProps) {
                         </div>
                     )}
 
+                    <div className="mb-3">
+                        <label className="form-label small fw-semibold" htmlFor="split-reason">
+                            Reason (required)
+                        </label>
+                        <input
+                            id="split-reason"
+                            data-testid="split-reason"
+                            className="form-control form-control-sm"
+                            value={form.reason}
+                            onChange={(e) => set('reason', e.target.value)}
+                            placeholder="e.g. Subdivision per plan Psd-000001"
+                        />
+                        <p className="small text-muted mt-1">Recorded on both the preview and the commit (FR-137).</p>
+                    </div>
+
                     <button
                         type="button"
                         className="btn btn-outline-primary btn-sm"
                         data-testid="split-preview"
-                        disabled={!hasGeometry || previewMutation.isPending}
+                        // A split requires a reason (FR-137), and the API rejects
+                        // the dry run without it. Gate Preview on the same
+                        // condition as commit, otherwise clicking it always
+                        // dead-ends in an FR-137 error that looks unrelated to
+                        // the inputs the user is actually editing.
+                        disabled={!hasGeometry || previewMutation.isPending || form.reason.trim() === ''}
                         onClick={() => previewMutation.mutate()}
                     >
                         {previewMutation.isPending ? 'Previewing…' : 'Preview split'}
                     </button>
+                    {hasGeometry && form.reason.trim() === '' && (
+                        <p className="small text-muted mt-2">Enter a reason to preview the split.</p>
+                    )}
                     {!hasGeometry && (
                         <p className="small text-danger mt-2" data-testid="split-no-geometry">
                             This parcel has no computed geometry yet — compute and accept a survey first.
@@ -367,17 +390,6 @@ export function SplitTab({ parcel }: SplitTabProps) {
                     <ValidationBlock checks={preview.validation.checks} warnings={preview.validation.warnings} />
 
                     <div className="mt-3">
-                        <label className="form-label small fw-semibold" htmlFor="split-reason">
-                            Reason (required for commit)
-                        </label>
-                        <input
-                            id="split-reason"
-                            data-testid="split-reason"
-                            className="form-control form-control-sm"
-                            value={form.reason}
-                            onChange={(e) => set('reason', e.target.value)}
-                            placeholder="e.g. Subdivision per plan Psd-000001"
-                        />
                         <button
                             type="button"
                             className="btn btn-primary btn-sm mt-2"

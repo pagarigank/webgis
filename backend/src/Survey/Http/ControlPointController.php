@@ -1152,8 +1152,8 @@ class ControlPointController
             return null;
         }
         $code = trim((string) $code);
-        if (!preg_match('/^\d{10,12}$/', $code)) {
-            throw new ApiError('VALIDATION_FAILED', 'psgc_barangay must be a 10-12 digit PSGC code', 400);
+        if (!preg_match('/^\d{9,12}$/', $code)) {
+            throw new ApiError('VALIDATION_FAILED', 'psgc_barangay must be a 9-12 digit PSGC code', 400);
         }
         return $code;
     }

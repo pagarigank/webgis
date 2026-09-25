@@ -166,7 +166,7 @@ export function ParcelEditorPage() {
                                         }
                                         for (const psgc of ['psgc_barangay', 'psgc_municipality', 'psgc_province'] as const) {
                                             const v = values[psgc].trim();
-                                            patch[psgc] = /^\d{10,12}$/.test(v) ? v : null;
+                                            patch[psgc] = /^\d{9,12}$/.test(v) ? v : null;
                                         }
                                         setSaveState(SAVE_SAVING);
                                         setConflictMessage(null);

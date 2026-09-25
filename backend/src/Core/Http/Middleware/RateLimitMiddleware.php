@@ -30,6 +30,7 @@ final class RateLimitMiddleware implements MiddlewareInterface
     /** Route class => requests per window (api.md §1.5 defaults). */
     private const DEFAULT_LIMITS = [
         'auth'          => 10,
+        'auth_refresh'  => 60,
         'search'        => 60,
         'calculate'     => 30,
         'lineage'       => 10,
@@ -75,6 +76,17 @@ final class RateLimitMiddleware implements MiddlewareInterface
 
         if (preg_match('#/(health|metrics)$#', $path) === 1) {
             return null;
+        }
+        if (str_contains($path, '/auth/refresh')) {
+            // Token refresh gets its own, much looser bucket. It is a routine
+            // session continuation protected by the refresh cookie and the CSRF
+            // header, not a credential-guessing vector, so it does not belong in
+            // the login-sized bucket. The SPA refreshes on every cold page load
+            // and on every token expiry, and a real user reloading a few times
+            // exhausted the shared login budget — the refresh then 429'd, the
+            // client could not obtain a token, and the session was lost. Brute
+            // force protection belongs on the password endpoints below.
+            return 'auth_refresh';
         }
         if (str_contains($path, '/auth/')) {
             return 'auth';

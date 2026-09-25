@@ -129,7 +129,7 @@ export const controlPointApi = {
     return apiClient.post(`/control-points/${id}/verify`, { change_reason: changeReason });
   },
 
-  getDependents: async (id: number | string): Promise<{ dependents: DependentParcel[]; total: number }> => {
+  getDependents: async (id: number | string): Promise<{ parcels: DependentParcel[]; total: number }> => {
     return apiClient.get(`/control-points/${id}/dependents`);
   },
 

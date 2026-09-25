@@ -94,9 +94,17 @@ An unbounded feature query (no `bbox`, no bounded `per_page`) returns `VALIDATIO
 
 ### 1.5 Rate limits
 
-Per-user token buckets over a fixed 1-minute window (SR-08): auth 10, search 60, calculate
-30, split/consolidate 10, import commit 5, tiles 600, general 300. Exceeding a limit returns
-429 `RATE_LIMITED` with `Retry-After: <seconds>` (seconds until the current window resets).
+Per-user token buckets over a fixed 1-minute window (SR-08): auth 10, auth_refresh 60, search
+60, calculate 30, split/consolidate 10, import commit 5, tiles 600, general 300. Exceeding a
+limit returns 429 `RATE_LIMITED` with `Retry-After: <seconds>` (seconds until the current window
+resets).
+
+`auth` covers the credential endpoints (`POST /auth/login`, `POST /auth/mfa/verify`,
+`POST /auth/change-password`); `auth_refresh` covers `POST /auth/refresh` only. The split exists
+because the SPA refreshes silently on every cold page load and on every token expiry, so sharing
+the 10/min login budget meant a few ordinary browser reloads returned 429 to the sign-in form.
+Refresh is a routine session continuation protected by the refresh cookie and the CSRF header,
+not a credential-guessing vector; brute-force protection stays on the password endpoints.
 
 Buckets are keyed by JWT subject for authenticated callers and by client address for the
 auth endpoints or invalid tokens, so login brute force is bounded per source. `GET /health`
