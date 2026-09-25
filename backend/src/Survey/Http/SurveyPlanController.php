@@ -4,11 +4,13 @@ declare(strict_types=1);
 namespace App\Survey\Http;
 
 use App\Audit\AuditWriter;
+use App\Core\Db\DbTransaction;
 use App\Core\Error\ApiError;
 use App\Core\Http\Response\Envelope;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Throwable;
 
 /**
  * Survey Plans API (Phase 9 — TASK-077).
@@ -158,7 +160,7 @@ class SurveyPlanController
         $sourceDocId = $this->optionalUuid($body, 'source_document_id');
         $remarks = $this->optionalText($body, 'remarks');
 
-        $this->pdo->beginTransaction();
+        $tx = DbTransaction::begin($this->pdo);
         try {
             $sql = 'INSERT INTO app.survey_plans (
                 plan_number, plan_type, survey_date, approved_date, approving_agency,
@@ -195,22 +197,19 @@ class SurveyPlanController
             $plan = $this->getCurrent($id);
 
             $this->audit->writeFromSession(
-                action: 'create',
-                entityType: 'survey_plan',
-                entityId: (string) $id,
-                preChangeSnapshot: null,
-                postChangeSnapshot: $this->stripForAudit($plan),
-                reason: 'Created survey plan ' . $planNumber,
-                metadata: ['plan_number' => $planNumber]
+                'create',
+                'app.survey_plans',
+                (string) $id,
+                null,
+                array_merge($this->stripForAudit($plan), ['plan_number' => $planNumber]),
+                null,
+                'Created survey plan ' . $planNumber
             );
 
-            $this->pdo->commit();
+            DbTransaction::commit($this->pdo, $tx);
             return Envelope::success($response, $plan, 201);
-        } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            throw $e;
+        } catch (Throwable $e) {
+            DbTransaction::rollback($this->pdo, $tx, $e);
         }
     }
 
@@ -226,7 +225,7 @@ class SurveyPlanController
 
         $ifMatch = $this->parseIfMatchHeader($request);
 
-        $this->pdo->beginTransaction();
+        $tx = DbTransaction::begin($this->pdo);
         try {
             // FOR UPDATE concurrency check
             $lockStmt = $this->pdo->prepare(
@@ -361,22 +360,19 @@ class SurveyPlanController
             $plan = $this->getCurrent($id);
 
             $this->audit->writeFromSession(
-                action: 'update',
-                entityType: 'survey_plan',
-                entityId: (string) $id,
-                preChangeSnapshot: $this->stripForAudit($current),
-                postChangeSnapshot: $this->stripForAudit($plan),
-                reason: $body['change_reason'] ?? ('Updated survey plan ' . $planNumber),
-                metadata: ['version' => $newVersion]
+                'update',
+                'app.survey_plans',
+                (string) $id,
+                $this->stripForAudit($current),
+                array_merge($this->stripForAudit($plan), ['version' => $newVersion]),
+                null,
+                $body['change_reason'] ?? ('Updated survey plan ' . $planNumber)
             );
 
-            $this->pdo->commit();
+            DbTransaction::commit($this->pdo, $tx);
             return Envelope::success($response, $plan);
-        } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            throw $e;
+        } catch (Throwable $e) {
+            DbTransaction::rollback($this->pdo, $tx, $e);
         }
     }
 
@@ -395,7 +391,7 @@ class SurveyPlanController
             throw new ApiError('VALIDATION_FAILED', 'reason is required to delete a survey plan', 400);
         }
 
-        $this->pdo->beginTransaction();
+        $tx = DbTransaction::begin($this->pdo);
         try {
             $current = $this->getCurrent($id);
 
@@ -413,22 +409,19 @@ class SurveyPlanController
             $stmt->execute([':uid' => $uid, ':id' => $id]);
 
             $this->audit->writeFromSession(
-                action: 'delete',
-                entityType: 'survey_plan',
-                entityId: (string) $id,
-                preChangeSnapshot: $this->stripForAudit($current),
-                postChangeSnapshot: null,
-                reason: $reason,
-                metadata: ['deleted' => true]
+                'delete',
+                'app.survey_plans',
+                (string) $id,
+                array_merge($this->stripForAudit($current), ['deleted' => true]),
+                null,
+                null,
+                $reason
             );
 
-            $this->pdo->commit();
+            DbTransaction::commit($this->pdo, $tx);
             return Envelope::success($response, ['deleted' => true, 'id' => $id]);
-        } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            throw $e;
+        } catch (Throwable $e) {
+            DbTransaction::rollback($this->pdo, $tx, $e);
         }
     }
 

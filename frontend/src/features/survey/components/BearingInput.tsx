@@ -136,7 +136,7 @@ export const BearingInput: React.FC<BearingInputProps> = ({
     }
 
     // 2. Quadrant DMS regex
-    const dmsMatch = raw.match(/^([NS])\s*(\d{1,2})[\s°dD\-]+(\d{1,2})[\s\'mM\-]+([\d\.]+)[\s"sS]*\s*([EW])$/u);
+    const dmsMatch = raw.match(/^([NS])\s*(\d{1,2})[\s°dD-]+(\d{1,2})[\s'mM-]+([\d.]+)[\s"sS]*\s*([EW])$/u);
     if (dmsMatch) {
       const p = dmsMatch[1] as 'N' | 'S';
       const d = dmsMatch[2];

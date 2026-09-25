@@ -112,7 +112,7 @@ export const ComputationPanel: React.FC<ComputationPanelProps> = ({
       setSelectedTdId(tdId);
       const detail = await surveyApi.getById(tdId);
       setCurrentTd(detail.data);
-    } catch (err: any) {
+    } catch {
       setError('Failed to load selected technical description.');
     }
   };
@@ -128,7 +128,7 @@ export const ComputationPanel: React.FC<ComputationPanelProps> = ({
       setComputeCrs(suggestion.recommended_crs_code);
       setSuccessMsg(`Suggested: ${suggestion.recommended_zone} (${suggestion.recommended_crs_code})`);
       setTimeout(() => setSuccessMsg(null), 4000);
-    } catch (err) {
+    } catch {
       // fallback
       setComputeCrs('EPSG:3123');
     }
@@ -201,7 +201,7 @@ export const ComputationPanel: React.FC<ComputationPanelProps> = ({
       const snap = await computationApi.getSnapshot(activeComp.computation_id);
       setSnapshotJson(JSON.stringify(snap, null, 2));
       setShowSnapshotModal(true);
-    } catch (err: any) {
+    } catch {
       setError('Failed to fetch computation input snapshot.');
     }
   };
@@ -250,7 +250,7 @@ export const ComputationPanel: React.FC<ComputationPanelProps> = ({
       setLoading(true);
       const detail = await computationApi.get(id);
       setActiveComp(detail);
-    } catch (err: any) {
+    } catch {
       setError('Failed to load computation details.');
     } finally {
       setLoading(false);

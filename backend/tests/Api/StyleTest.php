@@ -21,7 +21,7 @@ class StyleTest extends TestCase
 
         $this->pdo->exec("INSERT INTO app.gis_layers (id, code, name, geometry_type) VALUES ({$this->layerId}, 'style_test_layer', 'Style Test Layer', 'POLYGON')");
 
-        $user = $this->createMockUser($this->pdo, ['gis.layer.manage'], ['SYS_ADMIN']);
+        $user = $this->createMockUser($this->pdo, ['gis.style.manage', 'gis.layer.update'], ['SYS_ADMIN']);
         $this->adminToken = $user['token'];
     }
 

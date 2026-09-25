@@ -53,29 +53,29 @@ return function (App $app) {
         $group->get('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':get')
             ->add(AuthenticateMiddleware::class);
         $group->put('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':update')
-            ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+            ->add($layerAuthed('gis.layer.update'))->add(AuthenticateMiddleware::class);
         $group->delete('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':delete')
-            ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+            ->add($layerAuthed('gis.layer.delete'))->add(AuthenticateMiddleware::class);
 
         // ---- GIS Layer Fields ----
         $group->get('/layers/{layer_id:[0-9]+}/fields', \App\GIS\Http\GisLayerFieldController::class . ':list')
             ->add(AuthenticateMiddleware::class);
         $group->post('/layers/{layer_id:[0-9]+}/fields', \App\GIS\Http\GisLayerFieldController::class . ':create')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.field.manage'))->add(AuthenticateMiddleware::class);
         $group->put('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}', \App\GIS\Http\GisLayerFieldController::class . ':update')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.field.manage'))->add(AuthenticateMiddleware::class);
         $group->post('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}/retype-preview', \App\GIS\Http\GisLayerFieldController::class . ':retypePreview')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.field.manage'))->add(AuthenticateMiddleware::class);
         $group->delete('/layers/{layer_id:[0-9]+}/fields/{id:[0-9]+}', \App\GIS\Http\GisLayerFieldController::class . ':delete')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.field.manage'))->add(AuthenticateMiddleware::class);
 
         // ---- GIS Layer Styles ----
         $group->get('/layers/{layer_id:[0-9]+}/styles', \App\GIS\Http\GisLayerStyleController::class . ':list')
               ->add(AuthenticateMiddleware::class);
         $group->post('/layers/{layer_id:[0-9]+}/styles', \App\GIS\Http\GisLayerStyleController::class . ':create')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.style.manage'))->add(AuthenticateMiddleware::class);
         $group->put('/layers/{layer_id:[0-9]+}/styles/{id:[0-9]+}', \App\GIS\Http\GisLayerStyleController::class . ':update')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add($layerAuthed('gis.style.manage'))->add(AuthenticateMiddleware::class);
 
         // ---- GIS Features (layer.manage) ----
         $group->get('/layers/{layer_id:[0-9]+}/features', \App\GIS\Http\GisFeatureController::class . ':list')
@@ -83,15 +83,21 @@ return function (App $app) {
         $group->get('/layers/{layer_id:[0-9]+}/features/{id}', \App\GIS\Http\GisFeatureController::class . ':getFeature')
               ->add(AuthenticateMiddleware::class);
         $group->post('/layers/{layer_id:[0-9]+}/features', \App\GIS\Http\GisFeatureController::class . ':create')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add(AuthenticateMiddleware::class);
         $group->patch('/layers/{layer_id:[0-9]+}/features/{id}', \App\GIS\Http\GisFeatureController::class . ':update')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add(AuthenticateMiddleware::class);
         $group->delete('/layers/{layer_id:[0-9]+}/features/{id}', \App\GIS\Http\GisFeatureController::class . ':delete')
-              ->add($layerAuthed('gis.layer.create'))->add(AuthenticateMiddleware::class);
+              ->add(AuthenticateMiddleware::class);
+        $group->post('/layers/{layer_id:[0-9]+}/features/bulk-update', \App\GIS\Http\GisFeatureController::class . ':bulkUpdate')
+              ->add(AuthenticateMiddleware::class);
+        $group->post('/layers/{layer_id:[0-9]+}/features/bulk-delete', \App\GIS\Http\GisFeatureController::class . ':bulkDelete')
+              ->add(AuthenticateMiddleware::class);
         $group->get('/layers/{layer_id:[0-9]+}/features.geojson', \App\GIS\Http\GisFeatureController::class . ':geojson')
               ->add(AuthenticateMiddleware::class);
+        $group->get('/layers/{layer_id:[0-9]+}/features.csv', \App\GIS\Http\GisFeatureController::class . ':csv')
+              ->add(AuthenticateMiddleware::class);
         $group->get('/layers/{layer_id:[0-9]+}/mvt/{z:\d+}/{x:\d+}/{y:\d+}.mvt', \App\GIS\Http\GisFeatureController::class . ':mvt')
-                      ->add(AuthenticateMiddleware::class);
+              ->add(AuthenticateMiddleware::class);
 
         // ---- Parcels (TASK-068) ----
         $parcelAuthed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));

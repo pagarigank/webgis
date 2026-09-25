@@ -28,7 +28,7 @@ export function AdminView() {
                     <NavLink to="/admin/roles" className={({ isActive }) => `tab-item ${isActive ? 'active' : ''}`}>Roles</NavLink>
                 )}
                 <NavLink to="/admin/organizations" className={({ isActive }) => `tab-item ${isActive ? 'active' : ''}`}>Organizations</NavLink>
-                {hasPermission(me, 'gis.layer.create') && (
+                {hasPermission(me, 'gis.layer.view') && (
                     <NavLink to="/admin/layers" className={({ isActive }) => `tab-item ${isActive ? 'active' : ''}`}>GIS Layers</NavLink>
                 )}
                 {hasPermission(me, 'basemap.manage') && (

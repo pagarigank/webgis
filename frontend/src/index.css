@@ -90,6 +90,73 @@ body {
   color: var(--brand-primary);
 }
 
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 6rem;
+  flex-shrink: 0;
+  padding: 0.75rem 0.5rem;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+}
+
+.app-rail a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.625rem 0.25rem;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.app-rail a:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.app-rail a.active {
+  background: var(--brand-primary);
+  color: var(--text-inverse);
+}
+
+.app-rail a:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.app-rail-spacer {
+  flex: 1;
+}
+
+.app-rail-divider {
+  height: 1px;
+  margin: 0.5rem 0.75rem;
+  background: var(--border-color);
+}
+
+.auth-layout {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-page);
+}
+
 .app-main {
   flex: 1;
   padding: 2rem;
