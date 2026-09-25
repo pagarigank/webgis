@@ -1234,3 +1234,17 @@ Test: n/a.
 | B-6 | MED | ~~Left icon rail~~ **— fixed as A-11.** ~~`/login` inside the app shell~~ **— fixed as A-12.** Still missing from `frontend.md` §3 and not built: `/forgot-password`, `/search`, `/survey-plans`, `/titles`, `/reports`, `/import`, `/export`, `/admin/crs`, `/admin/settings` (these map to TODO phase-tasks, so they are listed as gaps, not defects). | Phase 5–15 cleanup |
 | B-7 | LOW | The parcel editor's **Title** and **Documents** tabs render a "This section arrives in a later phase-task" placeholder. Honest, but the tabs are clickable dead ends for users. | TASK-109/110 |
 | B-8 | INFO | `lint` reports `react(set-state-in-effect)` across `SpatialTools.tsx:333`, `ControlPointEditorPage.tsx:84`, `TechnicalDescriptionTab.tsx:64`, `ComputationPanel.tsx:106`, `BearingInput.tsx:35` and `only-export-components` in `ConsolidationTab.tsx` — warnings only, no errors. | backlog |
+
+### A-13 — API base-path doubling (CRITICAL, found post-audit at runtime)
+
+`apiClient` sets `baseURL = VITE_API_BASE_URL || '/api/v1'` (`frontend/src/lib/apiClient.ts:22`), but three API modules also prefixed `/api/v1` on every call, producing requests to `/api/v1/api/v1/...` → **404 on all 26 endpoints**. Every Control Points, Survey Plans, and Technical Description action was non-functional.
+
+| File | Broken calls | Surface |
+| --- | --- | --- |
+| `frontend/src/features/control-points/api/controlPointApi.ts` | 8 (107–137) | whole Control Points page |
+| `frontend/src/features/survey-plans/api/surveyPlanApi.ts` | 6 (68–90) | whole Survey Plans page |
+| `frontend/src/features/survey/api/surveyApi.ts` | 12 (130–256) | every Technical Description / parser / OCR action |
+
+Left untouched and verified correct: `FeatureGridPage.tsx:108` (raw `fetch`, bypasses `baseURL`), `MapShell.tsx:31` (MapLibre tile URL), `apiClient.ts:22` (the base definition), `crs.ts` (comments).
+
+**Why the audit missed it.** Static verification was green — `tsc` exit 0, 92/92 Vitest, `vite build`, `lint` 0 errors — and the Vitest suite mocks these API modules, so no test ever issued a real request. Only the browser console exposed it (`GET /api/v1/api/v1/control-points 404`). **Consequence for the Definition of Done:** a green `tsc`/Vitest/build gate is *not* evidence that a frontend route works. Any new API module must be verified by a request reaching the proxy, not only by static checks. This is the concrete cost of deferring the Playwright pass — the deferred check was the only check that could have caught it.

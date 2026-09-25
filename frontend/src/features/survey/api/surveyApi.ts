@@ -127,7 +127,7 @@ export interface StagedParseResult {
 export const surveyApi = {
   async listByParcel(parcelId: string): Promise<TechnicalDescription[]> {
     const res = await apiClient.get<{ success: boolean; data: TechnicalDescription[] }>(
-      `/api/v1/parcels/${parcelId}/technical-descriptions`
+      `/parcels/${parcelId}/technical-descriptions`
     );
     return res.data.data;
   },
@@ -142,7 +142,7 @@ export const surveyApi = {
     is_current?: boolean;
   }): Promise<TechnicalDescription> {
     const res = await apiClient.post<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/parcels/${parcelId}/technical-descriptions`,
+      `/parcels/${parcelId}/technical-descriptions`,
       payload
     );
     return res.data.data;
@@ -150,7 +150,7 @@ export const surveyApi = {
 
   async getById(id: number): Promise<{ data: TechnicalDescription; etag?: string }> {
     const res = await apiClient.get<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/technical-descriptions/${id}`
+      `/technical-descriptions/${id}`
     );
     const etag = res.headers['etag'] as string | undefined;
     return { data: res.data.data, etag };
@@ -162,7 +162,7 @@ export const surveyApi = {
       headers['If-Match'] = ifMatch;
     }
     const res = await apiClient.put<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/technical-descriptions/${id}`,
+      `/technical-descriptions/${id}`,
       payload,
       { headers }
     );
@@ -183,7 +183,7 @@ export const surveyApi = {
     remarks?: string;
   }): Promise<TechnicalDescription> {
     const res = await apiClient.post<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/technical-descriptions/${tdId}/courses`,
+      `/technical-descriptions/${tdId}/courses`,
       course
     );
     return res.data.data;
@@ -202,7 +202,7 @@ export const surveyApi = {
     remarks?: string;
   }): Promise<TechnicalDescription> {
     const res = await apiClient.put<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/technical-descriptions/${tdId}/courses/${courseId}`,
+      `/technical-descriptions/${tdId}/courses/${courseId}`,
       course
     );
     return res.data.data;
@@ -210,14 +210,14 @@ export const surveyApi = {
 
   async deleteCourse(tdId: number, courseId: number): Promise<TechnicalDescription> {
     const res = await apiClient.delete<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/technical-descriptions/${tdId}/courses/${courseId}`
+      `/technical-descriptions/${tdId}/courses/${courseId}`
     );
     return res.data.data;
   },
 
   async reorderCourses(tdId: number, courseIds: number[]): Promise<TechnicalDescription> {
     const res = await apiClient.put<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/technical-descriptions/${tdId}/courses/order`,
+      `/technical-descriptions/${tdId}/courses/order`,
       { course_ids: courseIds }
     );
     return res.data.data;
@@ -225,7 +225,7 @@ export const surveyApi = {
 
   async validateCourses(tdId: number): Promise<CourseValidationResult> {
     const res = await apiClient.post<{ success: boolean; data: CourseValidationResult }>(
-      `/api/v1/technical-descriptions/${tdId}/validate`,
+      `/technical-descriptions/${tdId}/validate`,
       {}
     );
     return res.data.data;
@@ -237,7 +237,7 @@ export const surveyApi = {
     distance_unit_hint?: string;
   }): Promise<StagedParseResult> {
     const res = await apiClient.post<{ success: boolean; data: StagedParseResult }>(
-      `/api/v1/survey/parse`,
+      `/survey/parse`,
       payload
     );
     return res.data.data;
@@ -245,7 +245,7 @@ export const surveyApi = {
 
   async confirm(tdId: number): Promise<TechnicalDescription> {
     const res = await apiClient.post<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/technical-descriptions/${tdId}/confirm`,
+      `/technical-descriptions/${tdId}/confirm`,
       {}
     );
     return res.data.data;
@@ -253,7 +253,7 @@ export const surveyApi = {
 
   async ocrAssist(tdId: number, text: string): Promise<TechnicalDescription> {
     const res = await apiClient.post<{ success: boolean; data: TechnicalDescription }>(
-      `/api/v1/technical-descriptions/${tdId}/ocr`,
+      `/technical-descriptions/${tdId}/ocr`,
       { text }
     );
     return res.data.data;

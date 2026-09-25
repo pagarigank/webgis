@@ -65,29 +65,29 @@ export interface LinkedParcelsPayload {
 
 export const surveyPlanApi = {
   list: async (params?: SurveyPlanListParams): Promise<SurveyPlanListPayload> => {
-    return apiClient.get('/api/v1/survey-plans', { params });
+    return apiClient.get('/survey-plans', { params });
   },
 
   getById: async (id: number | string): Promise<SurveyPlan> => {
-    return apiClient.get(`/api/v1/survey-plans/${id}`);
+    return apiClient.get(`/survey-plans/${id}`);
   },
 
   getParcels: async (id: number | string): Promise<LinkedParcelsPayload> => {
-    return apiClient.get(`/api/v1/survey-plans/${id}/parcels`);
+    return apiClient.get(`/survey-plans/${id}/parcels`);
   },
 
   create: async (data: Partial<SurveyPlan>): Promise<SurveyPlan> => {
-    return apiClient.post('/api/v1/survey-plans', data);
+    return apiClient.post('/survey-plans', data);
   },
 
   update: async (id: number | string, data: Partial<SurveyPlan>, version: number): Promise<SurveyPlan> => {
-    return apiClient.put(`/api/v1/survey-plans/${id}`, data, {
+    return apiClient.put(`/survey-plans/${id}`, data, {
       headers: { 'If-Match': `"${version}"` },
     });
   },
 
   delete: async (id: number | string, reason: string): Promise<{ deleted: boolean; id: number }> => {
-    return apiClient.delete(`/api/v1/survey-plans/${id}`, {
+    return apiClient.delete(`/survey-plans/${id}`, {
       data: { reason },
     });
   },

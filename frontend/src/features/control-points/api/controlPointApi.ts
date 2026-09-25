@@ -104,37 +104,37 @@ export interface DependentParcel {
 
 export const controlPointApi = {
   list: async (params?: ControlPointListParams): Promise<ControlPointListPayload> => {
-    return apiClient.get('/api/v1/control-points', { params });
+    return apiClient.get('/control-points', { params });
   },
 
   getById: async (id: number | string): Promise<ControlPoint> => {
-    return apiClient.get(`/api/v1/control-points/${id}`);
+    return apiClient.get(`/control-points/${id}`);
   },
 
   getNearest: async (params: NearestControlPointParams): Promise<{ data: ControlPoint[]; total: number; limit: number }> => {
-    return apiClient.get('/api/v1/control-points/nearest', { params });
+    return apiClient.get('/control-points/nearest', { params });
   },
 
   create: async (data: ControlPointPayload): Promise<ControlPoint> => {
-    return apiClient.post('/api/v1/control-points', data);
+    return apiClient.post('/control-points', data);
   },
 
   update: async (id: number | string, data: Partial<ControlPointPayload>, ifMatchVersion: number): Promise<ControlPoint> => {
-    return apiClient.put(`/api/v1/control-points/${id}`, data, {
+    return apiClient.put(`/control-points/${id}`, data, {
       headers: { 'If-Match': `"${ifMatchVersion}"` },
     });
   },
 
   verify: async (id: number | string, changeReason?: string): Promise<ControlPoint> => {
-    return apiClient.post(`/api/v1/control-points/${id}/verify`, { change_reason: changeReason });
+    return apiClient.post(`/control-points/${id}/verify`, { change_reason: changeReason });
   },
 
   getDependents: async (id: number | string): Promise<{ dependents: DependentParcel[]; total: number }> => {
-    return apiClient.get(`/api/v1/control-points/${id}/dependents`);
+    return apiClient.get(`/control-points/${id}/dependents`);
   },
 
   delete: async (id: number | string, reason: string): Promise<{ deleted: boolean; id: number }> => {
-    return apiClient.delete(`/api/v1/control-points/${id}`, {
+    return apiClient.delete(`/control-points/${id}`, {
       data: { reason },
     });
   },
