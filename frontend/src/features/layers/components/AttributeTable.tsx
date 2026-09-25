@@ -115,13 +115,23 @@ export function AttributeTable({
         const dirLower = dir.toLowerCase() as 'asc' | 'desc';
         return [{ id: sort, desc: dirLower === 'desc' }];
     });
-    const [pagination, setPagination] = React.useMemo<PaginationState>(
+    const pagination = React.useMemo<PaginationState>(
         () => ({
             pageIndex: page - 1,
             pageSize: perPage,
         }),
         [page, perPage],
     );
+
+    const handlePaginationChange = useCallback((updaterOrValue: any) => {
+        const next = typeof updaterOrValue === 'function' ? updaterOrValue(pagination) : updaterOrValue;
+        if (next.pageIndex !== pagination.pageIndex) {
+            onPageChange(next.pageIndex + 1);
+        }
+        if (next.pageSize !== pagination.pageSize) {
+            onPerPageChange(next.pageSize);
+        }
+    }, [pagination, onPageChange, onPerPageChange]);
 
     // Merge local selection with shared selection context
     const localSelectedIds = React.useRef(new Set<string>());
@@ -213,13 +223,23 @@ export function AttributeTable({
         if (!layerId || selectedIds.size === 0) return;
         if (!confirm(`Delete ${selectedIds.size} selected features?`)) return;
         try {
-            for (const id of selectedIds) {
-                await layerApi.deleteFeature(layerId, id);
-            }
+            await layerApi.bulkDelete(layerId, Array.from(selectedIds), 'Bulk delete from grid');
             if (onFeaturesChanged) onFeaturesChanged();
             handleClearSelection();
         } catch (err) {
             console.error('Bulk delete failed:', err);
+        }
+    }, [layerId, selectedIds, onFeaturesChanged, handleClearSelection]);
+
+    const handleBulkStatusChange = useCallback(async (newStatus: string) => {
+        if (!layerId || selectedIds.size === 0 || !newStatus) return;
+        if (!confirm(`Update status of ${selectedIds.size} selected features to ${newStatus}?`)) return;
+        try {
+            await layerApi.bulkUpdate(layerId, Array.from(selectedIds), { status: newStatus });
+            if (onFeaturesChanged) onFeaturesChanged();
+            handleClearSelection();
+        } catch (err) {
+            console.error('Bulk update failed:', err);
         }
     }, [layerId, selectedIds, onFeaturesChanged, handleClearSelection]);
 
@@ -260,7 +280,7 @@ export function AttributeTable({
             pagination,
         },
         onSortingChange: setSorting,
-        onPaginationChange: setPagination,
+        onPaginationChange: handlePaginationChange,
         getCoreRowModel: getCoreRowModel(),
         getSortedRowModel: getSortedRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
@@ -280,19 +300,43 @@ export function AttributeTable({
         <div className="card shadow-sm">
             {/* Selection info bar */}
             {hasSelection && (
-                <div className="mb-2 px-3 py-2 bg-warning-subtle border-bottom d-flex justify-content-between align-items-center">
-                    <span className="text-danger fw-semibold">
-                        {selectedCount} feature{selectedCount !== 1 ? 's' : ''} selected
+                <div className="mb-2 px-3 py-2 bg-warning-subtle border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div className="d-flex align-items-center gap-2">
+                        <span className="text-danger fw-semibold">
+                            {selectedCount} feature{selectedCount !== 1 ? 's' : ''} selected
+                        </span>
+                        {canEdit && (
+                            <div className="d-inline-flex align-items-center gap-1">
+                                <select
+                                    className="form-select form-select-sm"
+                                    style={{ width: 'auto' }}
+                                    defaultValue=""
+                                    onChange={(e) => {
+                                        if (e.target.value) {
+                                            handleBulkStatusChange(e.target.value);
+                                            e.target.value = '';
+                                        }
+                                    }}
+                                    disabled={saving}
+                                >
+                                    <option value="" disabled>Bulk status...</option>
+                                    <option value="ACTIVE">Set Active</option>
+                                    <option value="PENDING">Set Pending</option>
+                                    <option value="REJECTED">Set Rejected</option>
+                                    <option value="ARCHIVED">Set Archived</option>
+                                </select>
+                            </div>
+                        )}
                         {canDelete && (
                             <button
-                                className="btn btn-sm btn-outline-danger ms-2"
+                                className="btn btn-sm btn-outline-danger"
                                 onClick={handleBulkDelete}
                                 disabled={saving}
                             >
                                 Bulk delete
                             </button>
                         )}
-                    </span>
+                    </div>
                     <button
                         className="btn btn-sm btn-outline-secondary"
                         onClick={handleClearSelection}
@@ -450,7 +494,7 @@ export function AttributeTable({
                     <label className="text-muted small me-1">Show</label>
                     <select
                         className="form-select form-select-sm"
-                        style={{ width: 'auto', width: '70px' }}
+                        style={{ width: '70px' }}
                         value={perPage}
                         onChange={(e) => onPerPageChange(Number(e.target.value))}
                     >

@@ -231,8 +231,14 @@ class GisFeatureController
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $features = array_map(function ($r) {
+        $canViewPii = $this->canViewPii($info['uid']);
+        $piiFields  = $canViewPii ? [] : $this->getLayerPiiFields($lid);
+
+        $features = array_map(function ($r) use ($piiFields) {
             $r = $this->decodePayloadFields($r);
+            if (!empty($piiFields) && isset($r['attributes']) && is_array($r['attributes'])) {
+                $r['attributes'] = $this->redactPiiAttributes($r['attributes'], $piiFields);
+            }
             return [
                 'type'       => 'Feature',
                 'id'         => $r['id'],
@@ -243,10 +249,134 @@ class GisFeatureController
 
         $payload = ['type' => 'FeatureCollection', 'features' => $features];
 
+        // Audit the export (TASK-067)
+        $this->audit->writeFromSession(
+            'EXPORT',
+            'app.gis_features',
+            (string) $lid,
+            null,
+            ['format' => 'geojson', 'count' => count($rows), 'bbox' => $bbox],
+            $request->getAttribute('request_id'),
+            'Layer features exported as GeoJSON'
+        );
+
         $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
         return $response
             ->withHeader('Content-Type', 'application/geo+json')
             ->withHeader('Content-Disposition', 'attachment; filename="layer_' . $lid . '_features.geojson"')
+            ->withStatus(200);
+    }
+
+    /**
+     * GET /layers/{layer_id}/features.csv (TASK-067)
+     */
+    public function csv(Request $request, Response $response, array $args): Response
+    {
+        $lid   = $this->resolveLayerId($request, $args);
+        $info  = $this->resolveUser($request, $lid);
+        $this->setUserInSession($info['uid']);
+
+        $q      = $request->getQueryParams();
+        $bbox   = $this->parseBbox($q['bbox'] ?? null);
+        $status = $q['status'] ?? null;
+        $sort   = $q['sort'] ?? 'created_at';
+        $dir    = strtoupper($q['dir'] ?? 'DESC') === 'DESC' ? 'DESC' : 'ASC';
+
+        $allowedSort = ['id', 'created_at', 'updated_at', 'status', 'psgc_barangay', 'provenance'];
+        $sortCol     = in_array($sort, $allowedSort, true) ? $sort : 'created_at';
+
+        $where  = ['f.layer_id = :lid', 'f.deleted_at IS NULL'];
+        $params = [':lid' => $lid];
+
+        if ($status !== null && in_array($status, ['ACTIVE', 'PENDING', 'REJECTED', 'ARCHIVED'], true)) {
+            $where[] = 'f.status = :status';
+            $params[':status'] = $status;
+        }
+
+        if ($bbox !== null) {
+            $where[] = 'f.geom && ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)';
+            $params[':minx'] = $bbox[0];
+            $params[':miny'] = $bbox[1];
+            $params[':maxx'] = $bbox[2];
+            $params[':maxy'] = $bbox[3];
+        }
+
+        $whereSql = 'WHERE ' . implode(' AND ', $where);
+
+        $sql = "SELECT f.id, f.status, f.psgc_barangay, f.provenance, f.version, f.created_at, f.updated_at, f.attributes, ST_AsGeoJSON(f.geom) AS geometry FROM app.gis_features f {$whereSql} ORDER BY f.{$sortCol} {$dir}";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch layer fields
+        $fieldsStmt = $this->pdo->prepare("
+            SELECT field_name, is_pii
+            FROM app.gis_layer_fields
+            WHERE layer_id = :lid AND deleted_at IS NULL
+            ORDER BY sort_order ASC, id ASC
+        ");
+        $fieldsStmt->execute([':lid' => $lid]);
+        $layerFields = $fieldsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $fieldNames = array_column($layerFields, 'field_name');
+
+        $canViewPii = $this->canViewPii($info['uid']);
+        $piiFields = [];
+        if (!$canViewPii) {
+            foreach ($layerFields as $lf) {
+                if (!empty($lf['is_pii'])) {
+                    $piiFields[] = $lf['field_name'];
+                }
+            }
+        }
+
+        // Build CSV
+        $fp = fopen('php://temp', 'r+');
+        $headers = array_merge(['id', 'status', 'psgc_barangay', 'provenance', 'version', 'created_at', 'updated_at'], $fieldNames);
+        fputcsv($fp, $headers);
+
+        foreach ($rows as $row) {
+            $attrs = json_decode($row['attributes'] ?? '{}', true) ?: [];
+            if (!empty($piiFields)) {
+                $attrs = $this->redactPiiAttributes($attrs, $piiFields);
+            }
+            $line = [
+                $row['id'],
+                $row['status'],
+                $row['psgc_barangay'] ?? '',
+                $row['provenance'] ?? '',
+                $row['version'],
+                $row['created_at'],
+                $row['updated_at'],
+            ];
+            foreach ($fieldNames as $fn) {
+                $val = $attrs[$fn] ?? '';
+                if (is_array($val)) {
+                    $val = json_encode($val);
+                }
+                $line[] = (string) $val;
+            }
+            fputcsv($fp, $line);
+        }
+
+        rewind($fp);
+        $csvContent = stream_get_contents($fp);
+        fclose($fp);
+
+        // Audit the export (TASK-067)
+        $this->audit->writeFromSession(
+            'EXPORT',
+            'app.gis_features',
+            (string) $lid,
+            null,
+            ['format' => 'csv', 'count' => count($rows), 'bbox' => $bbox],
+            $request->getAttribute('request_id'),
+            'Layer features exported as CSV'
+        );
+
+        $response->getBody()->write((string) $csvContent);
+        return $response
+            ->withHeader('Content-Type', 'text/csv; charset=UTF-8')
+            ->withHeader('Content-Disposition', 'attachment; filename="layer_' . $lid . '_features.csv"')
             ->withStatus(200);
     }
 
@@ -476,6 +606,141 @@ class GisFeatureController
         $this->audit->writeFromSession('DELETE', 'app.gis_features', $fid, $oldSnapshot, null, null, null, 'Feature deleted via API');
 
         return Envelope::success($response, ['id' => $fid, 'deleted' => true]);
+    }
+
+    /**
+     * POST /layers/{layer_id}/features/bulk-update (TASK-066)
+     * Body: { ids: string[], patch: { status?: string, attributes?: array } }
+     */
+    public function bulkUpdate(Request $request, Response $response, array $args): Response
+    {
+        $lid   = $this->resolveLayerId($request, $args);
+        $info  = $this->resolveUser($request, $lid);
+        if (!$info['caps']['can_update']) {
+            throw new ApiError('FORBIDDEN', 'No permission to update features in this layer', 403);
+        }
+        $this->setUserInSession($info['uid']);
+
+        $body = $request->getParsedBody();
+        if (!is_array($body) || empty($body['ids']) || !is_array($body['ids'])) {
+            throw new ApiError('VALIDATION_FAILED', 'ids array is required', 400);
+        }
+        $patch = $body['patch'] ?? [];
+        if (!is_array($patch) || empty($patch)) {
+            throw new ApiError('VALIDATION_FAILED', 'patch object is required', 400);
+        }
+
+        $ids = array_values(array_filter($body['ids'], 'is_string'));
+        if (empty($ids)) {
+            throw new ApiError('VALIDATION_FAILED', 'No valid feature ids provided', 400);
+        }
+
+        $updatedCount = 0;
+        $updatedIds = [];
+
+        foreach ($ids as $fid) {
+            $current = $this->readFeatureSnapshot($fid, $lid);
+            if (!$current) {
+                continue;
+            }
+            $currentVer = (int) $current['version'];
+            $oldSnapshot = $this->buildPreChangeSnapshot($fid, $lid, $currentVer);
+
+            $sets = ['version = version + 1', 'updated_at = CURRENT_TIMESTAMP', 'updated_by = :uid'];
+            $params = [':fid' => $fid, ':lid' => $lid, ':uid' => $info['uid']];
+
+            if (isset($patch['status']) && in_array($patch['status'], ['ACTIVE', 'PENDING', 'REJECTED', 'ARCHIVED'], true)) {
+                $sets[] = 'status = :status';
+                $params[':status'] = $patch['status'];
+            }
+            if (isset($patch['attributes']) && is_array($patch['attributes'])) {
+                $sets[] = 'attributes = attributes || :patch_attrs::jsonb';
+                $params[':patch_attrs'] = json_encode($patch['attributes']);
+            }
+
+            $sql = "UPDATE app.gis_features SET " . implode(', ', $sets) . " WHERE id = :fid AND layer_id = :lid AND deleted_at IS NULL RETURNING version";
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+
+            $newRow = $this->readFeatureSnapshot($fid, $lid);
+            if ($newRow) {
+                $this->audit->writeFromSession(
+                    'UPDATE',
+                    'app.gis_features',
+                    $fid,
+                    $oldSnapshot,
+                    $this->stripForAudit($this->formatFeature($newRow)),
+                    $request->getAttribute('request_id'),
+                    'Bulk update via API'
+                );
+                $updatedCount++;
+                $updatedIds[] = $fid;
+            }
+        }
+
+        return Envelope::success($response, [
+            'updated_count' => $updatedCount,
+            'ids'           => $updatedIds,
+        ]);
+    }
+
+    /**
+     * POST /layers/{layer_id}/features/bulk-delete (TASK-066)
+     * Body: { ids: string[], reason?: string }
+     */
+    public function bulkDelete(Request $request, Response $response, array $args): Response
+    {
+        $lid   = $this->resolveLayerId($request, $args);
+        $info  = $this->resolveUser($request, $lid);
+        if (!$info['caps']['can_delete']) {
+            throw new ApiError('FORBIDDEN', 'No permission to delete features in this layer', 403);
+        }
+        $this->setUserInSession($info['uid']);
+
+        $body = $request->getParsedBody();
+        if (!is_array($body) || empty($body['ids']) || !is_array($body['ids'])) {
+            throw new ApiError('VALIDATION_FAILED', 'ids array is required', 400);
+        }
+
+        $ids = array_values(array_filter($body['ids'], 'is_string'));
+        if (empty($ids)) {
+            throw new ApiError('VALIDATION_FAILED', 'No valid feature ids provided', 400);
+        }
+
+        $reason = $body['reason'] ?? 'Bulk delete via API';
+        $deletedCount = 0;
+        $deletedIds = [];
+
+        foreach ($ids as $fid) {
+            $current = $this->readFeatureSnapshot($fid, $lid);
+            if (!$current) {
+                continue;
+            }
+            $oldSnapshot = $this->buildPreChangeSnapshot($fid, $lid, (int) $current['version']);
+
+            $sql = "UPDATE app.gis_features SET deleted_at = CURRENT_TIMESTAMP, version = version + 1 WHERE id = :fid AND layer_id = :lid AND deleted_at IS NULL";
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':fid' => $fid, ':lid' => $lid]);
+
+            if ($stmt->rowCount() > 0) {
+                $this->audit->writeFromSession(
+                    'DELETE',
+                    'app.gis_features',
+                    $fid,
+                    $oldSnapshot,
+                    null,
+                    $request->getAttribute('request_id'),
+                    $reason
+                );
+                $deletedCount++;
+                $deletedIds[] = $fid;
+            }
+        }
+
+        return Envelope::success($response, [
+            'deleted_count' => $deletedCount,
+            'ids'           => $deletedIds,
+        ]);
     }
 
     /**
@@ -744,5 +1009,45 @@ class GisFeatureController
             }
         }
         return true;
+    }
+
+    // ── TASK-067 helpers ──────────────────────────────────────────────────────
+
+    private function canViewPii(int $userId): bool
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT 1
+            FROM app.permissions p
+            JOIN app.role_permissions rp ON p.id = rp.permission_id
+            JOIN app.user_roles ur ON rp.role_id = ur.role_id
+            WHERE ur.user_id = :uid AND p.code IN ('user.view.pii', 'organization.view.pii', 'title.view_owner', 'party.view')
+            LIMIT 1
+        ");
+        $stmt->execute([':uid' => $userId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    private function getLayerPiiFields(int $layerId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT field_name
+            FROM app.gis_layer_fields
+            WHERE layer_id = :lid AND deleted_at IS NULL AND is_pii = true
+        ");
+        $stmt->execute([':lid' => $layerId]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    }
+
+    private function redactPiiAttributes(array $attributes, array $piiFields): array
+    {
+        if (empty($piiFields)) {
+            return $attributes;
+        }
+        foreach ($piiFields as $field) {
+            if (array_key_exists($field, $attributes) && $attributes[$field] !== null) {
+                $attributes[$field] = '[REDACTED]';
+            }
+        }
+        return $attributes;
     }
 }

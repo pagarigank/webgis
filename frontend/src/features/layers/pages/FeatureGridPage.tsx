@@ -58,8 +58,8 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
         load();
     }, [layerId]);
 
-    // Map extent (from map context, if available)
-    const [mapBbox, setMapBbox] = useState<string | null>(null);
+    // Map extent (from URL or map context)
+    const [mapBbox, setMapBbox] = useState<string | null>(() => search.get('bbox') ?? null);
 
     const handleFeaturesChanged = useCallback(() => refetch(), [refetch]);
 
@@ -88,53 +88,41 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
     const canCreate = hasPermission(me, 'gis.feature.create');
     const canEdit = hasPermission(me, 'gis.feature.update');
     const canDelete = hasPermission(me, 'gis.feature.delete');
-    const canExport = hasPermission(me, 'gis.feature.export') || hasPermission(me, 'document.download');
+    const canExport = hasPermission(me, 'gis.feature.export') || hasPermission(me, 'document.download') || hasPermission(me, 'export.execute');
     const canViewPII = hasPermission(me, 'user.view.pii') || hasPermission(me, 'organization.view.pii');
+    const collection: FeatureCollection | undefined = data;
 
     // TASK-067: export handler
     const handleExport = useCallback(async () => {
-        if (!exportFormat) return;
+        if (!exportFormat || !collection) return;
         setLoadingExport(true);
         try {
             const params = new URLSearchParams();
-            params.set('limit', String(collection.total));
-            params.set('offset', '0');
-            if (exportFormat === 'geojson') {
-                const url = `/api/v1/layers/${layerId}/features.csv${params.toString() ? '?' + params.toString() : ''}`;
-                const res = await fetch(url, { headers: { Accept: 'text/csv' } });
-                if (!res.ok) throw new Error(`Export failed: ${res.status}`);
-                const blob = await res.blob();
-                const url2 = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url2;
-                a.download = `layer_${layerId}_features.csv`;
-                a.click();
-                URL.revokeObjectURL(url2);
-            } else {
-                // GeoJSON
-                const q = new URLSearchParams();
-                q.set('limit', String(collection.total));
-                q.set('offset', '0');
-                if (filterByExtent && mapBbox) {
-                    q.set('bbox', mapBbox);
-                }
-                const url2 = `/api/v1/layers/${layerId}/features.geojson${q.toString() ? '?' + q.toString() : ''}`;
-                const res = await fetch(url2);
-                if (!res.ok) throw new Error(`Export failed: ${res.status}`);
-                const blob = await res.blob();
-                const url3 = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url3;
-                a.download = `layer_${layerId}_features.geojson`;
-                a.click();
-                URL.revokeObjectURL(url3);
+            if (filterByExtent && mapBbox) {
+                params.set('bbox', mapBbox);
             }
+            if (status) {
+                params.set('status', status);
+            }
+            const ext = exportFormat === 'csv' ? 'csv' : 'geojson';
+            const url = `/api/v1/layers/${layerId}/features.${ext}${params.toString() ? '?' + params.toString() : ''}`;
+            const res = await fetch(url, {
+                headers: ext === 'csv' ? { Accept: 'text/csv' } : { Accept: 'application/geo+json' },
+            });
+            if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+            const blob = await res.blob();
+            const downloadUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `layer_${layerId}_features.${ext}`;
+            a.click();
+            URL.revokeObjectURL(downloadUrl);
         } catch (err: any) {
             console.error('Export failed:', err);
         } finally {
             setLoadingExport(false);
         }
-    }, [exportFormat, filterByExtent, mapBbox, layerId, collection]);
+    }, [exportFormat, filterByExtent, mapBbox, status, layerId, collection]);
 
     if (isError) {
         return (
@@ -143,8 +131,6 @@ export function FeatureGridPage({ layerId }: FeatureGridPageProps) {
             </div>
         );
     }
-
-    const collection: FeatureCollection | undefined = data;
 
     if (isLoading || !collection) {
         return <div className="container py-4"><div>Loading features...</div></div>;

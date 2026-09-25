@@ -119,6 +119,14 @@ export const layerApi = {
         return await apiClient.delete(`/layers/${layerId}/features/${featureId}`);
     },
 
+    bulkDelete: async (layerId: number, ids: string[], reason?: string): Promise<{ deleted_count: number; ids: string[] }> => {
+        return await apiClient.post(`/layers/${layerId}/features/bulk-delete`, { ids, reason });
+    },
+
+    bulkUpdate: async (layerId: number, ids: string[], patch: { status?: string; attributes?: Record<string, unknown> }): Promise<{ updated_count: number; ids: string[] }> => {
+        return await apiClient.post(`/layers/${layerId}/features/bulk-update`, { ids, patch });
+    },
+
     getGeoJSON: async (layerId: number, params?: { bbox?: string; status?: string }): Promise<GeoJSON.FeatureCollection> => {
         const qs = new URLSearchParams();
         if (params?.bbox) qs.set('bbox', params.bbox);
