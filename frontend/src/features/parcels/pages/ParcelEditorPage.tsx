@@ -9,7 +9,7 @@ import { TechnicalDescriptionTab } from '../../survey/components/TechnicalDescri
 import { TiePointTab } from '../../survey/components/TiePointTab';
 import { ComputationPanel } from '../../survey/components/ComputationPanel';
 import { ValidationPanel } from '../../survey/components/ValidationPanel';
-import { validationApi } from '../../survey/api/validationApi';
+import { WorkflowActionBar } from '../components/WorkflowActionBar';
 import { ParcelPreviewMap } from '../components/ParcelPreviewMap';
 import { ParcelMeta } from '../components/badges';
 import { Modal } from '../../../components/dialogs/Modal';
@@ -48,8 +48,6 @@ const SAVE_SAVING = 'saving' as const;
 const SAVE_SAVED = 'saved' as const;
 type SaveState = typeof SAVE_IDLE | typeof SAVE_SAVING | typeof SAVE_SAVED;
 
-const SUBMIT_REASON = 'Submitted for review by editor';
-
 export function ParcelEditorPage() {
     const { id = '', tab = 'information' } = useParams();
     const navigate = useNavigate();
@@ -83,37 +81,11 @@ export function ParcelEditorPage() {
     }, [saveState]);
 
     const canEdit = me != null && hasPermission(me, permissions.parcelUpdate);
-    const canSubmit = me != null && hasPermission(me, permissions.parcelSubmit);
 
     const handleSaveFromBar = useCallback(() => {
         const form = document.getElementById('parcel-information-form') as HTMLFormElement | null;
         if (form) form.requestSubmit();
     }, []);
-
-    const handleSubmitParcel = useCallback(async () => {
-        if (!parcel) return;
-        setSaveState(SAVE_SAVING);
-        setConflictMessage(null);
-        try {
-            // Audit G-1: submit through the validated workflow endpoint
-            // (POST /parcels/{id}/submit) so the TASK-098 submission guard runs
-            // and warnings are carried forward — never via PATCH (which no
-            // longer accepts status transitions).
-            await validationApi.submitParcel(id, SUBMIT_REASON);
-            setFormDirty(false);
-            setSaveState(SAVE_SAVED);
-            setSavedAt(nowLabel());
-            await refetch();
-        } catch (err) {
-            setSaveState(SAVE_IDLE);
-            if (axios.isAxiosError(err)) {
-                const data = err.response?.data as { success?: boolean; message?: string; detail?: string; error?: { message?: string } } | undefined;
-                setConflictMessage(data?.error?.message ?? data?.detail ?? data?.message ?? err.message);
-            } else {
-                setConflictMessage('Workflow action failed.');
-            }
-        }
-    }, [id, parcel, refetch, nowLabel]);
 
     return (
         <div className="container-fluid py-4">
@@ -270,15 +242,10 @@ export function ParcelEditorPage() {
                         {saveState === SAVE_IDLE && dirty && <span className="text-warning fw-semibold">Unsaved changes</span>}
                         {saveState === SAVE_IDLE && !dirty && <span className="text-muted">No local changes</span>}
                     </span>
-                    {canSubmit && activeTab === 'information' && !dirty && (
-                        <button
-                            className="btn btn-sm btn-primary"
-                            onClick={() => void handleSubmitParcel()}
-                            data-testid="parcel-submit-action"
-                        >
-                            Submit for review
-                        </button>
-                    )}
+                    {/* TASK-103 — workflow action bar: only server-allowed
+                        transitions render (FR-103); blocked while local edits
+                        are unsaved because every transition moves the version. */}
+                    <WorkflowActionBar parcelId={id} status={parcel.status} disabled={dirty} />
                     {canEdit && activeTab === 'information' && dirty && (
                         <button
                             className="btn btn-sm btn-primary"

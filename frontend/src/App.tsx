@@ -17,6 +17,8 @@ import { ParcelEditorPage } from './features/parcels/pages/ParcelEditorPage';
 import { ParcelCreatePage } from './features/parcels/pages/ParcelCreatePage';
 import { ControlPointListPage } from './features/control-points/pages/ControlPointListPage';
 import { ControlPointEditorPage } from './features/control-points/pages/ControlPointEditorPage';
+import { NotificationBell } from './features/notifications/components/NotificationBell';
+import { ReviewerInboxPage } from './features/parcels/pages/ReviewerInboxPage';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { me: _me } = useAuth();
@@ -47,7 +49,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {hasPermission(_me, 'audit.view') && (
             <Link to="/audit" className={location.pathname === '/audit' ? 'active' : ''}>Audit Logs</Link>
           )}
+          {hasPermission(_me, 'parcel.review') && (
+            <Link to="/parcels/inbox" className={location.pathname === '/parcels/inbox' ? 'active' : ''}>Inbox</Link>
+          )}
           <Link to="/status" className={location.pathname === '/status' ? 'active' : ''}>System Status</Link>
+          {_me != null && <NotificationBell />}
         </nav>
       </header>
       <main className="app-main" style={mainStyle}>
@@ -103,6 +109,14 @@ function App() {
           element={
             <RequirePermission permission="parcel.view">
               <ParcelListPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/parcels/inbox"
+          element={
+            <RequirePermission permission="parcel.review">
+              <ReviewerInboxPage />
             </RequirePermission>
           }
         />
