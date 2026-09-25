@@ -57,6 +57,9 @@ async function loginToken(username: string): Promise<string> {
 }
 
 async function loginAs(page: Page, username: string): Promise<void> {
+    await page.context().clearCookies();
+    await page.goto('/login');
+    await page.evaluate(() => localStorage.clear());
     await page.goto('/login');
     await page.getByLabel('Username').fill(username);
     await page.getByLabel('Password').fill('hash');
@@ -75,7 +78,8 @@ async function createReadyParcel(code: string, token: string): Promise<string> {
         bearing_reference: 'GRID', claimed_area_sqm: 5000, tie_line_bearing: 'DUE NORTH', tie_line_distance: 100,
     }, token)) as any;
 
-    const cpId = psql(`INSERT INTO app.survey_control_points (point_name, status, geom) VALUES ('E2E_CP_${code}', 'VERIFIED', ST_SetSRID(ST_MakePoint(121.0, 14.5), 4326)) RETURNING id;`);
+    const rawCp = psql(`INSERT INTO app.survey_control_points (point_name, status, geom) VALUES ('E2E_CP_${code}', 'VERIFIED', ST_SetSRID(ST_MakePoint(121.0, 14.5), 4326)) RETURNING id;`);
+    const cpId = Number(rawCp.split('\n')[0].trim());
     psql(`INSERT INTO app.tie_points (technical_description_id, control_point_id, sequence, role) VALUES (${td.id}, ${cpId}, 1, 'TIE');`);
 
     const courses = [
@@ -92,15 +96,25 @@ async function createReadyParcel(code: string, token: string): Promise<string> {
     return pid;
 }
 
+function cleanupWf(): void {
+    const ids = psql(`SELECT string_agg(quote_literal(id::text), ', ') FROM app.parcels WHERE parcel_code IN ('${PARCEL_A}', '${PARCEL_B}');`);
+    if (ids) {
+        psql(`UPDATE app.parcels SET current_computation_id = NULL WHERE id IN (${ids}); DELETE FROM app.notifications WHERE entity_type = 'PARCEL' AND entity_id IN (${ids}); DELETE FROM app.approval_actions WHERE instance_id IN (SELECT id FROM app.workflow_instances WHERE entity_type = 'PARCEL' AND entity_id IN (${ids})); DELETE FROM app.workflow_instances WHERE entity_type = 'PARCEL' AND entity_id IN (${ids}); DELETE FROM app.parcel_vertices WHERE computation_id IN (SELECT id FROM app.parcel_computations WHERE parcel_id IN (${ids})); DELETE FROM app.parcel_computations WHERE parcel_id IN (${ids}); DELETE FROM app.tie_points WHERE technical_description_id IN (SELECT id FROM app.technical_descriptions WHERE parcel_id IN (${ids})); DELETE FROM app.technical_descriptions WHERE parcel_id IN (${ids}); DELETE FROM audit.parcel_versions WHERE parcel_id IN (${ids}); DELETE FROM app.parcels WHERE id IN (${ids});`);
+    }
+    psql(`DELETE FROM app.survey_control_points WHERE point_name LIKE 'E2E_CP_E2E_WF_%';`);
+    psql(`DELETE FROM app.users WHERE username IN ('${ENCODER}', '${REVIEWER}');`);
+    psql(`DELETE FROM app.roles WHERE code IN ('${ROLE_ENC}', '${ROLE_REV}');`);
+}
+
 test.beforeAll(async () => {
+    cleanupWf();
     // Roles + users (permission rows exist from migration 0015's catalogue).
     psql(`INSERT INTO app.roles (code, name, is_system) VALUES ('${ROLE_ENC}', 'E2E Encoder', false), ('${ROLE_REV}', 'E2E Reviewer', false) ON CONFLICT (code) DO NOTHING;`);
-    psql(`INSERT INTO app.role_permissions (role_id, permission_id) SELECT r.id, p.id FROM app.roles r JOIN app.permissions p ON p.code IN ('parcel.view','parcel.create','parcel.update','parcel.submit') WHERE r.code = '${ROLE_ENC}' ON CONFLICT DO NOTHING;`);
+    psql(`INSERT INTO app.role_permissions (role_id, permission_id) SELECT r.id, p.id FROM app.roles r JOIN app.permissions p ON p.code IN ('parcel.view','parcel.create','parcel.update','parcel.submit','survey.view','survey.create','survey.update') WHERE r.code = '${ROLE_ENC}' ON CONFLICT DO NOTHING;`);
     psql(`INSERT INTO app.role_permissions (role_id, permission_id) SELECT r.id, p.id FROM app.roles r JOIN app.permissions p ON p.code IN ('parcel.view','parcel.review','parcel.verify','parcel.approve','parcel.publish') WHERE r.code = '${ROLE_REV}' ON CONFLICT DO NOTHING;`);
-    psql(`DELETE FROM app.users WHERE username IN ('${ENCODER}', '${REVIEWER}');`);
     psql(`INSERT INTO app.users (username, email, password_hash, full_name, org_id, status, version, must_change_password) VALUES ('${ENCODER}', '${ENCODER}@sample.local', '${HASH}', 'E2E Encoder', 999, 'ACTIVE', 1, false), ('${REVIEWER}', '${REVIEWER}@sample.local', '${HASH}', 'E2E Reviewer', 999, 'ACTIVE', 1, false);`);
     psql(`INSERT INTO app.user_roles (user_id, role_id) SELECT u.id, r.id FROM app.users u, app.roles r WHERE (u.username = '${ENCODER}' AND r.code = '${ROLE_ENC}') OR (u.username = '${REVIEWER}' AND r.code = '${ROLE_REV}') ON CONFLICT DO NOTHING;`);
-    encoderId = Number(psql(`SELECT id FROM app.users WHERE username = '${ENCODER}';`));
+    encoderId = Number(psql(`SELECT id FROM app.users WHERE username = '${ENCODER}';`).split('\n')[0].trim());
 
     tokenEnc = await loginToken(ENCODER);
     tokenRev = await loginToken(REVIEWER);
@@ -110,13 +124,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-    const ids = psql(`SELECT string_agg(quote_literal(id::text), ', ') FROM app.parcels WHERE parcel_code IN ('${PARCEL_A}', '${PARCEL_B}');`);
-    if (ids) {
-        psql(`DELETE FROM app.notifications WHERE entity_type = 'PARCEL' AND entity_id IN (${ids}); DELETE FROM app.approval_actions WHERE instance_id IN (SELECT id FROM app.workflow_instances WHERE entity_type = 'PARCEL' AND entity_id IN (${ids})); DELETE FROM app.workflow_instances WHERE entity_type = 'PARCEL' AND entity_id IN (${ids}); DELETE FROM app.parcels WHERE id IN (${ids});`);
-    }
-    psql(`DELETE FROM app.survey_control_points WHERE point_name LIKE 'E2E_CP_E2E_WF_%';`);
-    psql(`DELETE FROM app.users WHERE username IN ('${ENCODER}', '${REVIEWER}');`);
-    psql(`DELETE FROM app.roles WHERE code IN ('${ROLE_ENC}', '${ROLE_REV}');`);
+    cleanupWf();
 });
 
 test.describe('TASK-103 two-role approval flow', () => {
@@ -178,9 +186,10 @@ test.describe('TASK-103 two-role approval flow', () => {
     });
 
     test('RETURN demands a reason before sending; creator gets bell notifications', async ({ page }) => {
+        await api('POST', `/parcels/${parcelB}/transitions`, { action: 'SUBMIT' }, tokenEnc);
         await loginAs(page, REVIEWER);
         await page.goto(`/parcels/${parcelB}`);
-        await expect(page.getByTestId('parcel-status-text')).toHaveText('DRAFT', { timeout: 15_000 });
+        await expect(page.getByTestId('parcel-status-text')).toHaveText('SUBMITTED', { timeout: 15_000 });
 
         // Advance to UNDER_REVIEW so RETURN is legal.
         const bar = page.getByTestId('workflow-action-bar');

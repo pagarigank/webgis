@@ -5,6 +5,9 @@ import axios from 'axios';
 import { parcelApi } from '../api/parcelApi';
 import { InformationTab } from '../components/InformationTab';
 import { SurveyPlanTab } from '../components/SurveyPlanTab';
+import { SplitTab } from '../components/SplitTab';
+import { ConsolidationTab } from '../components/ConsolidationTab';
+import { LineageTab } from '../components/LineageTab';
 import { TechnicalDescriptionTab } from '../../survey/components/TechnicalDescriptionTab';
 import { TiePointTab } from '../../survey/components/TiePointTab';
 import { ComputationPanel } from '../../survey/components/ComputationPanel';
@@ -37,6 +40,9 @@ export const PARCEL_TABS = [
     { key: 'techdesc', label: 'Technical description' },
     { key: 'computation', label: 'Computation' },
     { key: 'validation', label: 'Validation' },
+    { key: 'split', label: 'Split' },
+    { key: 'consolidate', label: 'Consolidate' },
+    { key: 'lineage', label: 'Lineage' },
     { key: 'documents', label: 'Documents' },
     { key: 'history', label: 'History' },
 ] as const;
@@ -200,6 +206,9 @@ export function ParcelEditorPage() {
                                     }}
                                 />
                             )}
+                            {activeTab === 'split' && <SplitTab parcel={parcel} />}
+                            {activeTab === 'consolidate' && <ConsolidationTab initialParcelId={id} />}
+                            {activeTab === 'lineage' && <LineageTab parcelId={id} parcelCode={parcel.parcel_code} />}
                             {activeTab === 'history' && <HistoryTab id={id} />}
                             {(activeTab === 'title' || activeTab === 'documents') && (
                                 <ComingSoon tabLabel={PARCEL_TABS.find((t) => t.key === activeTab)!.label} />
