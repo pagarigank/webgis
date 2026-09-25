@@ -2,9 +2,9 @@
 
 **Active implementation queue.** `todo.md` holds the full roadmap; this file holds what is being worked on now, in order, with live status.
 
-**Current phase:** PHASE 15 — Split, consolidation, lineage (backend shipped; UI pending)
-**Implementation status:** IN PROGRESS — Phases 1 through 14 (001–108) + TASK-103 (workflow UI, reviewer inbox, notifications — Docker-verified) + Phase 15 backend TASK-111/112/113/114/115/119/120 (split, consolidation, lineage, historical filters, TD-derived split) shipped and verified on the Docker stack; full suite 471 backend tests / 2086 assertions green, 65 frontend Vitest green, tsc/vite clean. Remaining: TASK-116/117/118 (split/consolidation/lineage UI), TASK-104a (version-compare/history UI pass), then Phase 16 (import/export).
-**Last updated:** 2026-09-25 (Phase 15 backend + TASK-103 verified on Docker — 471 tests green; fixed parcel_operations.idempotency_key, VR-45 cycle-guard trigger applied, consolidation union/code-order bugs, split-line BOX regex, rate-limit bucket isolation in tests)
+**Current phase:** PHASE 15 — Split, consolidation, lineage (complete)
+**Implementation status:** IN PROGRESS — Phases 1 through 15 (001–120) shipped and verified on the Docker stack; full backend suite 471 tests / 2086 assertions green, frontend 89 Vitest tests green, tsc and production vite build clean. Remaining: TASK-104a (version-compare/history UI pass), then Phase 16 (import/export).
+**Last updated:** 2026-09-25 (Phase 15 backend + frontend UI + TASK-103 verified on Docker — 471 backend tests green, 89 frontend tests green; fixed oxlint AttributeTable/FeatureGridPage errors)
 
 ---
 
@@ -85,8 +85,8 @@
 | 63 | TASK-063 | Spatial query API and search panel | 054 | DONE | SpatialQuery & SpatialQueryController backend (7 ops), SearchPanel UI |
 | 64 | TASK-064 | Attribute grid (server-driven) | 054, 048 | DONE | TanStack Table v9 FeatureGridPage with server pagination, sort, URL filters |
 | 65 | TASK-065 | Two-way map/table selection | 064, 049 | DONE | FeatureSelectionManager and FeatureSelectionContext bridging map & table selection |
-| 66 | TASK-066 | Row create, edit, delete from the grid | 064, 057 | DONE | FeatureEditor modal with FieldRenderer, permissions gating, bulk delete |
-| 67 | TASK-067 | Grid export and filter-by-extent | 064 | DONE | CSV & GeoJSON export with bbox extent filtering and permission gating |
+| 66 | TASK-066 | Row create, edit, delete from the grid | 064, 057 | DONE | FeatureEditor modal with FieldRenderer, permissions gating, transactional bulk delete and bulk update |
+| 67 | TASK-067 | Grid export and filter-by-extent | 064 | DONE | CSV & GeoJSON export with bbox extent filtering, PII redaction, and audit logging |
 | 68 | TASK-068 | Parcel CRUD API | 032, 019 | DONE | ParcelController CRUD with PSGC, provenance, If-Match, soft-delete with audit |
 | 69 | TASK-069 | Parcel versioning | 068, 025 | DONE | Monotonic parcel versions, GET versions/detail, POST restore, pre-change diffs |
 | 70 | TASK-070 | Parcel list, search, and map integration | 068, 054 | DONE | Multi-field search, status/psgc filters, map preview envelope, include_historical gate |
@@ -124,6 +124,7 @@
 | 103 | TASK-103 | Workflow UI, reviewer inbox, notifications | 101, 071 | DONE | WorkflowActionBar (allowed transitions only, FR-103 reason/comment gates), GET /notifications + mark-read, NotificationBell, /parcels/inbox; backend suite Docker-verified (471 green) |
 | 104 | TASK-104 | Merged history timeline API | 069, 100 | DONE | GET /parcels/{id}/timeline + JSON bundle export (versions + audit + approvals) |
 | 105 | TASK-105 | Version compare + geometry diff | 104 | DONE | VersionDiffService (vertex pairing: moved/added/removed) + GET /parcels/{id}/versions/{v}/compare |
+| 105a | TASK-104a | Version compare + history timeline UI | 104, 105 | TODO | Field & geometry diff on map preview, merged timeline stream with export |
 | 106 | TASK-106 | Version restore | 105 | DONE | Additive restore, If-Match, monotonic versions, geometry round-trip verified |
 | 107 | TASK-107 | Document upload + validation | 020 | DONE | Magic-byte/MIME/size guards, SHA-256 de-dup, randomised storage keys; migration 20260924000001 |
 | 108 | TASK-108 | Signed document downloads | 107 | DONE | HMAC single-use tokens, classification enforcement, restricted downloads audited |
@@ -132,9 +133,9 @@
 | 113 | TASK-113 | Consolidation validation rules (VR-40…VR-44) | 111 | DONE | ConsolidationValidator: probe/measureOverlaps, SRID-gated geography cast, VR-44 before spatial rules |
 | 114 | TASK-114 | Consolidation service (dry run + commit) | 113 | DONE | Input-order parents, CTE-based union insert, dry-run Polygon payload, failAfterNewParcel seam |
 | 115 | TASK-115 | Lineage API | 112, 114 | DONE | Generation-depth BFS (siblings at depth 1), truncation flags, VR-45 cycle-guard trigger in migration 20260925000001 |
-| 116 | TASK-116 | Split UI | 112, 071 | TODO | |
-| 117 | TASK-117 | Consolidation UI | 114, 116 | TODO | |
-| 118 | TASK-118 | Lineage view | 115 | TODO | |
+| 116 | TASK-116 | Split UI | 112, 071 | DONE | SplitTab.tsx, SplitLineMap.tsx, ValidationBlock.tsx, SplitTab.test.ts (12 tests pass), commit gate, dry-run preview |
+| 117 | TASK-117 | Consolidation UI | 114, 116 | DONE | ConsolidationTab.tsx, ConsolidationMap.tsx, ConsolidationTab.test.ts (7 tests pass), offending-parent map highlighting, union preview |
+| 118 | TASK-118 | Lineage view | 115 | DONE | LineageTab.tsx, LineageTab.test.ts (5 tests pass), genealogy graph layout, truncation notice, JSON export |
 | 119 | TASK-119 | Historical record handling | 115 | DONE | Parcel list excludes SUPERSEDED/ARCHIVED by default; Api/HistoricalFilterTest |
 | 120 | TASK-120 | Split/consolidation from survey data | 112, 090 | DONE | TD-derived children carry COMPUTED_FROM_TECHNICAL_DESCRIPTION + own closure; uncomputed TD rejected 400 |
 
@@ -189,6 +190,10 @@ Contradictions found between the v0.1 documents and the revised master prompt, a
 ## Accomplishment log
 
 Maintained in `accomplish.md` once implementation begins. Each completed task records: what shipped, decisions made, approaches that failed and why, and follow-up items. `next_task.md` always names the single next task and its entry criteria.
+
+**2026-09-25 — Phases 5-15 audit (not a queue task; cross-cutting).** Reviewed TASK-049..TASK-120 for CRUD completeness, transaction integrity, tools/services, and UI ease of use against `architecture.md` / `specification.md` / `api.md` / `frontend.md`. Fixed 2 CRITICAL defects (`SurveyPlanController` nested `beginTransaction()` and a non-existent `writeFromSession()` signature, each a live HTTP 500 on all three write endpoints, both previously untested), 4 HIGH authz gate drifts, and 6 frontend deviations including the missing §19 left icon rail. Added `tests/Api/SurveyPlanApiTest.php` (4 tests) to close the coverage gap that hid the two criticals. Full detail and the 8 recorded open gaps in `todo.md` → "AUDIT — Phases 5-15".
+
+**Standing lesson from this audit:** an endpoint can be fully implemented and still 500 on every call if it opens its own transaction or calls a method with the wrong parameters, and a green suite will not reveal it if no test drives the route over HTTP. Any new write endpoint should ship with at least one HTTP-level test, and controllers must use `DbTransaction` rather than raw `beginTransaction()`.
 
 ---
 

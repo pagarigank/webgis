@@ -4,7 +4,7 @@ Do: `ogr2ogr` subprocess wrapper with timeouts, sandboxed temp dirs, and format 
 AC: a malformed archive fails cleanly with a useful message; no shell injection is possible.
 Test: Unit/OgrAdapterTest, Integration/OgrFormatTest.
 
-Entry criteria: Phase 15 backend (TASK-111/112/113/114/115/119/120) verified on the Docker stack — full suite 471 backend tests / 2086 assertions green; frontend 65 Vitest + tsc + vite clean. Committed 2026-09-25 together with TASK-103 verification (workflow UI / reviewer inbox / notifications).
+Entry criteria: Phase 15 complete (backend + frontend UI: TASK-111..120) verified on the Docker stack — full suite 471 backend tests / 2086 assertions green; frontend 89 Vitest + tsc + vite clean.
 
 First steps for TASK-121:
 1. Check whether GDAL `ogr2ogr`/`ogrinfo` exists inside the php-fpm image (`docker compose exec php-fpm sh -c "command -v ogr2ogr"`). If absent, decide: add to the Dockerfile vs pure-PHP probing with graceful degradation (the task's AC only requires clean failure + no shell injection, so a pure-PHP probe with an ogr2ogr fast-path is acceptable if GDAL is not installable).
@@ -12,4 +12,4 @@ First steps for TASK-121:
 3. Format detection: magic bytes/extension probe first (GeoJSON/CSV/ZIP shapefile/GPKG/KML), OGR probe second; malformed archives must fail with a useful message, never a PHP warning/500.
 4. Tests: `Unit/OgrAdapterTest` (command construction, injection attempts, timeout, temp-dir cleanup — mockable executor so GDAL is not needed for unit tests), `Integration/OgrFormatTest` (real fixtures if GDAL is present in the image; skip gracefully with a marked-skipped note when it is not).
 
-Previous task (done 2026-09-25): TASK-103 + Phase 15 backend — see accomplish.md. TASK-104a (version-compare/history UI pass) and TASK-116/117/118 (split/consolidation/lineage UI) remain queued behind Phase 16 unless the sponsor reorders.
+Previous task (done 2026-09-25): TASK-103 + Phase 15 (backend & UI) — see accomplish.md. TASK-104a (version-compare/history UI pass) remains queued alongside Phase 16.
