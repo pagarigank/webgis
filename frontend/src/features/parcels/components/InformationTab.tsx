@@ -1,7 +1,16 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import type { Parcel } from '../types';
-import { PROVENANCE_HELP, PROVENANCE_VALUES, SURVEY_DERIVED_PROVENANCE } from './badges';
+import {
+    AREA_UNITS,
+    PROVENANCE_HELP,
+    PROVENANCE_LABELS,
+    PROVENANCE_VALUES,
+    PSGC_DIGIT_HINT,
+    PSGC_FIELDS,
+    SURVEY_DERIVED_PROVENANCE,
+} from './badges';
+import { ParcelField } from './ParcelField';
 
 /**
  * Information tab (frontend.md §7): lot/block, PSGC codes, tax declaration,
@@ -12,6 +21,11 @@ import { PROVENANCE_HELP, PROVENANCE_VALUES, SURVEY_DERIVED_PROVENANCE } from '.
  * TASK-072 (FR-199): survey-derived provenance options are disabled while the
  * parcel has no survey data (survey_plan_id); choosing one requires a typed
  * justification, which is sent as `change_reason` on save.
+ *
+ * Field order matches `ParcelCreatePage` exactly (see `PSGC_FIELDS`). The two
+ * forms cover the same attributes and previously disagreed on order and column
+ * widths, so an operator's muscle memory did not carry from creating a parcel
+ * to editing one.
  */
 export interface InformationFormValues {
     lot_number: string;
@@ -65,6 +79,7 @@ export function InformationTab(props: {
         () =>
             PROVENANCE_VALUES.map((v) => ({
                 value: v,
+                label: PROVENANCE_LABELS[v] ?? v,
                 disabled: SURVEY_DERIVED_PROVENANCE.has(v) && !canSurveyDerived,
             })),
         [canSurveyDerived],
@@ -90,123 +105,210 @@ export function InformationTab(props: {
         disabled: !editing,
     });
 
+    const unitLabel = AREA_UNITS.find((u) => u.value === watch('source_area_unit'))?.label ?? 'm²';
+
     return (
         <form id="parcel-information-form" onSubmit={handleSubmit(onSave)} noValidate>
             <div className="row g-3">
-                <div className="col-md-4">
-                    <label className="form-label small text-muted mb-1">Lot number</label>
-                    <Controller {...field('lot_number')} render={({ field: f }) => (
-                        <input {...f} className="form-control" data-testid="parcel-editor-lot" />
-                    )} />
-                </div>
-                <div className="col-md-4">
-                    <label className="form-label small text-muted mb-1">Block number</label>
-                    <Controller {...field('block_number')} render={({ field: f }) => (
-                        <input {...f} className="form-control" data-testid="parcel-editor-block" />
-                    )} />
-                </div>
-                <div className="col-md-4">
-                    <label className="form-label small text-muted mb-1">Tax declaration no.</label>
-                    <Controller {...field('tax_declaration_no')} render={({ field: f }) => (
-                        <input {...f} className="form-control" data-testid="parcel-editor-td" />
-                    )} />
-                </div>
+                <ParcelField id="parcel-lot" label="Lot number" className="col-md-4">
+                    <Controller
+                        {...field('lot_number')}
+                        render={({ field: f }) => (
+                            <input id="parcel-lot" {...f} className="form-control" data-testid="parcel-editor-lot" />
+                        )}
+                    />
+                </ParcelField>
 
-                <div className="col-md-4">
-                    <label className="form-label small text-muted mb-1">Title reference</label>
-                    <Controller {...field('title_number_ref')} render={({ field: f }) => (
-                        <input {...f} className="form-control" data-testid="parcel-editor-title" />
-                    )} />
-                </div>
-                <div className="col-md-4">
-                    <label className="form-label small text-muted mb-1">Source area (m²)</label>
-                    <Controller {...field('source_area_sqm')} render={({ field: f }) => (
-                        <input {...f} type="number" step="0.0001" min="0" className="form-control" data-testid="parcel-editor-area" />
-                    )} />
-                </div>
-                <div className="col-md-4">
-                    <label className="form-label small text-muted mb-1">Area unit</label>
-                    <Controller {...field('source_area_unit')} render={({ field: f }) => (
-                        <select {...f} className="form-select" data-testid="parcel-editor-area-unit">
-                            <option value="sqm">sqm</option>
-                            <option value="ha">ha</option>
-                        </select>
-                    )} />
-                </div>
+                <ParcelField id="parcel-block" label="Block number" className="col-md-4">
+                    <Controller
+                        {...field('block_number')}
+                        render={({ field: f }) => (
+                            <input id="parcel-block" {...f} className="form-control" data-testid="parcel-editor-block" />
+                        )}
+                    />
+                </ParcelField>
 
-                <div className="col-12">
-                    <label className="form-label small text-muted mb-1">
-                        PSGC — barangay <span className="badge bg-light text-dark border">10–12 digits</span>
-                    </label>
-                    <Controller {...field('psgc_barangay')} render={({ field: f }) => (
-                        <input {...f} className="form-control font-monospace" placeholder="e.g. 133901001" data-testid="parcel-editor-psgc-barangay" />
-                    )} />
-                </div>
-                <div className="col-md-6">
-                    <label className="form-label small text-muted mb-1">PSGC — municipality / city</label>
-                    <Controller {...field('psgc_municipality')} render={({ field: f }) => (
-                        <input {...f} className="form-control font-monospace" data-testid="parcel-editor-psgc-muni" />
-                    )} />
-                </div>
-                <div className="col-md-6">
-                    <label className="form-label small text-muted mb-1">PSGC — province</label>
-                    <Controller {...field('psgc_province')} render={({ field: f }) => (
-                        <input {...f} className="form-control font-monospace" data-testid="parcel-editor-psgc-prov" />
-                    )} />
-                </div>
+                <ParcelField id="parcel-title" label="Title reference" className="col-md-4">
+                    <Controller
+                        {...field('title_number_ref')}
+                        render={({ field: f }) => (
+                            <input id="parcel-title" {...f} className="form-control" data-testid="parcel-editor-title" />
+                        )}
+                    />
+                </ParcelField>
 
-                <div className="col-12">
-                    <label className="form-label small text-muted mb-1">Location description</label>
-                    <Controller {...field('location_description')} render={({ field: f }) => (
-                        <textarea {...f} rows={2} className="form-control" data-testid="parcel-editor-location" />
-                    )} />
-                </div>
+                <ParcelField id="parcel-td" label="Tax declaration no." className="col-md-4">
+                    <Controller
+                        {...field('tax_declaration_no')}
+                        render={({ field: f }) => (
+                            <input id="parcel-td" {...f} className="form-control" data-testid="parcel-editor-td" />
+                        )}
+                    />
+                </ParcelField>
 
-                <div className="col-12">
-                    <label className="form-label small text-muted mb-1">Provenance (geometry source)</label>
-                    <Controller {...field('provenance')} render={({ field: f }) => (
-                        <select {...f} className="form-select" data-testid="parcel-editor-provenance">
-                            {provenanceOptions.map((o) => (
-                                <option key={o.value} value={o.value} disabled={o.disabled}>{o.value}</option>
-                            ))}
-                        </select>
-                    )} />
-                    <div className="form-text" data-testid="parcel-editor-provenance-help">
+                {/* The stored number is whatever unit is selected next to it — the
+                    backend keeps `source_area_sqm` and `source_area_unit` as
+                    separate columns and performs no conversion. The old label
+                    hard-coded "m²", so choosing hectares produced a field that
+                    said one thing and meant another. The unit now names itself. */}
+                <ParcelField
+                    id="parcel-area"
+                    label="Source area"
+                    hint={`Entered in ${unitLabel}.`}
+                    className="col-md-4"
+                >
+                    <Controller
+                        {...field('source_area_sqm')}
+                        render={({ field: f }) => (
+                            <input
+                                id="parcel-area"
+                                {...f}
+                                type="number"
+                                step="0.0001"
+                                min="0"
+                                className="form-control"
+                                data-testid="parcel-editor-area"
+                                aria-describedby="parcel-area-hint"
+                            />
+                        )}
+                    />
+                </ParcelField>
+
+                <ParcelField id="parcel-area-unit" label="Unit" className="col-md-4">
+                    <Controller
+                        {...field('source_area_unit')}
+                        render={({ field: f }) => (
+                            <select id="parcel-area-unit" {...f} className="form-select" data-testid="parcel-editor-area-unit">
+                                {AREA_UNITS.map((u) => (
+                                    <option key={u.value} value={u.value}>
+                                        {u.label}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                    />
+                </ParcelField>
+
+                {PSGC_FIELDS.map((p) => (
+                    <ParcelField
+                        key={p.name}
+                        id={`parcel-${p.name}`}
+                        label={
+                            <>
+                                PSGC — {p.label}{' '}
+                                <span className="badge bg-light text-dark border">{PSGC_DIGIT_HINT}</span>
+                            </>
+                        }
+                        className="col-md-4"
+                    >
+                        <Controller
+                            {...field(p.name)}
+                            render={({ field: f }) => (
+                                <input
+                                    id={`parcel-${p.name}`}
+                                    {...f}
+                                    className="form-control font-monospace"
+                                    placeholder={p.placeholder}
+                                    inputMode="numeric"
+                                    data-testid={p.testId.replace('parcel-create-', 'parcel-editor-')}
+                                />
+                            )}
+                        />
+                    </ParcelField>
+                ))}
+
+                <ParcelField id="parcel-location" label="Location description" className="col-12">
+                    <Controller
+                        {...field('location_description')}
+                        render={({ field: f }) => (
+                            <textarea id="parcel-location" {...f} rows={2} className="form-control" data-testid="parcel-editor-location" />
+                        )}
+                    />
+                </ParcelField>
+
+                <ParcelField
+                    id="parcel-provenance"
+                    label="Provenance (geometry source)"
+                    className="col-12"
+                >
+                    <Controller
+                        {...field('provenance')}
+                        render={({ field: f }) => (
+                            <select
+                                id="parcel-provenance"
+                                {...f}
+                                className="form-select"
+                                data-testid="parcel-editor-provenance"
+                                aria-describedby="parcel-provenance-help"
+                            >
+                                {provenanceOptions.map((o) => (
+                                    <option key={o.value} value={o.value} disabled={o.disabled}>
+                                        {o.label}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                    />
+                    <div className="form-text" id="parcel-provenance-help" data-testid="parcel-editor-provenance-help">
                         {PROVENANCE_HELP[provenance] ?? 'Select a provenance value.'}
                     </div>
+                    {/* Only explain the lockout while the lockout is in effect. Once a
+                        survey plan is attached the note is stale noise sitting under
+                        a field the operator is actively using. */}
+                    {!canSurveyDerived && (
+                        <div className="alert alert-warning py-2 px-3 small mt-2 mb-0" data-testid="parcel-editor-survey-notice">
+                            Survey-derived options are unavailable until a survey plan is attached to this parcel.
+                        </div>
+                    )}
                     {canSurveyDerived && surveyDerived && (
                         <div className="alert alert-warning py-2 px-3 small mt-2 mb-0">
                             Survey-derived provenance — record a justification for the change.
                         </div>
                     )}
-                    {!canSurveyDerived && (
-                        <div className="alert alert-warning py-2 px-3 small mt-2 mb-0" data-testid="parcel-editor-survey-notice">
-                            Survey-derived provenance options are disabled until survey data (survey plan) is
-                            attached to this parcel.
-                        </div>
-                    )}
-                </div>
+                </ParcelField>
 
                 {surveyDerived && (
-                    <div className="col-12">
-                        <label className="form-label small text-muted mb-1">Justification</label>
-                        <Controller {...field('justification')} render={({ field: f }) => (
-                            <textarea {...f} rows={2} className="form-control" placeholder="Why is this provenance survey-derived?" />
-                        )} />
-                        {justification.trim() === '' && (
-                            <div className="form-text text-danger" data-testid="parcel-editor-justification-required">
-                                Required when provenance is survey-derived.
-                            </div>
-                        )}
-                    </div>
+                    <ParcelField id="parcel-justification" label="Justification" className="col-12">
+                        <Controller
+                            {...field('justification')}
+                            render={({ field: f }) => {
+                                const missing = justification.trim() === '';
+                                return (
+                                    <>
+                                        <textarea
+                                            id="parcel-justification"
+                                            {...f}
+                                            rows={2}
+                                            className={`form-control ${missing ? 'is-invalid' : ''}`}
+                                            placeholder="Why is this provenance survey-derived?"
+                                            aria-invalid={missing || undefined}
+                                            aria-describedby={missing ? 'parcel-justification-required' : undefined}
+                                        />
+                                        {missing && (
+                                            <div
+                                                className="invalid-feedback d-block"
+                                                id="parcel-justification-required"
+                                                role="alert"
+                                                data-testid="parcel-editor-justification-required"
+                                            >
+                                                Required when provenance is survey-derived.
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            }}
+                        />
+                    </ParcelField>
                 )}
 
-                <div className="col-12">
-                    <label className="form-label small text-muted mb-1">Remarks</label>
-                    <Controller {...field('remarks')} render={({ field: f }) => (
-                        <textarea {...f} rows={3} className="form-control" data-testid="parcel-editor-remarks" />
-                    )} />
-                </div>
+                <ParcelField id="parcel-remarks" label="Remarks" className="col-12">
+                    <Controller
+                        {...field('remarks')}
+                        render={({ field: f }) => (
+                            <textarea id="parcel-remarks" {...f} rows={3} className="form-control" data-testid="parcel-editor-remarks" />
+                        )}
+                    />
+                </ParcelField>
             </div>
         </form>
     );

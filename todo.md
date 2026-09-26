@@ -1278,9 +1278,12 @@ The deferred browser pass. Findings are in `accomplish.md` -> "AUDIT 2"; the ite
 | U-5 | Remaining unimplemented `frontend.md` sec. 3 routes | mapped to TODO phase-tasks |
 | U-6 | Clickable "coming soon" parcel tabs | should be non-interactive until implemented |
 | U-7 | Pre-existing lint warnings | unchanged by this pass |
-| U-8 | Control-point label associations | labels not tied to the descriptions that use them |
+| U-8 | Control-point label associations | labels not tied to the descriptions that use them — the parcel forms were fixed in the 2026-09-26 UI pass (`ParcelField`); control-point and survey-plan forms are the same defect, still open |
 | U-9 | Seeded `XYZ` basemap provider emits an unsupported-licence warning | fixture should use a supported provider |
 | U-10 | PHPStan 502-error baseline | 23 test files share one `ContainerInterface|null` pattern; `src` 157. Pre-existing, not introduced here |
+| U-11 | Create-page map/form split | long attribute form beside a 440 px map; form is mostly below the fold. Worth revisiting only alongside the control-point/survey-plan form pass, not on its own |
+| U-12 | No PSGC reference lookup endpoint | PSGC codes are free text; a province → municipality → barangay picker needs a new endpoint in `backend/config/routes.php`. `ref.psgc_areas` has the hierarchy to back it |
+| U-13 | Survey-plan picker on the parcel create form | field is a raw numeric ID with no way to discover the plans that exist |
 
 ## Known non-defects
 
@@ -1292,3 +1295,5 @@ The deferred browser pass. Findings are in `accomplish.md` -> "AUDIT 2"; the ite
 1. Rollback-test any future migration whose `down()` differs from its `up()` - applying it proves only half of the behaviour. `20260925000002` is the first one where that mattered.
 2. Do not defer the browser pass again. `apiClient` hard-reload 401 -> silent refresh -> retry is expected traffic by design; a QA harness must classify it as recovered rather than as a console failure, and the auth bucket cleanup must clear `auth_refresh` too or the harness manufactures the throttle it is testing.
 3. Consider asserting the `auth` / `auth_refresh` split in the client, not only in `RateLimitTest`, so a future bucket rename cannot silently re-merge them.
+4. A placeholder and the validation rule it illustrates are the same fact stated twice. Type the example into the field as part of any UI change that touches a hint, badge, or placeholder next to a validator — the 2026-09-26 pass shipped a "10–12 digits" badge over a `9–12` rule, then a fix that introduced 4- and 6-digit placeholders under that same `9–12` rule, and no test caught either.
+5. When a form renders the same attributes as another form, generate both from one descriptor (as `PSGC_FIELDS` now does) rather than hand-maintaining labels, order, and test ids twice.

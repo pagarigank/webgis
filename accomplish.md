@@ -469,3 +469,54 @@ The `auth` class was a single 10-per-60s budget covering `login`, `mfa/verify` a
 Layer-style delete; ungated `POST /documents` + link endpoint; `parcel.view` gate on the mutating validate endpoint; `survey.view` gate on the writing CRS transform; remaining unimplemented sec. 3 routes; clickable "coming soon" parcel tabs; pre-existing lint warnings; control-point label associations; unsupported seeded `XYZ` basemap provider warning.
 
 **Standing lesson:** the rate limiter, the authorization functions and the form validators were each individually plausible, each fully unit-covered, and all three wrong in a way only a real browser against a real database revealed. Two are security-relevant. And a migration whose `down()` does not match its `up()` has to be rollback-tested against the suite - applying it proves only half of it.
+
+---
+
+# AUDIT 3 - Parcel data-entry UI (2026-09-26)
+
+Audit of the two parcel attribute forms (`ParcelCreatePage`, editor `InformationTab`) against the house pattern established by `LayerMetadataForm` and `BasemapForm`, then the defects that warranted a fix. Scope was deliberately limited to what an operator typing into these forms can observe.
+
+## 1. Labels were associated with nothing
+
+Every control on both forms was a bare `<input>` next to a `<label>` with no `for`, and no input carried an `id`. Placeholders were doing the work of labels, so a screen reader announced an unlabelled edit box and clicking the text focused nothing. This is codebase-wide (`LayerMetadataForm` and `BasemapForm` have the same gap); the parcel forms were fixed because they are the primary data-entry surface.
+
+- New `frontend/src/features/parcels/components/ParcelField.tsx` renders the label, the `*` required marker, an optional hint, and an `invalid-feedback` block, and owns the ids (`${id}-hint`, `${id}-error`) so the control can point at them.
+- Verified in the browser, not by inspection: **14/14 controls on create and 12/12 on the editor tab have a matching `label[for]`**, 0 unlabelled.
+
+## 2. Validation was reported in one place instead of on the field
+
+`submit` ran every check and set a single banner above the Save button, so an operator who entered one bad PSGC code got one message that named no field. There were also no required markers, so nothing distinguished mandatory input from optional.
+
+- `validateCreate()` returns a `Partial<Record<keyof CreateFormValues, string>>`; messages are revealed on the first submit attempt (`attempted`) and then derived from live values, so they clear as the operator types without any manual `setError` bookkeeping. The form has no resolver, so a `useForm({ rules })` option was not available.
+- `parcel_code` is now marked required. Cross-field rules (survey-derived provenance requiring an attached plan plus a justification) stay in the banner, because they are not attributable to one input.
+- Browser-verified: submitting an empty code, `-5` area, `133` and `abcdefghij` produced four simultaneous inline errors with `is-invalid` + `aria-invalid` + `aria-describedby`; correcting each value cleared its own error.
+
+## 3. Two labels stated something false
+
+- The PSGC badge read **"10–12 digits"** while annotating a `9–12` rule, so it contradicted the validation it labelled and would have steered an operator away from a valid 9-digit code. Now `9–12 digits`, from `PSGC_DIGIT_HINT`, the single source for the range.
+- **"Source area (m²)"** was hard-coded to one unit, but `source_area_sqm` and `source_area_unit` are separate columns and the backend converts nothing — choosing hectares produced a field that said one thing and stored another. The label is now unit-neutral and the hint names the selected unit.
+
+## 4. The PSGC placeholders contradicted the PSGC validation
+
+Found by testing the new validation, not by reading it. The placeholders offered `e.g. 1339` and `e.g. 133901` — 4- and 6-digit prefixes — which the field's own `9–12` rule rejected on submit. `ref.psgc_areas` was queried: all 22 codes are 9 digits, and province/city codes are 9 digits too (`133900000` / `133901000` / `133901001`), not shorter prefixes. The examples are now real codes that pass. The two bugs were opposite halves of the same confusion about PSGC digit length, which is why the earlier "widen to 9-12" fix did not surface either.
+
+## 5. The two parcel forms described the same attributes differently
+
+Create ordered attributes parcel-code-first with `col-6` pairs; the editor ordered lot/block/title-first and gave barangay a full row. An operator's muscle memory did not carry from creating a parcel to editing one. Both now render from `PSGC_FIELDS` (province → municipality → barangay, matching how `ref.psgc_areas.parent_code` actually nests) with matching column widths.
+
+## 6. Raw enum values and unconditional warnings
+
+- The provenance `<select>` offered `COMPUTED_FROM_TECHNICAL_DESCRIPTION` as option text. Now `Computed from technical description` via `PROVENANCE_LABELS`; the stored enum is unchanged.
+- The survey-plan lockout notice was always rendered. It is now shown only while the lockout is actually in effect — once a plan is attached it was stale noise under a field the operator was actively using.
+
+## Verification
+
+- Frontend: `104 tests / 17 files` green; `tsc -b --noEmit` exit 0; `oxlint` no errors; `vite build` clean.
+- Parcel E2E: 7/7. Form-QA sweep: 15/15. Full Playwright: **40/40** — every pre-existing `data-testid` preserved, including the short PSGC ids (`parcel-create-psgc-prov` / `-muni` / `--barangay`), which now come from `PSGC_FIELDS[].testId` rather than being hard-coded per form.
+- Browser checks on the running stack: 14/14 and 12/12 label association, four simultaneous inline errors, live error clearing, human-readable provenance options in both forms, and a 9-digit PSGC code saved and round-tripped through the editor. The verification parcel was deleted afterwards (0 rows matching `PRC-2026%`).
+
+## Left alone deliberately
+
+`control-points`, `survey-plans` and the other menu forms still have unassociated labels — a real gap, but a separate pass rather than an unbounded one. The map/form split on create (long form beside a 440 px map) was judged worth revisiting only alongside that pass; nothing in this change made it worse.
+
+**Standing lesson:** both PSGC defects were *length* claims that no test asserted, and one of them was introduced by the fix for the other. A placeholder and a validation rule are the same fact stated twice, and the only thing that catches them disagreeing is typing the example in.

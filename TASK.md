@@ -219,6 +219,30 @@ Maintained in `accomplish.md` once implementation begins. Each completed task re
 
 ---
 
+## 2026-09-26 - Parcel data-entry UI audit (not a queue task; cross-cutting)
+
+Audited the two parcel attribute forms — `ParcelCreatePage` and the editor's `InformationTab` — against the pattern `LayerMetadataForm` and `BasemapForm` already follow, and fixed what was observably wrong. No backend behaviour changed.
+
+**HIGH — every control on both forms was unlabelled.** Neither form put a `for` on its labels or an `id` on its inputs, so placeholders served as accessible names: a screen reader announced an unlabelled edit box and clicking the label text focused nothing. New `frontend/src/features/parcels/components/ParcelField.tsx` owns the label, the required `*`, the hint and the `invalid-feedback` block, and the ids they are announced under. Verified in the browser rather than by reading the markup: 14/14 controls on create and 12/12 on the editor tab now resolve a matching `label[for]`.
+
+**HIGH — validation errors named no field.** Every check ran inside `submit` and set one banner above the Save button, and nothing marked a field as required. `validateCreate()` now returns a per-field message map, revealed on the first submit attempt and then derived from live values so each error clears as the operator corrects that field; `parcel_code` is marked required. The two cross-field rules (survey-derived provenance needs an attached plan *and* a justification) deliberately stay in the banner, since neither belongs to a single input. Browser-verified: an empty code, a `-5` area, `133` and `abcdefghij` all reported inline at once, each with `is-invalid`, `aria-invalid` and `aria-describedby`.
+
+**MEDIUM — the PSGC placeholders contradicted the PSGC validation.** Found by typing the new examples in, not by reading them: the placeholders offered `1339` and `133901` — 4- and 6-digit prefixes — which the field's own `9–12` rule rejected on submit. Querying `ref.psgc_areas` showed all 22 codes are 9 digits and that province/city codes are 9 digits as well (`133900000` / `133901000` / `133901001`), not shorter prefixes. The examples are now real codes that pass. This is the mirror image of the "10–12 digits" badge fixed in the previous pass: both defects were claims about PSGC digit length, neither was asserted by a test, and this one was introduced *by* that earlier fix.
+
+**MEDIUM — two labels stated something false.** The PSGC badge read "10–12 digits" while annotating a `9–12` rule. "Source area (m²)" hard-coded one unit although `source_area_sqm` and `source_area_unit` are separate columns and the backend converts nothing, so choosing hectares produced a field that said one thing and stored another. The range is now `PSGC_DIGIT_HINT`, the single source shared with the validator; the area label is unit-neutral and its hint names the selected unit.
+
+**MEDIUM — the two forms described the same attributes differently.** Create led with `parcel_code` and used `col-6` pairs; the editor led with lot/block/title and gave barangay a full row, so muscle memory did not carry between the two. Both now render from `PSGC_FIELDS` in province → municipality → barangay order, which matches how `ref.psgc_areas.parent_code` actually nests, with matching column widths.
+
+**LOW — raw enum values and an unconditional warning.** The provenance selector offered `COMPUTED_FROM_TECHNICAL_DESCRIPTION` as its option text; it now reads "Computed from technical description" with the stored enum unchanged. The survey-plan lockout notice is now shown only while the lockout is in effect, instead of sitting permanently under a field the operator may be actively using.
+
+**Verification:** frontend `104 tests / 17 files` green, `tsc -b --noEmit` exit 0, `oxlint` no errors, `vite build` clean; parcel E2E 7/7, form-QA sweep 15/15, full Playwright **40/40**. Every pre-existing `data-testid` is preserved, including the short PSGC ids, which now come from `PSGC_FIELDS[].testId` rather than being hard-coded twice. The verification parcel created during browser testing was deleted (0 rows matching `PRC-2026%`).
+
+**Open, not fixed here:** `control-points` and `survey-plans` forms still have unassociated labels — the same defect, a separate pass rather than an unbounded one; and the create-page map/form split (long form beside a 440 px map) is worth revisiting only alongside that pass.
+
+**Standing lesson from this pass:** a placeholder and a validation rule are the same fact stated twice, and nothing caught them disagreeing because no test typed the example in. The defect was introduced by the very fix for its own twin.
+
+---
+
 ## Working rules
 
 1. One task at a time, taken in queue order. No task starts before its dependencies are `DONE`.

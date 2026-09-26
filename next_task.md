@@ -13,3 +13,5 @@ First steps for TASK-121:
 4. Tests: `Unit/OgrAdapterTest` (command construction, injection attempts, timeout, temp-dir cleanup — mockable executor so GDAL is not needed for unit tests), `Integration/OgrFormatTest` (real fixtures if GDAL is present in the image; skip gracefully with a marked-skipped note when it is not).
 
 Previous task (done 2026-09-25): TASK-103 + Phase 15 (backend & UI) — see accomplish.md. TASK-104a (version-compare/history UI pass) remains queued alongside Phase 16.
+
+Cross-cutting work since (does not change the queue): the phases 5-15 acceptance pass (2026-09-26) and the parcel data-entry UI pass (2026-09-26) — see the AUDIT 2 / AUDIT 3 entries in accomplish.md. Current stack state: backend `495 tests / 2 159 assertions`; frontend `104 tests / 17 files`; full Playwright 40/40. Open UI items for whoever picks up TASK-104a or the form pass are `U-8`/`U-11`/`U-12`/`U-13` in todo.md.
