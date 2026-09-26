@@ -6,6 +6,7 @@ import {
   type ReplayResult,
 } from '../api/computationApi';
 import { surveyApi, type TechnicalDescription } from '../api/surveyApi';
+import { DEFAULT_WORKING_SRID } from '../../../lib/crs';
 
 interface ComputationPanelProps {
   parcelId: string;
@@ -36,7 +37,9 @@ export const ComputationPanel: React.FC<ComputationPanelProps> = ({
   const [technicalDescriptions, setTechnicalDescriptions] = useState<TechnicalDescription[]>([]);
   const [selectedTdId, setSelectedTdId] = useState<number | null>(null);
   const [currentTd, setCurrentTd] = useState<TechnicalDescription | null>(null);
-  const [computeCrs, setComputeCrs] = useState<string>('EPSG:3123');
+  // Survey computation uses the app's working CRS (PRS92 zone III by default),
+  // kept in step with the map CRS selector.
+  const [computeCrs, setComputeCrs] = useState<string>(`EPSG:${DEFAULT_WORKING_SRID}`);
   const [customCrs, setCustomCrs] = useState<string>('');
 
   const [loading, setLoading] = useState<boolean>(false);

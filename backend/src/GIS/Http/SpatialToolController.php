@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\GIS\Http;
 
+use App\Core\Crs\DefaultProjectedCrs;
 use App\Core\Error\ApiError;
 use App\Core\Http\Response\Envelope;
 use App\GIS\Domain\IdentifyPopup;
@@ -26,7 +27,7 @@ class SpatialToolController
      * Body: { type: 'distance'|'area', geometry: GeoJSON, srid?: int }
      *
      * Distance: computes length of a LineString/MultiLineString in a projected
-     * CRS (default EPSG:32651, UTM 51N for Metro Manila).
+     * CRS (default EPSG:3123, PRS92 / Philippines zone III).
      * Area: computes area of a Polygon/MultiPolygon in the same CRS.
      */
     public function measure(Request $request, Response $response, array $args): Response
@@ -58,7 +59,7 @@ class SpatialToolController
     }
 
     /**
-     * GET /spatial/identify?lng=121.0&lat=14.5&layer_id=1&srid=32651
+     * GET /spatial/identify?lng=121.0&lat=14.5&layer_id=1&srid=3123
      *
      * Identify features at a point, returning nearby features sorted by
      * distance in the target CRS.
@@ -71,7 +72,7 @@ class SpatialToolController
         $lng = isset($q['lng']) ? (float) $q['lng'] : null;
         $lat = isset($q['lat']) ? (float) $q['lat'] : null;
         $layerId = isset($q['layer_id']) ? (int) $q['layer_id'] : null;
-        $srid = isset($q['srid']) && is_int($q['srid']) ? $q['srid'] : 32651;
+        $srid = isset($q['srid']) && is_int($q['srid']) ? $q['srid'] : DefaultProjectedCrs::SRID;
 
         if ($lng === null || $lat === null) {
             throw new ApiError('VALIDATION_FAILED', 'lng and lat are required', 400);
@@ -115,7 +116,7 @@ class SpatialToolController
         $q = $request->getQueryParams();
         $lng = isset($q['lng']) ? (float) $q['lng'] : null;
         $lat = isset($q['lat']) ? (float) $q['lat'] : null;
-        $srid = isset($q['srid']) && is_int($q['srid']) ? $q['srid'] : 32651;
+        $srid = isset($q['srid']) && is_int($q['srid']) ? $q['srid'] : DefaultProjectedCrs::SRID;
 
         if ($lng === null || $lat === null) {
             throw new ApiError('VALIDATION_FAILED', 'lng and lat are required', 400);

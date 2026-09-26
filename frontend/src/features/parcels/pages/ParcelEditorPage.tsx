@@ -8,51 +8,63 @@ import { SurveyPlanTab } from '../components/SurveyPlanTab';
 import { SplitTab } from '../components/SplitTab';
 import { ConsolidationTab } from '../components/ConsolidationTab';
 import { LineageTab } from '../components/LineageTab';
+import { HistoryTab } from '../components/HistoryTab';
 import { TechnicalDescriptionTab } from '../../survey/components/TechnicalDescriptionTab';
 import { TiePointTab } from '../../survey/components/TiePointTab';
 import { ComputationPanel } from '../../survey/components/ComputationPanel';
 import { ValidationPanel } from '../../survey/components/ValidationPanel';
+import { TitleTab } from '../components/TitleTab';
+import { DocumentsTab } from '../components/DocumentsTab';
 import { WorkflowActionBar } from '../components/WorkflowActionBar';
 import { ParcelPreviewMap } from '../components/ParcelPreviewMap';
 import { ParcelMeta } from '../components/badges';
 import { Modal } from '../../../components/dialogs/Modal';
+import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { useUnsavedChangesGuard } from '../hooks/useUnsavedChangesGuard';
 import { useAuth } from '../../../auth/useAuth';
 import { hasPermission, permissions } from '../../../auth/permissions';
 
 /**
  * TASK-071 — parcel editor shell. Tabbed editing per frontend.md §7 with a
- * persistent right-hand map preview and a sticky status/action bar that shows
- * the current status, provenance badge, version, workflow actions, and a
- * visible, explicit save state ("Saved 14:32" / "Unsaved changes").
- *
- * The active tab lives in the URL (`/parcels/:id/information`, …) so each tab
- * is independently loadable/bookmarkable. Draft edits live in this page's
- * state; a manual unsaved-changes guard (see useUnsavedChangesGuard) prompts
- * before leaving while dirty.
+ * persistent right-hand map preview and a sticky status/action bar.
  */
 
 export const PARCEL_TABS = [
-    { key: 'information', label: 'Information' },
-    { key: 'survey', label: 'Survey' },
-    { key: 'title', label: 'Title' },
-    { key: 'tiepoint', label: 'Tie point' },
-    { key: 'techdesc', label: 'Technical description' },
-    { key: 'computation', label: 'Computation' },
+    { key: 'information', label: 'Info' },
+    { key: 'survey',      label: 'Survey' },
+    { key: 'title',       label: 'Title' },
+    { key: 'tiepoint',   label: 'Tie Point' },
+    { key: 'techdesc',   label: 'Tech Desc' },
+    { key: 'computation',label: 'Computation' },
     { key: 'validation', label: 'Validation' },
-    { key: 'split', label: 'Split' },
-    { key: 'consolidate', label: 'Consolidate' },
-    { key: 'lineage', label: 'Lineage' },
-    { key: 'documents', label: 'Documents' },
-    { key: 'history', label: 'History' },
+    { key: 'split',      label: 'Split' },
+    { key: 'consolidate',label: 'Consolidate' },
+    { key: 'lineage',    label: 'Lineage' },
+    { key: 'documents',  label: 'Documents' },
+    { key: 'history',    label: 'History' },
 ] as const;
 
 export type ParcelTabKey = (typeof PARCEL_TABS)[number]['key'];
 
-const SAVE_IDLE = 'idle' as const;
-const SAVE_SAVING = 'saving' as const;
-const SAVE_SAVED = 'saved' as const;
+const SAVE_IDLE    = 'idle'    as const;
+const SAVE_SAVING  = 'saving'  as const;
+const SAVE_SAVED   = 'saved'   as const;
 type SaveState = typeof SAVE_IDLE | typeof SAVE_SAVING | typeof SAVE_SAVED;
+
+/* ─── Spinner (inline keyframes via style tag) ──────────────────────── */
+const Spinner: React.FC = () => (
+    <div
+        style={{
+            width: 16,
+            height: 16,
+            border: '2px solid var(--blue-100)',
+            borderTopColor: 'var(--blue-500)',
+            borderRadius: '50%',
+            animation: 'spin 0.7s linear infinite',
+            flexShrink: 0,
+        }}
+    />
+);
 
 export function ParcelEditorPage() {
     const { id = '', tab = 'information' } = useParams();
@@ -94,45 +106,81 @@ export function ParcelEditorPage() {
     }, []);
 
     return (
-        <div className="container-fluid py-4">
-            <div className="d-flex flex-wrap justify-content-between align-items-center mb-3">
-                <div>
-                    <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="mb-0">{parcel?.parcel_code ?? 'Parcel'}</h3>
+        <div>
+            {/* ── Page header ── */}
+            <div className="page-header">
+                <div style={{ minWidth: 0 }}>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <h2 className="page-title" style={{ margin: 0 }}>
+                            {parcel?.parcel_code ?? (isLoading ? 'Loading…' : 'Parcel')}
+                        </h2>
                         {parcel && <ParcelMeta parcel={parcel} />}
                     </div>
-                    <span className="text-muted small">Parcel editor — switch tabs to edit each section.</span>
+                    <p className="page-subtitle">
+                        Parcel editor — switch tabs below to edit each section.
+                    </p>
                 </div>
-                <div className="d-flex gap-2">
-                    <Link to="/parcels" className="btn btn-outline-secondary btn-sm">Back to list</Link>
+                <div className="flex gap-2 items-center" style={{ flexShrink: 0 }}>
+                    <Link to="/parcels" className="btn btn-ghost btn-sm">← Back to list</Link>
                 </div>
             </div>
 
-            {isLoading && <div className="alert alert-light border">Loading parcel…</div>}
+            {isLoading && (
+                <div className="alert alert-light" style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                    <Spinner />
+                    Loading parcel…
+                </div>
+            )}
             {isError && (
-                <div className="alert alert-danger d-flex justify-content-between align-items-center">
+                <div className="alert alert-danger" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Could not load this parcel.</span>
-                    <button className="btn btn-outline-danger btn-sm" onClick={() => void refetch()}>Retry</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => void refetch()}>Retry</button>
                 </div>
             )}
 
             {parcel && (
-                <div className="row g-4">
-                    <div className="col-lg-8">
-                        <ul className="nav nav-tabs flex-wrap" role="tablist">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '1.25rem', alignItems: 'start' }}>
+                    {/* ── Left: tabs + content ── */}
+                    <div>
+                        {/* Tab bar */}
+                        <div style={{
+                            background: 'var(--bg-surface)',
+                            border: '1px solid var(--border-color)',
+                            borderBottom: 'none',
+                            borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
+                            padding: '0.25rem 0.5rem 0',
+                            display: 'flex',
+                            gap: 0,
+                            overflowX: 'auto',
+                            scrollbarWidth: 'none',
+                        }}>
                             {PARCEL_TABS.map((t) => (
-                                <li className="nav-item" key={t.key}>
-                                    <Link
-                                        to={`/parcels/${id}/${t.key}`}
-                                        className={`nav-link ${activeTab === t.key ? 'active' : ''}`}
-                                        data-testid={`parcel-tab-${t.key}`}
-                                    >
-                                        {t.label}
-                                    </Link>
-                                </li>
+                                <Link
+                                    key={t.key}
+                                    to={`/parcels/${id}/${t.key}`}
+                                    className={`tab-item${activeTab === t.key ? ' active' : ''}`}
+                                    data-testid={`parcel-tab-${t.key}`}
+                                    style={{ fontSize: '0.8125rem', padding: '0.5rem 0.75rem' }}
+                                >
+                                    {t.label}
+                                </Link>
                             ))}
-                        </ul>
-                        <div className="border border-top-0 rounded-bottom p-4 bg-white">
+                        </div>
+
+                        {/* Tab content */}
+                        <div style={{
+                            background: 'var(--bg-surface)',
+                            border: '1px solid var(--border-color)',
+                            borderTop: 'none',
+                            borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
+                            padding: '1.5rem',
+                        }}>
+                            {/* key={activeTab} resets the boundary on tab switch, so a
+                                crash in one tab does not follow the user to the next. */}
+                            <ErrorBoundary
+                                key={activeTab}
+                                label={PARCEL_TABS.find((t) => t.key === activeTab)?.label ?? 'This tab'}
+                            >
                             {activeTab === 'information' && (
                                 <InformationTab
                                     parcel={parcel}
@@ -206,55 +254,82 @@ export function ParcelEditorPage() {
                                     }}
                                 />
                             )}
-                            {activeTab === 'split' && <SplitTab parcel={parcel} />}
+                            {activeTab === 'split'      && <SplitTab parcel={parcel} />}
                             {activeTab === 'consolidate' && <ConsolidationTab initialParcelId={id} />}
-                            {activeTab === 'lineage' && <LineageTab parcelId={id} parcelCode={parcel.parcel_code} />}
-                            {activeTab === 'history' && <HistoryTab id={id} />}
-                            {(activeTab === 'title' || activeTab === 'documents') && (
-                                <ComingSoon tabLabel={PARCEL_TABS.find((t) => t.key === activeTab)!.label} />
-                            )}
+                            {activeTab === 'lineage'    && <LineageTab parcelId={id} parcelCode={parcel.parcel_code} />}
+                            {activeTab === 'history'    && <HistoryTab parcelId={id} currentVersion={parcel?.version} />}
+                            {activeTab === 'title' && <TitleTab parcelId={id} />}
+                            {activeTab === 'documents' && <DocumentsTab parcelId={id} />}
+                            </ErrorBoundary>
                         </div>
                     </div>
 
-                    <div className="col-lg-4">
-                        <div className="card shadow-sm">
-                            <div className="card-header py-2 d-flex justify-content-between align-items-center">
-                                <span className="small fw-semibold">Map preview</span>
-                                {parcel.geometry ? null : (
-                                    <span className="badge bg-warning text-dark">no geometry</span>
-                                )}
-                            </div>
-                            <div className="card-body p-0" style={{ height: 480 }}>
-                                <ParcelPreviewMap parcel={parcel} />
-                            </div>
+                    {/* ── Right: map preview ── */}
+                    <div className="card" style={{ position: 'sticky', top: 'calc(var(--header-height) + 1rem)' }}>
+                        <div className="card-header">
+                            <span>Map Preview</span>
+                            {!parcel.geometry && (
+                                <span className="badge badge-yellow">No geometry</span>
+                            )}
+                        </div>
+                        <div style={{ height: 440, borderRadius: '0 0 var(--radius-lg) var(--radius-lg)', overflow: 'hidden' }}>
+                            <ParcelPreviewMap parcel={parcel} />
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* ── Sticky status bar ── */}
             {parcel && (
                 <div
-                    className="position-sticky bottom-0 mt-4 bg-white border-top shadow-sm px-3 py-2 d-flex flex-wrap gap-3 align-items-center"
+                    className="status-bar"
                     data-testid="parcel-status-bar"
-                    style={{ zIndex: 1020 }}
+                    style={{ marginTop: '0.5rem' }}
                 >
-                    <span className="small text-muted">Status:</span>
-                    <span data-testid="parcel-status-text">{parcel.status}</span>
-                    <span className="small text-muted">Provenance:</span>
-                    <span data-testid="parcel-provenance-text">{parcel.provenance}</span>
-                    <span className="small text-muted">Version:</span>
-                    <span data-testid="parcel-version-text">v{parcel.version}</span>
-                    <span className="flex-grow-1" />
-                    <span data-testid="parcel-save-state">
+                    <div className="status-bar-item">
+                        <span className="status-bar-label">Status</span>
+                        <span
+                            className={`status-badge status-${parcel.status}`}
+                            data-testid="parcel-status-text"
+                        >
+                            {parcel.status.replace(/_/g, ' ')}
+                        </span>
+                    </div>
+
+                    <div className="status-bar-item">
+                        <span className="status-bar-label">Provenance</span>
+                        <span
+                            className="status-bar-value text-sm"
+                            data-testid="parcel-provenance-text"
+                            style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                            {parcel.provenance?.replace(/_/g, ' ') ?? '—'}
+                        </span>
+                    </div>
+
+                    <div className="status-bar-item">
+                        <span className="status-bar-label">Version</span>
+                        <span className="status-bar-value font-mono text-sm" data-testid="parcel-version-text">
+                            v{parcel.version}
+                        </span>
+                    </div>
+
+                    <div className="status-bar-spacer" />
+
+                    <span data-testid="parcel-save-state" className="text-sm">
                         {saveState === SAVE_SAVING && <span className="text-muted">Saving…</span>}
-                        {saveState === SAVE_SAVED && <span className="text-success fw-semibold">Saved {savedAt}</span>}
-                        {saveState === SAVE_IDLE && dirty && <span className="text-warning fw-semibold">Unsaved changes</span>}
-                        {saveState === SAVE_IDLE && !dirty && <span className="text-muted">No local changes</span>}
+                        {saveState === SAVE_SAVED  && <span className="text-success font-semibold">✓ Saved {savedAt}</span>}
+                        {saveState === SAVE_IDLE && dirty && (
+                            <span style={{ color: 'var(--brand-warning)', fontWeight: 600 }}>● Unsaved changes</span>
+                        )}
+                        {saveState === SAVE_IDLE && !dirty && (
+                            <span className="text-muted">No local changes</span>
+                        )}
                     </span>
-                    {/* TASK-103 — workflow action bar: only server-allowed
-                        transitions render (FR-103); blocked while local edits
-                        are unsaved because every transition moves the version. */}
+
+                    {/* TASK-103 — workflow action bar */}
                     <WorkflowActionBar parcelId={id} status={parcel.status} disabled={dirty} />
+
                     {canEdit && activeTab === 'information' && dirty && (
                         <button
                             className="btn btn-sm btn-primary"
@@ -267,11 +342,12 @@ export function ParcelEditorPage() {
                 </div>
             )}
 
+            {/* ── Guards & dialogs ── */}
             {dirty && blockedHref && (
                 <Modal open onClose={() => reset()} title="Unsaved changes">
                     <p className="mb-3">You have unsaved changes in this parcel. Leave without saving?</p>
-                    <div className="d-flex justify-content-end gap-2">
-                        <button className="btn btn-sm btn-outline-secondary" onClick={() => reset()}>Stay</button>
+                    <div className="flex justify-end gap-2">
+                        <button className="btn btn-ghost btn-sm" onClick={() => reset()}>Stay</button>
                         <button
                             className="btn btn-sm btn-danger"
                             data-testid="parcel-guard-leave"
@@ -291,10 +367,10 @@ export function ParcelEditorPage() {
             {conflictMessage && (
                 <Modal open onClose={() => setConflictMessage(null)} title="Save failed">
                     <p className="mb-1">{conflictMessage}</p>
-                    <p className="small text-muted mb-3">
+                    <p className="text-sm text-muted mb-3">
                         Reload the parcel to pick up the latest version before saving again.
                     </p>
-                    <div className="d-flex justify-content-end">
+                    <div className="flex justify-end">
                         <button
                             className="btn btn-sm btn-primary"
                             data-testid="parcel-conflict-reload"
@@ -311,41 +387,10 @@ export function ParcelEditorPage() {
 
 function ComingSoon({ tabLabel }: { tabLabel: string }) {
     return (
-        <div className="py-5 text-center text-muted">
-            <h5>{tabLabel}</h5>
-            <p className="mb-0">This section arrives in a later phase-task.</p>
-        </div>
-    );
-}
-
-function HistoryTab({ id }: { id: string }) {
-    const { data } = useQuery({
-        queryKey: ['parcel', id, 'versions'],
-        queryFn: () => parcelApi.listVersions(id),
-        enabled: id.length > 0,
-    });
-
-    return (
-        <div>
-            <h6 className="text-muted mb-3">Version history</h6>
-            {!data?.data?.length && <p className="text-muted">No revisions recorded yet.</p>}
-            <ul className="list-group">
-                {(data?.data ?? []).map((v) => (
-                    <li key={v.version} className="list-group-item d-flex justify-content-between align-items-center gap-3 flex-wrap">
-                        <div>
-                            <div>
-                                <span className="badge bg-light text-dark border me-2">v{v.version}</span>
-                                <span className="small">{v.change_summary ?? 'Edit'}</span>
-                            </div>
-                            {v.change_reason && <div className="small text-muted">{v.change_reason}</div>}
-                        </div>
-                        <div className="text-end small text-muted">
-                            <div>{v.status}</div>
-                            {v.changed_at && <div>{new Date(v.changed_at).toLocaleString()}</div>}
-                        </div>
-                    </li>
-                ))}
-            </ul>
+        <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>🚧</div>
+            <h5 style={{ margin: '0 0 0.375rem' }}>{tabLabel}</h5>
+            <p style={{ margin: 0, fontSize: '0.875rem' }}>This section arrives in a later phase-task.</p>
         </div>
     );
 }

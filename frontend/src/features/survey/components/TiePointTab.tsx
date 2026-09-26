@@ -37,10 +37,25 @@ export const TiePointTab: React.FC<TiePointTabProps> = ({ parcelId }) => {
     loadData();
   }, [loadData]);
 
-  const handleSelectControlPoint = (cp: ControlPoint) => {
-    setShowPicker(false);
-    // Control point selected for tie line linkage
-    alert(`Selected control point: ${cp.point_name} (${cp.status})`);
+  const handleSelectControlPoint = async (cp: ControlPoint) => {
+    if (!currentTd) return;
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const tiePoints = currentTd.tie_points || [];
+      if (tiePoints.length > 0) {
+        await surveyApi.linkTiePoint(currentTd.id, tiePoints[0].id, cp.id);
+      } else {
+        await surveyApi.createTiePoint(currentTd.id, cp.id);
+      }
+      
+      setShowPicker(false);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to link control point');
+      setLoading(false);
+    }
   };
 
   if (loading) {
@@ -64,7 +79,13 @@ export const TiePointTab: React.FC<TiePointTabProps> = ({ parcelId }) => {
         <button
           type="button"
           onClick={() => setShowPicker(!showPicker)}
-          className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 shadow-sm"
+          disabled={!currentTd}
+          title={!currentTd ? 'Add a technical description first' : ''}
+          className={`btn btn-sm ${
+            !currentTd
+              ? 'btn-secondary'
+              : 'btn-primary'
+          }`}
         >
           {showPicker ? 'Close Picker' : '🔍 Find Control Point'}
         </button>

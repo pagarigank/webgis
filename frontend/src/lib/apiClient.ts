@@ -172,13 +172,64 @@ apiClient.interceptors.response.use(
 
 export default apiClient;
 
-// The response interceptor already unwraps the outer { success, data } envelope,
-// so a queryFn receives the inner payload directly. Endpoints return that payload
-// either as a plain array (e.g. /audit-logs) or as { data: [...], meta } (paginated
-// lists like /users, /roles, /organizations). This normalizes both to an array and
-// never yields a non-array, so consumers can safely call .map on the result.
+// Response-shape normalization.
+//
+// The response interceptor above unwraps `{ success, data }` once, so a queryFn
+// normally receives the inner payload directly. But the backend is not uniform:
+// most controllers emit the envelope, while a few (notably the survey technical
+// description controller) write their payload verbatim as a bare `{ data }`
+// object with no `success` key, which the interceptor therefore passes through
+// untouched. The result is that the same `apiClient.get()` call can hand back
+// any of:
+//
+//   [ ... ]                                  bare array
+//   { data: [ ... ] }                         bare wrapper, no `success`
+//   { data: [ ... ], meta: { ... } }          paginated wrapper
+//   <entity>                                  already unwrapped by the interceptor
+//   { data: <entity> }                        wrapped entity
+//
+// These helpers walk up to two wrapper levels and never return a non-array or
+// null, so consumers can safely call `.map`/`.length` on the result. Prefer
+// them over hand-written `res.data.data` chains: the hand-written form assumed
+// a double-wrapped envelope that no endpoint actually returns, so it silently
+// produced `undefined` and crashed rendering components downstream.
+const MAX_WRAPPER_DEPTH = 2;
+
+function unwrapLayers(res: unknown): unknown {
+  let cur = res;
+  for (let depth = 0; depth < MAX_WRAPPER_DEPTH; depth++) {
+    if (cur === null || cur === undefined) return cur;
+    if (typeof cur !== 'object' || Array.isArray(cur)) return cur;
+    const rec = cur as Record<string, unknown>;
+    if (!('data' in rec)) return cur;
+    cur = rec.data;
+  }
+  return cur;
+}
+
+/** Normalizes any list response shape to a real array; never returns null. */
 export function unwrapList<T = unknown>(res: unknown): T[] {
-  if (Array.isArray(res)) return res as T[];
-  const nested = (res as { data?: unknown } | null | undefined)?.data;
-  return Array.isArray(nested) ? (nested as T[]) : [];
+  const unwrapped = unwrapLayers(res);
+  if (Array.isArray(unwrapped)) return unwrapped as T[];
+  if (unwrapped && typeof unwrapped === 'object') {
+    // A paginated wrapper one level deeper than MAX_WRAPPER_DEPTH allows.
+    const nested = (unwrapped as { data?: unknown }).data;
+    if (Array.isArray(nested)) return nested as T[];
+  }
+  return [];
+}
+
+/**
+ * Normalizes any single-entity response shape to the entity, or `null` when the
+ * payload is missing. Use this instead of `res.data.data`, and handle the
+ * `null` case at the call site.
+ */
+export function unwrapEntity<T = unknown>(res: unknown): T | null {
+  const unwrapped = unwrapLayers(res);
+  if (unwrapped === null || unwrapped === undefined) return null;
+  if (typeof unwrapped !== 'object' || Array.isArray(unwrapped)) {
+    return unwrapped as T;
+  }
+  const nested = (unwrapped as { data?: unknown }).data;
+  return (nested ?? unwrapped) as T;
 }

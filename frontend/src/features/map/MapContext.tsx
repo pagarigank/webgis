@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useRef, useEffect, useMemo,
 import type { ReactNode } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { LayerManager, InteractionManager } from './Managers';
+import { ANGELES_CITY_CENTER, DEFAULT_MAP_ZOOM } from '../../lib/crs';
 import { DrawManager } from './DrawManager';
 import type { DrawError } from './DrawManager';
 import { ConflictDialogHost } from './ConflictDialogHost';
@@ -83,8 +84,9 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const instance = new maplibregl.Map({
                 container: mapContainerRef.current,
                 style: 'https://demotiles.maplibre.org/style.json',
-                center: [121, 14.5],
-                zoom: 5,
+                // Home view: Angeles City, the app's default operating area.
+                center: ANGELES_CITY_CENTER,
+                zoom: DEFAULT_MAP_ZOOM,
             });
 
             instance.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -337,17 +339,21 @@ export const MapProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
          };
      }, [map, isLoaded]);
 
-     // Dev/E2E affordance: publish a minimal handle so Playwright specs can
-     // drive draw/conflict paths deterministically (harmless in production).
-     useEffect(() => {
-         (window as unknown as { __mapCtx?: object }).__mapCtx = {
-             drawManager: drawManagerRef.current,
-             registerViewportLayer,
-         };
-         return () => {
-             delete (window as unknown as { __mapCtx?: object }).__mapCtx;
-         };
-     }, [drawManager, registerViewportLayer]);
+    // Dev/E2E affordance: publish a minimal handle so Playwright specs can
+    // drive draw/conflict paths deterministically (harmless in production).
+    useEffect(() => {
+        (window as unknown as { __mapCtx?: object }).__mapCtx = {
+            drawManager: drawManagerRef.current,
+            registerViewportLayer,
+            // Exposed so specs can jump to a known view and convert a known
+            // lng/lat into a click pixel; asserting on a rendered parcel
+            // otherwise depends on the default camera.
+            map,
+        };
+        return () => {
+            delete (window as unknown as { __mapCtx?: object }).__mapCtx;
+        };
+    }, [drawManager, registerViewportLayer, map]);
 
      return (
          <MapContext.Provider value={{

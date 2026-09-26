@@ -1,4 +1,4 @@
-import apiClient from '../../../lib/apiClient';
+import apiClient, { unwrapEntity } from '../../../lib/apiClient';
 
 export interface ValidationCheckItem {
     id: string;
@@ -52,29 +52,21 @@ export interface ValidationResult {
 
 export const validationApi = {
     async validateParcel(parcelId: string, options: Record<string, unknown> = {}): Promise<ValidationResult> {
-        const res = await apiClient.post<{ success: boolean; data: ValidationResult }>(
-            `/parcels/${parcelId}/validate`,
-            options
-        );
-        return res.data.data;
+        const res = await apiClient.post(`/parcels/${parcelId}/validate`, options);
+        return unwrapEntity<ValidationResult>(res)!;
     },
 
     async getValidation(parcelId: string, revalidate = false): Promise<ValidationResult> {
         const query = revalidate ? '?revalidate=true' : '';
-        const res = await apiClient.get<{ success: boolean; data: ValidationResult }>(
-            `/parcels/${parcelId}/validation${query}`
-        );
-        return res.data.data;
+        const res = await apiClient.get(`/parcels/${parcelId}/validation${query}`);
+        return unwrapEntity<ValidationResult>(res)!;
     },
 
     async submitParcel(
         parcelId: string,
         reason?: string
-    ): Promise<{ parcel: any; validation: ValidationResult }> {
-        const res = await apiClient.post<{
-            success: boolean;
-            data: { parcel: any; validation: ValidationResult };
-        }>(`/parcels/${parcelId}/submit`, { change_reason: reason });
-        return res.data.data;
+    ): Promise<{ parcel: unknown; validation: ValidationResult }> {
+        const res = await apiClient.post(`/parcels/${parcelId}/submit`, { change_reason: reason });
+        return unwrapEntity<{ parcel: unknown; validation: ValidationResult }>(res)!;
     },
 };

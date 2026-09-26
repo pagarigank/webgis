@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Parcels\Http;
 
+use App\Core\Crs\DefaultProjectedCrs;
 use App\Core\Error\ApiError;
 use App\Core\Http\Response\Envelope;
 use App\Audit\AuditWriter;
@@ -29,6 +30,7 @@ class ParcelController
     private ?\App\Parcels\Domain\OverlapDetector $overlapDetector;
     private \App\Parcels\Domain\VersionDiffService $versionDiff;
     private ?\App\Parcels\Workflow\WorkflowEngine $workflowEngine;
+    private ?\App\Parcels\Domain\ParcelLocator $parcelLocator = null;
 
     /**
      * FR-199 / TASK-072 — provenance values that assert the geometry came from
@@ -93,6 +95,86 @@ class ParcelController
             throw new ApiError('VALIDATION_FAILED', "{$field} must be a 9-12 digit PSGC code", 400);
         }
         return $code;
+    }
+
+    /**
+     * GET /parcels/locate?lng=&lat=&srid=&tolerance_m=&limit=
+     *
+     * TASK-104b — resolve a map click to real parcels. The generic GIS identify
+     * tool answers against app.gis_features, which is a separate feature store
+     * with no relationship to app.parcels, so a parcel can never be identified
+     * by it. This endpoint queries app.parcels directly (RLS-scoped by the
+     * session user) and returns the parcels containing the point first, then
+     * the nearest ones within the tolerance, so the map can offer open / split /
+     * consolidate / lineage / history actions on a clicked parcel.
+     */
+    public function locate(Request $request, Response $response): Response
+    {
+        $uid = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+
+        $q = $request->getQueryParams();
+
+        $lng = isset($q['lng']) ? (float) $q['lng'] : null;
+        $lat = isset($q['lat']) ? (float) $q['lat'] : null;
+        if ($lng === null || $lat === null) {
+            throw new ApiError('VALIDATION_FAILED', 'lng and lat are required', 400);
+        }
+
+        $srid       = isset($q['srid']) ? (int) $q['srid'] : DefaultProjectedCrs::SRID;
+        $toleranceM = isset($q['tolerance_m']) && $q['tolerance_m'] !== '' ? (float) $q['tolerance_m'] : null;
+        $limit      = isset($q['limit']) ? (int) $q['limit'] : 10;
+
+        $result = $this->locator()->atPoint($lng, $lat, $srid, $toleranceM, $limit);
+
+        return Envelope::success($response, $result);
+    }
+
+    /**
+     * GET /parcels/overlay?bbox=w,s,e,n&limit=
+     *
+     * TASK-104b — GeoJSON for the parcels intersecting a viewport, used to draw
+     * the parcel overlay that the locate action menu hangs off. Kept separate
+     * from GET /parcels so the map never has to pay for the full list payload.
+     */
+    public function overlay(Request $request, Response $response): Response
+    {
+        $uid = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+
+        $q = $request->getQueryParams();
+        $bbox = $q['bbox'] ?? null;
+        if (!is_string($bbox) || trim($bbox) === '') {
+            throw new ApiError('VALIDATION_FAILED', 'bbox=w,s,e,n is required', 400);
+        }
+
+        $parts = array_map('trim', explode(',', $bbox));
+        if (count($parts) !== 4) {
+            throw new ApiError('VALIDATION_FAILED', 'bbox must be west,south,east,north', 400);
+        }
+        foreach ($parts as $part) {
+            if (!is_numeric($part)) {
+                throw new ApiError('VALIDATION_FAILED', 'bbox must contain numeric coordinates', 400);
+            }
+        }
+
+        $west  = (float) $parts[0];
+        $south = (float) $parts[1];
+        $east  = (float) $parts[2];
+        $north = (float) $parts[3];
+
+        $limit = isset($q['limit']) ? (int) $q['limit'] : 500;
+        $geojson = $this->locator()->inBbox($west, $south, $east, $north, $limit);
+
+        return Envelope::success($response, $geojson);
+    }
+
+    private function locator(): \App\Parcels\Domain\ParcelLocator
+    {
+        if ($this->parcelLocator === null) {
+            $this->parcelLocator = new \App\Parcels\Domain\ParcelLocator($this->pdo);
+        }
+        return $this->parcelLocator;
     }
 
     /**

@@ -103,6 +103,12 @@ return function (App $app) {
         $parcelAuthed = fn (string $permission) => (new AuthorizeMiddleware($permission, $container->get(PermissionResolver::class)));
         $group->get('/parcels', \App\Parcels\Http\ParcelController::class . ':list')
               ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        // Static segments must be declared before /parcels/{id} so "locate" and
+        // "overlay" are never swallowed as a parcel id (TASK-104b).
+        $group->get('/parcels/locate', \App\Parcels\Http\ParcelController::class . ':locate')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->get('/parcels/overlay', \App\Parcels\Http\ParcelController::class . ':overlay')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
         $group->get('/parcels/{id}', \App\Parcels\Http\ParcelController::class . ':get')
               ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
         $group->post('/parcels', \App\Parcels\Http\ParcelController::class . ':create')
@@ -125,6 +131,25 @@ return function (App $app) {
               ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
         $group->get('/operations/{operation_id:[0-9]+}', \App\Parcels\Http\OperationsController::class . ':get')
               ->add($parcelAuthed('parcel.lineage.view'))->add(AuthenticateMiddleware::class);
+
+        // ---- Land Titles (Phase 16) ----
+        $group->get('/parcels/{id}/titles', \App\Parcels\Http\LandTitleController::class . ':listForParcel')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels/{id}/titles', \App\Parcels\Http\LandTitleController::class . ':createForParcel')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+        $group->post('/parcels/{id}/titles/{title_id:[0-9]+}', \App\Parcels\Http\LandTitleController::class . ':linkToParcel')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+        $group->delete('/parcels/{id}/titles/{title_id:[0-9]+}', \App\Parcels\Http\LandTitleController::class . ':unlinkFromParcel')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+        $group->get('/titles/{title_id:[0-9]+}', \App\Parcels\Http\LandTitleController::class . ':getTitle')
+              ->add($parcelAuthed('parcel.view'))->add(AuthenticateMiddleware::class);
+        $group->put('/titles/{title_id:[0-9]+}', \App\Parcels\Http\LandTitleController::class . ':updateTitle')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+        $group->post('/titles/{title_id:[0-9]+}/parties', \App\Parcels\Http\LandTitleController::class . ':addParty')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+        $group->delete('/titles/{title_id:[0-9]+}/parties/{party_id:[0-9]+}', \App\Parcels\Http\LandTitleController::class . ':removeParty')
+              ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
+
 
         // ---- Workflow engine (Phase 13, TASK-100) ----
         // Permissions are enforced per-transition inside WorkflowEngine from
@@ -172,6 +197,8 @@ return function (App $app) {
 
         // ---- Documents (Phase 14, TASK-107/108) ----
         $docs = \App\Documents\Http\DocumentController::class;
+        $group->get('/parcels/{id}/documents', $docs . ':listForEntity')
+              ->add(AuthenticateMiddleware::class);
         $group->post('/documents', $docs . ':upload')
               ->add(\App\Core\Http\Middleware\RateLimitMiddleware::class)
               ->add(AuthenticateMiddleware::class);
@@ -322,6 +349,11 @@ return function (App $app) {
         $group->delete('/technical-descriptions/{id:[0-9]+}/courses/{courseId:[0-9]+}', $td . ':deleteCourse')
             ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
         $group->put('/technical-descriptions/{id:[0-9]+}/courses/order', $td . ':reorderCourses')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+
+        $group->put('/technical-descriptions/{id:[0-9]+}/tie-points/{tp_id:[0-9]+}/link', $td . ':linkTiePoint')
+            ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
+        $group->post('/technical-descriptions/{id:[0-9]+}/tie-points', $td . ':createTiePoint')
             ->add($tdAuthed('survey.update'))->add(AuthenticateMiddleware::class);
 
         $group->post('/technical-descriptions/{id:[0-9]+}/validate', $td . ':validateCourses')

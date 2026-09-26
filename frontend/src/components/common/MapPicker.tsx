@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+import { ANGELES_CITY_CENTER, DEFAULT_MAP_ZOOM } from '../../lib/crs';
 
 export interface MapPickerProps {
   initialGeoJson?: any;
@@ -25,8 +26,8 @@ export function MapPicker({ initialGeoJson, onChange, height = '400px' }: MapPic
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://demotiles.maplibre.org/style.json', // Placeholder style
-      center: [121.0, 14.5], // Philippines roughly
-      zoom: 5
+      center: ANGELES_CITY_CENTER, // Home view: Angeles City
+      zoom: DEFAULT_MAP_ZOOM
     });
 
     const DrawConstructor = (MapboxDraw as any).default || MapboxDraw;

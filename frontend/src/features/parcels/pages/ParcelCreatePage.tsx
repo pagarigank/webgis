@@ -9,6 +9,7 @@ import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import { parcelApi } from '../api/parcelApi';
 import { useBasemapToggle, type BasemapKind } from '../../map/basemap';
 import { polygonReadout } from '../../../lib/geometry';
+import { ANGELES_CITY_CENTER } from '../../../lib/crs';
 import {
     AREA_UNITS,
     PROVENANCE_LABELS,
@@ -160,7 +161,7 @@ export function ParcelCreatePage() {
         const map = new maplibregl.Map({
             container: mapContainer.current,
             style: 'https://demotiles.maplibre.org/style.json',
-            center: [121.0, 14.5],
+            center: ANGELES_CITY_CENTER,
             zoom: 15,
         });
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -352,13 +353,13 @@ export function ParcelCreatePage() {
                                 <span className="small fw-semibold">Parcel details</span>
                             </div>
                             <div className="card-body">
-                                <div className="row g-3">
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
                                     <ParcelField
                                         id="create-parcel-code"
                                         label="Parcel code"
                                         required
                                         error={fieldErrors.parcel_code}
-                                        className="col-12"
+                                        style={{ gridColumn: '1 / -1' }}
                                     >
                                         <Controller
                                             name="parcel_code"
@@ -367,7 +368,7 @@ export function ParcelCreatePage() {
                                                 <input
                                                     id="create-parcel-code"
                                                     {...f}
-                                                    className={`form-control ${fieldErrors.parcel_code ? 'is-invalid' : ''}`}
+                                                    className={`form-input ${fieldErrors.parcel_code ? 'error' : ''}`}
                                                     placeholder="e.g. PRC-2026-0001"
                                                     aria-invalid={fieldErrors.parcel_code ? true : undefined}
                                                     aria-describedby={
@@ -379,17 +380,17 @@ export function ParcelCreatePage() {
                                         />
                                     </ParcelField>
 
-                                    <ParcelField id="create-lot" label="Lot number" className="col-6">
+                                    <ParcelField id="create-lot" label="Lot number">
                                         <Controller
                                             name="lot_number"
                                             control={control}
                                             render={({ field: f }) => (
-                                                <input id="create-lot" {...f} className="form-control" data-testid="parcel-create-lot" />
+                                                <input id="create-lot" {...f} className="form-input" data-testid="parcel-create-lot" />
                                             )}
                                         />
                                     </ParcelField>
 
-                                    <ParcelField id="create-block" label="Block number" className="col-6">
+                                    <ParcelField id="create-block" label="Block number">
                                         <Controller
                                             name="block_number"
                                             control={control}
@@ -397,14 +398,14 @@ export function ParcelCreatePage() {
                                                 <input
                                                     id="create-block"
                                                     {...f}
-                                                    className="form-control"
+                                                    className="form-input"
                                                     data-testid="parcel-create-block"
                                                 />
                                             )}
                                         />
                                     </ParcelField>
 
-                                    <ParcelField id="create-title" label="Title reference" className="col-6">
+                                    <ParcelField id="create-title" label="Title reference">
                                         <Controller
                                             name="title_number_ref"
                                             control={control}
@@ -412,14 +413,14 @@ export function ParcelCreatePage() {
                                                 <input
                                                     id="create-title"
                                                     {...f}
-                                                    className="form-control"
+                                                    className="form-input"
                                                     data-testid="parcel-create-title"
                                                 />
                                             )}
                                         />
                                     </ParcelField>
 
-                                    <ParcelField id="create-td" label="Tax declaration no." className="col-6">
+                                    <ParcelField id="create-td" label="Tax declaration no.">
                                         <Controller
                                             name="tax_declaration_no"
                                             control={control}
@@ -427,7 +428,7 @@ export function ParcelCreatePage() {
                                                 <input
                                                     id="create-td"
                                                     {...f}
-                                                    className="form-control"
+                                                    className="form-input"
                                                     data-testid="parcel-create-td"
                                                 />
                                             )}
@@ -444,7 +445,6 @@ export function ParcelCreatePage() {
                                         label="Source area"
                                         hint={`Entered in ${areaUnitLabel}.`}
                                         error={fieldErrors.source_area_sqm}
-                                        className="col-6"
                                     >
                                         <Controller
                                             name="source_area_sqm"
@@ -456,7 +456,7 @@ export function ParcelCreatePage() {
                                                     type="number"
                                                     step="0.0001"
                                                     min="0"
-                                                    className={`form-control ${fieldErrors.source_area_sqm ? 'is-invalid' : ''}`}
+                                                    className={`form-input ${fieldErrors.source_area_sqm ? 'error' : ''}`}
                                                     aria-invalid={fieldErrors.source_area_sqm ? true : undefined}
                                                     aria-describedby={
                                                         fieldErrors.source_area_sqm ? 'create-area-error' : 'create-area-hint'
@@ -467,7 +467,7 @@ export function ParcelCreatePage() {
                                         />
                                     </ParcelField>
 
-                                    <ParcelField id="create-area-unit" label="Unit" className="col-6">
+                                    <ParcelField id="create-area-unit" label="Unit">
                                         <Controller
                                             name="source_area_unit"
                                             control={control}
@@ -504,7 +504,6 @@ export function ParcelCreatePage() {
                                                     </>
                                                 }
                                                 error={message}
-                                                className="col-6"
                                             >
                                                 <Controller
                                                     name={p.name}
@@ -513,7 +512,7 @@ export function ParcelCreatePage() {
                                                         <input
                                                             id={`create-${p.name}`}
                                                             {...f}
-                                                            className={`form-control font-monospace ${message ? 'is-invalid' : ''}`}
+                                                            className={`form-input font-monospace ${message ? 'error' : ''}`}
                                                             placeholder={p.placeholder}
                                                             inputMode="numeric"
                                                             aria-invalid={message ? true : undefined}
@@ -526,7 +525,7 @@ export function ParcelCreatePage() {
                                         );
                                     })}
 
-                                    <ParcelField id="create-location" label="Location description" className="col-12">
+                                    <ParcelField id="create-location" label="Location description" className="form-section" style={{ gridColumn: '1 / -1' }}>
                                         <Controller
                                             name="location_description"
                                             control={control}
@@ -535,17 +534,17 @@ export function ParcelCreatePage() {
                                                     id="create-location"
                                                     {...f}
                                                     rows={2}
-                                                    className="form-control"
+                                                    className="form-textarea"
                                                     data-testid="parcel-create-location"
                                                 />
                                             )}
                                         />
                                     </ParcelField>
 
-                                    <div className="col-12">
                                         <ParcelField
                                             id="create-provenance"
                                             label="Provenance (geometry source)"
+                                            className="form-section" style={{ gridColumn: '1 / -1' }}
                                         >
                                             <Controller
                                                 name="provenance"
@@ -589,13 +588,12 @@ export function ParcelCreatePage() {
                                                 Survey-derived provenance — record a justification below.
                                             </div>
                                         )}
-                                    </div>
 
                                     <ParcelField
                                         id="create-survey-plan"
                                         label="Survey plan ID"
                                         hint="Numeric ID of an existing survey plan. Required to unlock survey-derived provenance."
-                                        className="col-12"
+                                        className="form-section" style={{ gridColumn: '1 / -1' }}
                                     >
                                         <Controller
                                             name="survey_plan_id"
@@ -606,7 +604,7 @@ export function ParcelCreatePage() {
                                                     {...f}
                                                     type="number"
                                                     min="1"
-                                                    className="form-control"
+                                                    className="form-input"
                                                     placeholder="required for survey-derived provenance"
                                                     aria-describedby="create-survey-plan-hint"
                                                     data-testid="parcel-create-survey-plan"
@@ -620,7 +618,7 @@ export function ParcelCreatePage() {
                                             id="create-justification"
                                             label="Justification"
                                             required
-                                            className="col-12"
+                                            className="form-section" style={{ gridColumn: '1 / -1' }}
                                         >
                                             <Controller
                                                 name="justification"
@@ -630,7 +628,7 @@ export function ParcelCreatePage() {
                                                         id="create-justification"
                                                         {...f}
                                                         rows={2}
-                                                        className="form-control"
+                                                        className="form-textarea"
                                                         placeholder="Why is this parcel survey-derived?"
                                                         data-testid="parcel-create-justification"
                                                     />
@@ -639,7 +637,7 @@ export function ParcelCreatePage() {
                                         </ParcelField>
                                     )}
 
-                                    <ParcelField id="create-remarks" label="Remarks" className="col-12">
+                                    <ParcelField id="create-remarks" label="Remarks" className="form-section" style={{ gridColumn: '1 / -1' }}>
                                         <Controller
                                             name="remarks"
                                             control={control}
@@ -648,7 +646,7 @@ export function ParcelCreatePage() {
                                                     id="create-remarks"
                                                     {...f}
                                                     rows={3}
-                                                    className="form-control"
+                                                    className="form-textarea"
                                                     data-testid="parcel-create-remarks"
                                                 />
                                             )}
@@ -656,14 +654,14 @@ export function ParcelCreatePage() {
                                     </ParcelField>
 
                                     {error && (
-                                        <div className="col-12">
+                                        <div className="form-section" style={{ gridColumn: '1 / -1' }}>
                                             <div className="alert alert-danger py-2 px-3 small mb-0" data-testid="parcel-create-error">
                                                 {error}
                                             </div>
                                         </div>
                                     )}
                                     {message && (
-                                        <div className="col-12">
+                                        <div className="form-section" style={{ gridColumn: '1 / -1' }}>
                                             <div
                                                 className="alert alert-success py-2 px-3 small mb-0"
                                                 data-testid="parcel-create-message"
@@ -673,7 +671,7 @@ export function ParcelCreatePage() {
                                         </div>
                                     )}
 
-                                    <div className="col-12 d-flex gap-2">
+                                    <div className="form-section d-flex gap-2" style={{ gridColumn: '1 / -1' }}>
                                         <button
                                             type="submit"
                                             className="btn btn-primary"

@@ -85,6 +85,34 @@ final class DocumentController
         return Envelope::success($response, $doc, 200);
     }
 
+    /**
+     * List all documents linked to a given entity (e.g. parcel).
+     * Route: GET /parcels/{id}/documents or GET /entities/{type}/{id}/documents.
+     * The entity_type and entity_id are passed as route args or query params.
+     */
+    public function listForEntity(Request $request, Response $response, array $args): Response
+    {
+        $this->requireUser($request);
+        $entityType = (string) ($args['entity_type'] ?? ($request->getQueryParams()['entity_type'] ?? 'parcel'));
+        $entityId   = (string) ($args['id'] ?? '');
+
+        $stmt = $this->pdo->prepare(
+            'SELECT d.id, d.original_filename, d.doc_type, d.mime_type, d.byte_size,
+                    d.access_level, d.description, d.uploaded_at,
+                    dl.link_role, dl.linked_at
+               FROM app.document_links dl
+               JOIN app.documents d ON d.id = dl.document_id
+              WHERE dl.entity_type = :et
+                AND dl.entity_id   = :eid
+                AND d.deleted_at IS NULL
+              ORDER BY dl.linked_at DESC'
+        );
+        $stmt->execute([':et' => $entityType, ':eid' => $entityId]);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        return Envelope::success($response, $rows, 200);
+    }
+
     public function link(Request $request, Response $response, array $args): Response
     {
         $uid = $this->requireUser($request);

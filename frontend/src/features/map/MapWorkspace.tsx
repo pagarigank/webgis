@@ -6,6 +6,7 @@ import { MeasureTool, IdentifyTool, ZoomToTool, NearestControlPointTool } from '
 import { DrawTools } from './DrawTools';
 import { BasemapToggle } from './BasemapToggle';
 import { CoordinateReadout } from './CoordinateReadout';
+import { ParcelOverlay } from './ParcelOverlay';
 
 export function MapWorkspace() {
     const { layerManager } = useMapContext();
@@ -28,6 +29,7 @@ export function MapWorkspace() {
                 <IdentifyTool />
                 <NearestControlPointTool />
             </div>
+            <ParcelOverlay />
             <CoordinateReadout />
         </>
     );

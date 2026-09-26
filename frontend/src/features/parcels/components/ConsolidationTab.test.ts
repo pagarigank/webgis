@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildConsolidateBody, canCommitConsolidation, offendingParents, initialConsolidationForm } from './ConsolidationTab';
+import { buildConsolidateBody, canCommitConsolidation, offendingParents, initialConsolidationForm, seedParentSelection, mergeParentRows } from './ConsolidationTab';
 import type { ConsolidationPayload, ValidationCheck } from '../api/operationsApi';
 
 /**
@@ -66,5 +66,72 @@ describe('commit gate', () => {
         expect(canCommitConsolidation(payload(true))).toBe(true);
         expect(canCommitConsolidation(payload(false))).toBe(false);
         expect(canCommitConsolidation(null)).toBe(false);
+    });
+});
+
+describe('seedParentSelection (TASK-104b map multi-select)', () => {
+    it('keeps map pick order so the first pick is the primary parent', () => {
+        expect(seedParentSelection(['m1', 'm2', 'm3'])).toEqual(['m1', 'm2', 'm3']);
+    });
+
+    it('appends the tab parcel when it is not already picked', () => {
+        expect(seedParentSelection(['m1', 'm2'], 'tab-id')).toEqual(['m1', 'm2', 'tab-id']);
+    });
+
+    it('does not duplicate a parcel that was both picked and opened', () => {
+        // A parcel picked on the map and then opened directly must not end up
+        // as its own co-parent in the union.
+        expect(seedParentSelection(['m1', 'm2'], 'm1')).toEqual(['m1', 'm2']);
+    });
+
+    it('falls back to the tab parcel when nothing was picked on the map', () => {
+        expect(seedParentSelection([], 'tab-id')).toEqual(['tab-id']);
+        expect(seedParentSelection([])).toEqual([]);
+    });
+
+    it('de-duplicates repeated map picks', () => {
+        expect(seedParentSelection(['m1', 'm1', 'm2'], 'm1')).toEqual(['m1', 'm2']);
+    });
+});
+
+describe('mergeParentRows (TASK-104b off-page parents)', () => {
+    const row = (id: string, version: number) => ({
+        id,
+        parcel_code: `P-${id}`,
+        status: 'ACTIVE',
+        geometry: null,
+        version,
+    });
+
+    it('resolves a parent that is only in the directly fetched set', () => {
+        // The regression: a map-picked parent is not on the 25-row candidate
+        // page, so its version was missing and commit failed 428/409.
+        const { rows, versions, unresolved } = mergeParentRows([row('a', 2)], [row('b', 7)], ['a', 'b']);
+        expect(rows.map((r) => r.id)).toEqual(['a', 'b']);
+        expect(versions).toEqual({ a: 2, b: 7 });
+        expect(unresolved).toEqual([]);
+    });
+
+    it('preserves selection order regardless of source order', () => {
+        const { rows, versions } = mergeParentRows([row('a', 1), row('b', 1)], [row('c', 1)], ['c', 'a']);
+        expect(rows.map((r) => r.id)).toEqual(['c', 'a']);
+        expect(Object.keys(versions)).toEqual(['c', 'a']);
+    });
+
+    it('reports an id present in neither source as unresolved', () => {
+        const { rows, versions, unresolved } = mergeParentRows([row('a', 1)], [], ['a', 'ghost']);
+        expect(rows.map((r) => r.id)).toEqual(['a']);
+        expect(unresolved).toEqual(['ghost']);
+        expect(versions['ghost']).toBeUndefined();
+    });
+
+    it('omits a zero version so the commit gate stays shut', () => {
+        const { versions } = mergeParentRows([], [row('a', 0)], ['a']);
+        expect(versions).toEqual({});
+    });
+
+    it('lets a fresh fetch win over a stale list row', () => {
+        const { versions } = mergeParentRows([row('a', 1)], [row('a', 9)], ['a']);
+        expect(versions).toEqual({ a: 9 });
     });
 });

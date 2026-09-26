@@ -109,39 +109,39 @@ export function InformationTab(props: {
 
     return (
         <form id="parcel-information-form" onSubmit={handleSubmit(onSave)} noValidate>
-            <div className="row g-3">
-                <ParcelField id="parcel-lot" label="Lot number" className="col-md-4">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                <ParcelField id="parcel-lot" label="Lot number">
                     <Controller
                         {...field('lot_number')}
                         render={({ field: f }) => (
-                            <input id="parcel-lot" {...f} className="form-control" data-testid="parcel-editor-lot" />
+                            <input id="parcel-lot" {...f} className="form-input" data-testid="parcel-editor-lot" />
                         )}
                     />
                 </ParcelField>
 
-                <ParcelField id="parcel-block" label="Block number" className="col-md-4">
+                <ParcelField id="parcel-block" label="Block number">
                     <Controller
                         {...field('block_number')}
                         render={({ field: f }) => (
-                            <input id="parcel-block" {...f} className="form-control" data-testid="parcel-editor-block" />
+                            <input id="parcel-block" {...f} className="form-input" data-testid="parcel-editor-block" />
                         )}
                     />
                 </ParcelField>
 
-                <ParcelField id="parcel-title" label="Title reference" className="col-md-4">
+                <ParcelField id="parcel-title" label="Title reference">
                     <Controller
                         {...field('title_number_ref')}
                         render={({ field: f }) => (
-                            <input id="parcel-title" {...f} className="form-control" data-testid="parcel-editor-title" />
+                            <input id="parcel-title" {...f} className="form-input" data-testid="parcel-editor-title" />
                         )}
                     />
                 </ParcelField>
 
-                <ParcelField id="parcel-td" label="Tax declaration no." className="col-md-4">
+                <ParcelField id="parcel-td" label="Tax declaration no.">
                     <Controller
                         {...field('tax_declaration_no')}
                         render={({ field: f }) => (
-                            <input id="parcel-td" {...f} className="form-control" data-testid="parcel-editor-td" />
+                            <input id="parcel-td" {...f} className="form-input" data-testid="parcel-editor-td" />
                         )}
                     />
                 </ParcelField>
@@ -155,7 +155,6 @@ export function InformationTab(props: {
                     id="parcel-area"
                     label="Source area"
                     hint={`Entered in ${unitLabel}.`}
-                    className="col-md-4"
                 >
                     <Controller
                         {...field('source_area_sqm')}
@@ -166,7 +165,7 @@ export function InformationTab(props: {
                                 type="number"
                                 step="0.0001"
                                 min="0"
-                                className="form-control"
+                                className="form-input"
                                 data-testid="parcel-editor-area"
                                 aria-describedby="parcel-area-hint"
                             />
@@ -174,7 +173,7 @@ export function InformationTab(props: {
                     />
                 </ParcelField>
 
-                <ParcelField id="parcel-area-unit" label="Unit" className="col-md-4">
+                <ParcelField id="parcel-area-unit" label="Unit">
                     <Controller
                         {...field('source_area_unit')}
                         render={({ field: f }) => (
@@ -199,7 +198,6 @@ export function InformationTab(props: {
                                 <span className="badge bg-light text-dark border">{PSGC_DIGIT_HINT}</span>
                             </>
                         }
-                        className="col-md-4"
                     >
                         <Controller
                             {...field(p.name)}
@@ -207,7 +205,7 @@ export function InformationTab(props: {
                                 <input
                                     id={`parcel-${p.name}`}
                                     {...f}
-                                    className="form-control font-monospace"
+                                    className="form-input font-monospace"
                                     placeholder={p.placeholder}
                                     inputMode="numeric"
                                     data-testid={p.testId.replace('parcel-create-', 'parcel-editor-')}
@@ -217,11 +215,11 @@ export function InformationTab(props: {
                     </ParcelField>
                 ))}
 
-                <ParcelField id="parcel-location" label="Location description" className="col-12">
+                <ParcelField id="parcel-location" label="Location description" className="form-section" style={{ gridColumn: '1 / -1' }}>
                     <Controller
                         {...field('location_description')}
                         render={({ field: f }) => (
-                            <textarea id="parcel-location" {...f} rows={2} className="form-control" data-testid="parcel-editor-location" />
+                            <textarea id="parcel-location" {...f} rows={2} className="form-textarea" data-testid="parcel-editor-location" />
                         )}
                     />
                 </ParcelField>
@@ -229,7 +227,7 @@ export function InformationTab(props: {
                 <ParcelField
                     id="parcel-provenance"
                     label="Provenance (geometry source)"
-                    className="col-12"
+                    className="form-section" style={{ gridColumn: '1 / -1' }}
                 >
                     <Controller
                         {...field('provenance')}
@@ -268,7 +266,7 @@ export function InformationTab(props: {
                 </ParcelField>
 
                 {surveyDerived && (
-                    <ParcelField id="parcel-justification" label="Justification" className="col-12">
+                    <ParcelField id="parcel-justification" label="Justification" className="form-section" style={{ gridColumn: '1 / -1' }}>
                         <Controller
                             {...field('justification')}
                             render={({ field: f }) => {
@@ -279,14 +277,14 @@ export function InformationTab(props: {
                                             id="parcel-justification"
                                             {...f}
                                             rows={2}
-                                            className={`form-control ${missing ? 'is-invalid' : ''}`}
+                                            className={`form-textarea ${missing ? 'error' : ''}`}
                                             placeholder="Why is this provenance survey-derived?"
                                             aria-invalid={missing || undefined}
                                             aria-describedby={missing ? 'parcel-justification-required' : undefined}
                                         />
                                         {missing && (
                                             <div
-                                                className="invalid-feedback d-block"
+                                                className="form-error"
                                                 id="parcel-justification-required"
                                                 role="alert"
                                                 data-testid="parcel-editor-justification-required"
@@ -301,11 +299,11 @@ export function InformationTab(props: {
                     </ParcelField>
                 )}
 
-                <ParcelField id="parcel-remarks" label="Remarks" className="col-12">
+                <ParcelField id="parcel-remarks" label="Remarks" className="form-section" style={{ gridColumn: '1 / -1' }}>
                     <Controller
                         {...field('remarks')}
                         render={({ field: f }) => (
-                            <textarea id="parcel-remarks" {...f} rows={3} className="form-control" data-testid="parcel-editor-remarks" />
+                            <textarea id="parcel-remarks" {...f} rows={3} className="form-textarea" data-testid="parcel-editor-remarks" />
                         )}
                     />
                 </ParcelField>

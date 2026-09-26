@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\GIS\Domain;
 
+use App\Core\Crs\DefaultProjectedCrs;
 use App\Core\Error\ApiError;
 use PDO;
 
@@ -26,7 +27,7 @@ class SpatialQuery
      *   operation: 'bbox'|'intersects'|'within'|'contains'|'nearest'|'within_distance'|'buffer',
      *   layer_id: int,
      *   geometry: array,           // GeoJSON geometry object (or bbox string for 'bbox')
-     *   srid: ?int,                // target CRS for distance/area (default 32651)
+     *   srid: ?int,                // target CRS for distance/area (default 3123)
      *   limit: ?int,
      *   offset: ?int,
      * } $params
@@ -46,7 +47,7 @@ class SpatialQuery
 
         $limit  = min(max((int) ($params['limit'] ?? 100), 1), 500);
         $offset = (int) ($params['offset'] ?? 0);
-        $srid   = isset($params['srid']) && is_int($params['srid']) ? $params['srid'] : 32651;
+        $srid   = isset($params['srid']) && is_int($params['srid']) ? $params['srid'] : DefaultProjectedCrs::SRID;
 
         $geom = $params['geometry'] ?? null;
 

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\GIS\Domain;
 
+use App\Core\Crs\DefaultProjectedCrs;
 use App\Core\Error\ApiError;
 use PDO;
 
@@ -26,7 +27,7 @@ class IdentifyPopup
      * @param int    $srid     target projected CRS
      * @return array{feature: array|null, distance_m: ?float, layer_name: ?string}
      */
-    public function forPoint(string $featureId, int $layerId, array $mapPoint, int $srid = 32651): array
+    public function forPoint(string $featureId, int $layerId, array $mapPoint, int $srid = DefaultProjectedCrs::SRID): array
     {
         $gj = json_encode(['type' => 'Point', 'coordinates' => [$mapPoint['lng'], $mapPoint['lat']]]);
         if ($gj === false) {

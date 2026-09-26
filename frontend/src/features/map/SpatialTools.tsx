@@ -1,18 +1,16 @@
 // @ts-nocheck
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useSyncExternalStore } from 'react';
 import { useMapContext } from './MapContext';
 import { spatialApi } from './spatialApi';
+import { ANGELES_CITY_CENTER, DEFAULT_MAP_ZOOM, crsDisplayName, getMeasurementSrid, getWorkingSrid, subscribeWorkingSrid } from '../../lib/crs';
 import type { ActiveLayer } from './Managers';
 import { IdentifyPopup } from './IdentifyPopup';
 import * as maplibregl from 'maplibre-gl';
 import type { MeasureDistanceResult, MeasureAreaResult } from './spatialApi';
 
-const CRS_LABELS: Record<number, string> = {
-    32651: 'EPSG:32651 (UTM 51N, Metro Manila)',
-};
-
 export const MeasureTool: React.FC = () => {
     const map = useMapContext().map;
+    const workingSrid = useSyncExternalStore(subscribeWorkingSrid, getWorkingSrid, getWorkingSrid);
     const [mode, setMode] = useState<'distance' | 'area' | null>(null);
     const [result, setResult] = useState<{
         text: string;
@@ -147,7 +145,14 @@ export const MeasureTool: React.FC = () => {
                         >
                             <div>{result.text}</div>
                             <div style={{ fontSize: 11, color: '#4ade80', marginTop: 4 }}>
-                                CRS: {CRS_LABELS[result.crs] ?? `EPSG:${result.crs}`} ({result.unit})
+                                CRS: {crsDisplayName(result.crs)} ({result.unit})
+                                {result.crs !== workingSrid && (
+                                    <span style={{ color: '#86efac' }}>
+                                        {' '}
+                                        — measured in PRS92, not the displayed{' '}
+                                        {crsDisplayName(workingSrid)}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     )}
@@ -341,7 +346,7 @@ export const ZoomToTool: React.FC = () => {
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Zoom to:</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
-                    onClick={() => map.flyTo({ center: [121, 14.5], zoom: 10, duration: 1500 })}
+                    onClick={() => map.flyTo({ center: ANGELES_CITY_CENTER, zoom: DEFAULT_MAP_ZOOM, duration: 1500 })}
                     style={btnStyle}
                 >
                     🇵🇭 Metro Manila
@@ -373,7 +378,7 @@ export const ZoomToTool: React.FC = () => {
                                                 { padding: 50, duration: 1000 },
                                             );
                                         } else {
-                                            map.flyTo({ center: [121, 14.5], zoom: 10, duration: 1000 });
+                                            map.flyTo({ center: ANGELES_CITY_CENTER, zoom: DEFAULT_MAP_ZOOM, duration: 1000 });
                                         }
                                     }}
                                     style={{ ...btnStyle, background: '#eff6ff', borderColor: '#93c5fd', color: '#1d4ed8' }}

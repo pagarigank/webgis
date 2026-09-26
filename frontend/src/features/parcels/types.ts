@@ -110,3 +110,106 @@ export interface ParcelVersionsPayload {
     data: ParcelVersionSummary[];
     pagination: { page: number; per_page: number; total: number };
 }
+/**
+ * TASK-104b - a parcel resolved from a map click (GET /parcels/locate).
+ * `contains_point` is true when the click fell inside the polygon; otherwise
+ * the parcel is merely the nearest one within the search tolerance.
+ */
+export interface ParcelHit {
+    id: string;
+    parcel_code: string;
+    status: string;
+    geometry_source: string;
+    psgc_province: string | null;
+    psgc_municipality: string | null;
+    psgc_barangay: string | null;
+    source_area_sqm: number | null;
+    source_area_unit: string | null;
+    computed_area_sqm: number | null;
+    version: number;
+    area_m2: number | null;
+    area_ha: number | null;
+    distance_m: number;
+    contains_point: boolean;
+}
+
+export interface ParcelLocatePayload {
+    parcels: ParcelHit[];
+    tolerance_m: number;
+}
+
+/** Properties carried on each overlay feature (GET /parcels/overlay). */
+export interface ParcelOverlayProperties {
+    parcel_code: string;
+    status: string;
+    geometry_source: string;
+    version: number;
+    area_m2: number | null;
+}
+
+export type ParcelOverlayCollection = GeoJSON.FeatureCollection<
+    GeoJSON.Polygon | GeoJSON.MultiPolygon,
+    ParcelOverlayProperties
+>;
+
+/** One attribute difference between two parcel versions (TASK-104a). */
+export interface ParcelFieldChange {
+    field: string;
+    old: unknown;
+    new: unknown;
+    changed: boolean;
+}
+
+/** A vertex that moved between two versions, matched by ring position. */
+export interface MovedVertex {
+    index: number;
+    from: [number, number];
+    to: [number, number];
+}
+
+export interface ParcelGeometryDiff {
+    added: [number, number][];
+    removed: [number, number][];
+    moved: MovedVertex[];
+    old_vertex_count: number;
+    new_vertex_count: number;
+}
+
+/** GET /parcels/{id}/versions/{v}/compare */
+export interface ParcelComparePayload {
+    parcel_id: string;
+    from_version: number;
+    to_version: number;
+    field_changes: ParcelFieldChange[];
+    geometry_diff: ParcelGeometryDiff | null;
+}
+
+/** GET /parcels/{id}/versions/{v} */
+export interface ParcelVersionDetail {
+    id: number;
+    version: number;
+    status: string;
+    geometry_source: string;
+    change_summary: string | null;
+    change_reason: string | null;
+    changed_by: number | null;
+    changed_at: string;
+    geometry: GeoJSON.GeometryObject | null;
+    snapshot: Record<string, unknown>;
+}
+
+/** A single event on the merged version/workflow/audit timeline. */
+export interface ParcelTimelineEvent {
+    kind: 'VERSION' | 'WORKFLOW' | 'AUDIT';
+    at: string;
+    actor: string | null;
+    action: string;
+    detail: Record<string, unknown>;
+    misc: Record<string, unknown>;
+}
+
+export interface ParcelTimelinePayload {
+    parcel_id: string;
+    count: number;
+    events: ParcelTimelineEvent[];
+}

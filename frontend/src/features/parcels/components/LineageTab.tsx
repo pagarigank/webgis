@@ -122,10 +122,10 @@ export function LineageTab({ parcelId, parcelCode }: { parcelId: string; parcelC
         <div data-testid="lineage-tab">
             <div className="d-flex flex-wrap gap-3 align-items-end mb-3">
                 <div>
-                    <label className="form-label small mb-1" htmlFor="lineage-direction">
+                    <label className="form-label" htmlFor="lineage-direction">
                         Direction
                     </label>
-                    <select id="lineage-direction" data-testid="lineage-direction" className="form-select form-select-sm" value={direction} onChange={(e) => setDirection(e.target.value)}>
+                    <select id="lineage-direction" data-testid="lineage-direction" className="form-select" value={direction} onChange={(e) => setDirection(e.target.value)}>
                         {DIRECTIONS.map((d) => (
                             <option key={d.value} value={d.value}>
                                 {d.label}
@@ -134,7 +134,7 @@ export function LineageTab({ parcelId, parcelCode }: { parcelId: string; parcelC
                     </select>
                 </div>
                 <div>
-                    <label className="form-label small mb-1" htmlFor="lineage-depth">
+                    <label className="form-label" htmlFor="lineage-depth">
                         Depth (1–10)
                     </label>
                     <input
@@ -143,19 +143,19 @@ export function LineageTab({ parcelId, parcelCode }: { parcelId: string; parcelC
                         type="number"
                         min={1}
                         max={10}
-                        className="form-control form-control-sm"
+                        className="form-input"
                         style={{ width: 90 }}
                         value={depth}
                         onChange={(e) => setDepth(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
                     />
                 </div>
-                <button type="button" className="btn btn-outline-secondary btn-sm" data-testid="lineage-expand" onClick={() => setDepth((d) => Math.min(10, d + 1))}>
+                <button type="button" className="btn btn-secondary btn-sm" data-testid="lineage-expand" onClick={() => setDepth((d) => Math.min(10, d + 1))}>
                     Expand +1
                 </button>
-                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setDepth((d) => Math.max(1, d - 1))}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDepth((d) => Math.max(1, d - 1))}>
                     Collapse −1
                 </button>
-                <button type="button" className="btn btn-outline-secondary btn-sm ms-auto" data-testid="lineage-export" onClick={downloadExport}>
+                <button type="button" className="btn btn-secondary btn-sm ms-auto" data-testid="lineage-export" onClick={downloadExport}>
                     Export JSON
                 </button>
             </div>

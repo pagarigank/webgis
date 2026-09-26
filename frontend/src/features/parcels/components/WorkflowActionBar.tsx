@@ -116,7 +116,7 @@ export function WorkflowActionBar({ parcelId, status, disabled = false }: Workfl
             {actions.map((action) => (
                 <button
                     key={action.action_code}
-                    className="btn btn-sm btn-outline-primary"
+                    className="btn btn-sm btn-secondary"
                     disabled={disabled || transition.isPending}
                     title={`${action.action_code}: ${status} → ${action.to_state}`}
                     data-testid={`workflow-action-${action.action_code}`}
@@ -161,7 +161,7 @@ export function WorkflowActionBar({ parcelId, status, disabled = false }: Workfl
                                         </label>
                                         <textarea
                                             id="workflow-reason-input"
-                                            className="form-control form-control-sm"
+                                            className="form-textarea"
                                             rows={3}
                                             value={reason}
                                             onChange={(e) => setReason(e.target.value)}
@@ -177,7 +177,7 @@ export function WorkflowActionBar({ parcelId, status, disabled = false }: Workfl
                                         </label>
                                         <textarea
                                             id="workflow-comment-input"
-                                            className="form-control form-control-sm"
+                                            className="form-textarea"
                                             rows={3}
                                             value={comment}
                                             onChange={(e) => setComment(e.target.value)}

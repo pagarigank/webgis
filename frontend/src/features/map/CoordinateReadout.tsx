@@ -1,26 +1,32 @@
 // TASK-056: CRS selector + coordinate readout with the CRS name attached.
 // The display CRS is client-side only — geometry sent to the API stays 4326.
-import { useEffect, useMemo, useState } from 'react';
+//
+// The selected CRS is the app's *working* CRS: it drives this readout and the
+// SRID used for measurement/analysis (see spatialApi), so the numbers on screen
+// and the numbers in the readout always agree. It defaults to PRS92 /
+// Philippines zone III (EPSG:3123) rather than a bare WGS84 readout, because
+// cadastral work in the Philippines is done in PRS92.
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useMapContext } from './MapContext';
 import {
     registerCrsRegistry,
     getCrsList,
-    crsLabel,
+    getCrsGroups,
+    crsDisplayName,
     projectFrom4326,
+    getWorkingSrid,
+    setWorkingSrid,
+    subscribeWorkingSrid,
+    DEFAULT_WORKING_SRID,
 } from '../../lib/crs';
 
-const STORAGE_KEY = 'webgis.display_crs';
-
-/** Default display CRS list offered before the registry loads. */
-const QUICK_OPTS = [4326, 3123, 3857];
+/** SRIDs offered before the registry finishes loading. */
+const QUICK_OPTS = [3123, 3121, 3122, 3124, 3125, 4326, 3857];
 
 export function CoordinateReadout() {
     const map = useMapContext().map;
     const [lngLat, setLngLat] = useState<{ lng: number; lat: number } | null>(null);
-    const [srid, setSrid] = useState<number>(() => {
-        const saved = Number(localStorage.getItem(STORAGE_KEY));
-        return Number.isFinite(saved) && saved > 0 ? saved : 4326;
-    });
+    const srid = useSyncExternalStore(subscribeWorkingSrid, getWorkingSrid, getWorkingSrid);
     const [registryReady, setRegistryReady] = useState(false);
 
     // Register the CRS registry (idempotent; one fetch shared by all callers).
@@ -47,14 +53,13 @@ export function CoordinateReadout() {
         };
     }, [map]);
 
-    useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, String(srid));
-    }, [srid]);
-
-    const options = useMemo(() => {
+    // Rendered options: PRS92 zones first, then WGS 84, then the historical
+    // Luzon 1911 zones, so the default family leads and a superseded datum is
+    // never the first thing in the list.
+    const groups = useMemo(() => {
         const list = registryReady ? getCrsList() : [];
-        const srids = new Set<number>([...QUICK_OPTS, ...list.map((c) => c.srid), srid]);
-        return [...srids].sort((a, b) => a - b);
+        const srids = [...new Set([...QUICK_OPTS, ...list.map((c) => c.srid), srid])];
+        return getCrsGroups(srids);
     }, [registryReady, srid]);
 
     const display = useMemo(() => {
@@ -88,11 +93,19 @@ export function CoordinateReadout() {
         >
             <span data-testid="readout-value">{display}</span>
             <span style={{ color: '#9ca3af' }}>|</span>
+            <label
+                htmlFor="crs-selector"
+                style={{ color: '#9ca3af', fontSize: 11, fontFamily: 'system-ui, sans-serif' }}
+            >
+                CRS
+            </label>
             <select
-                aria-label="Display CRS"
+                id="crs-selector"
+                aria-label="Coordinate reference system"
                 data-testid="crs-selector"
+                title={`Working coordinate system: ${crsDisplayName(srid)}`}
                 value={srid}
-                onChange={(e) => setSrid(Number(e.target.value))}
+                onChange={(e) => setWorkingSrid(Number(e.target.value))}
                 style={{
                     background: 'transparent',
                     color: '#fff',
@@ -100,12 +113,22 @@ export function CoordinateReadout() {
                     borderRadius: 4,
                     fontSize: 11,
                     padding: '2px 4px',
+                    maxWidth: 260,
                 }}
             >
-                {options.map((s) => (
-                    <option key={s} value={s} style={{ color: '#111' }}>
-                        {crsLabel(s)}
-                    </option>
+                {groups.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                        {group.entries.map((entry) => (
+                            <option
+                                key={entry.srid}
+                                value={entry.srid}
+                                style={{ color: '#111' }}
+                            >
+                                {entry.name}
+                                {entry.srid === DEFAULT_WORKING_SRID ? ' (default)' : ''}
+                            </option>
+                        ))}
+                    </optgroup>
                 ))}
             </select>
         </div>

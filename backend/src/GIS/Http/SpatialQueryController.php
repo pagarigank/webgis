@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\GIS\Http;
 
+use App\Core\Crs\DefaultProjectedCrs;
 use App\Core\Error\ApiError;
 use App\Core\Http\Response\Envelope;
 use App\GIS\Domain\SpatialQuery;
@@ -29,7 +30,7 @@ class SpatialQueryController
      *   "operation": "bbox"|"intersects"|"within"|"contains"|"nearest"|"within_distance"|"buffer",
      *   "layer_id": 1,                        // optional; if omitted, searches all accessible layers
      *   "geometry": { type, coordinates },   // GeoJSON geometry (or [w,s,e,n] for bbox)
-     *   "srid": 32651,                        // target CRS for distance (default 32651)
+     *   "srid": 3123,                        // target CRS for distance (default 3123, PRS92 zone III)
      *   "limit": 100,                         // default 100, max 500
      *   "offset": 0,
      *   "distance_m": 500,                    // for within_distance
@@ -81,7 +82,7 @@ class SpatialQueryController
             $extra['buffer_m'] = isset($body['buffer_m']) ? (float) $body['buffer_m'] : 100;
         }
 
-        $srid = isset($body['srid']) && is_int($body['srid']) ? $body['srid'] : 32651;
+        $srid = isset($body['srid']) && is_int($body['srid']) ? $body['srid'] : DefaultProjectedCrs::SRID;
 
         // If layer_id is null, we search across all accessible layers — pass 0 as placeholder
         $effectiveLayerId = $layerId ?? 0;
@@ -100,7 +101,7 @@ class SpatialQueryController
     }
 
     /**
-     * GET /spatial/query/bbox?layer_id=1&west=121&south=14&east=121.1&north=14.1&srid=32651
+     * GET /spatial/query/bbox?layer_id=1&west=121&south=14&east=121.1&north=14.1&srid=3123
      *
      * Convenience GET endpoint for bbox queries (no POST needed for simple bbox).
      */
@@ -137,7 +138,7 @@ class SpatialQueryController
             'operation' => 'bbox',
             'layer_id' => $layerId,
             'geometry' => [$west, $south, $east, $north],
-            'srid' => isset($q['srid']) && is_numeric($q['srid']) ? (int) $q['srid'] : 32651,
+            'srid' => isset($q['srid']) && is_numeric($q['srid']) ? (int) $q['srid'] : DefaultProjectedCrs::SRID,
             'limit' => isset($q['limit']) ? (int) $q['limit'] : 100,
             'offset' => isset($q['offset']) ? (int) $q['offset'] : 0,
         ]);

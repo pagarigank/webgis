@@ -49,14 +49,11 @@ echo "Constructed WKT: $wkt\n";
 $pdo->query("SET app.user_id = '1001'");
 
 $stmt = $pdo->prepare("
-    INSERT INTO app.parcels (id, parcel_code, geometry_source, psgc_barangay, geom)
-    VALUES (gen_random_uuid(), 'LOT10-BLK12', 'COMPUTED_FROM_TECHNICAL_DESCRIPTION', '035401017', ST_Multi(ST_Transform(ST_SetSRID(ST_GeomFromText(:wkt), 990103), 4326)))
-    RETURNING id
+    UPDATE app.parcels 
+    SET geom = ST_Multi(ST_Transform(ST_SetSRID(ST_GeomFromText(:wkt), 3123), 4326))
+    WHERE parcel_code = 'LOT10-BLK12'
 ");
 $stmt->execute(['wkt' => $wkt]);
-$parcelId = $stmt->fetchColumn();
 
-
-
-echo "Successfully inserted parcel with ID: $parcelId\n";
+echo "Successfully updated parcel LOT10-BLK12\n";
 echo "You can now check the map to see if it overlays perfectly!\n";

@@ -334,12 +334,13 @@ const ParcelMap = forwardRef<ParcelMapRef, {
             style: 'https://demotiles.maplibre.org/style.json',
             center: ANGELES_CITY_CENTER,
             zoom: DEFAULT_MAP_ZOOM,
+            maxZoom: 22,
         });
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         map.on('load', () => {
             map.addSource('parcels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-            map.addLayer({ id: 'parcel-fills-layer', type: 'fill', source: 'parcels', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.45 } });
-            map.addLayer({ id: 'parcel-lines-layer', type: 'line', source: 'parcels', paint: { 'line-color': '#1e40af', 'line-width': 2 } });
+            map.addLayer({ id: 'parcel-fills-layer', type: 'fill', source: 'parcels', paint: { 'fill-color': '#ef4444', 'fill-opacity': 0.25 } });
+            map.addLayer({ id: 'parcel-lines-layer', type: 'line', source: 'parcels', paint: { 'line-color': '#b91c1c', 'line-width': 2 } });
             setMapReady(true);
         });
         mapRef.current = map;

@@ -1,4 +1,4 @@
-import apiClient from '../../../lib/apiClient';
+import apiClient, { unwrapEntity, unwrapList } from '../../../lib/apiClient';
 
 export interface Vertex {
   seq: number;
@@ -122,27 +122,27 @@ export const computationApi = {
     }
   ): Promise<ComputationDetail> => {
     const res = await apiClient.post(`/parcels/${parcelId}/calculate`, params);
-    return res.data.data;
+    return unwrapEntity<ComputationDetail>(res)!;
   },
 
   listForParcel: async (parcelId: string): Promise<ComputationSummary[]> => {
     const res = await apiClient.get(`/parcels/${parcelId}/computations`);
-    return res.data.data;
+    return unwrapList<ComputationSummary>(res);
   },
 
   get: async (id: number): Promise<ComputationDetail> => {
     const res = await apiClient.get(`/computations/${id}`);
-    return res.data.data;
+    return unwrapEntity<ComputationDetail>(res)!;
   },
 
   getSnapshot: async (id: number): Promise<Record<string, unknown>> => {
     const res = await apiClient.get(`/computations/${id}/snapshot`);
-    return res.data.data;
+    return unwrapEntity<Record<string, unknown>>(res) ?? {};
   },
 
   replay: async (id: number): Promise<ReplayResult> => {
     const res = await apiClient.post(`/computations/${id}/replay`);
-    return res.data.data;
+    return unwrapEntity<ReplayResult>(res)!;
   },
 
   adjust: async (
@@ -154,23 +154,23 @@ export const computationApi = {
       method,
       params: params ?? {},
     });
-    return res.data.data;
+    return unwrapEntity<ComputationDetail>(res)!;
   },
 
   suggestZone: async (lon: number): Promise<ZoneRecommendation> => {
     const res = await apiClient.get(`/crs/suggest-ptm-zone?lon=${lon}`);
-    return res.data.data;
+    return unwrapEntity<ZoneRecommendation>(res)!;
   },
 
   acceptComputation: async (
     parcelId: string,
     computationId: number,
     reason: string
-  ): Promise<any> => {
+  ): Promise<unknown> => {
     const res = await apiClient.post(`/parcels/${parcelId}/accept-computation`, {
       computation_id: computationId,
       reason,
     });
-    return res.data.data;
+    return unwrapEntity(res);
   },
 };

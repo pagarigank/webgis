@@ -80,15 +80,7 @@ export const SurveyPlanTab: React.FC<SurveyPlanTabProps> = ({ parcel, onUpdated 
               setShowSearch(!showSearch);
               if (!showSearch) handleSearchPlans();
             }}
-            style={{
-              padding: '6px 14px',
-              backgroundColor: '#f8f9fa',
-              border: '1px solid #ced4da',
-              borderRadius: '4px',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
+            className="btn btn-secondary btn-sm"
           >
             {showSearch ? 'Cancel' : currentPlan ? 'Change Survey Plan' : 'Link Survey Plan'}
           </button>
@@ -125,14 +117,8 @@ export const SurveyPlanTab: React.FC<SurveyPlanTabProps> = ({ parcel, onUpdated 
               type="button"
               disabled={linking}
               onClick={() => handleLinkPlan(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#dc3545',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-              }}
+              className="btn btn-ghost btn-sm"
+              style={{ color: '#dc3545', padding: '0 8px' }}
             >
               Unlink
             </button>
@@ -182,16 +168,7 @@ export const SurveyPlanTab: React.FC<SurveyPlanTabProps> = ({ parcel, onUpdated 
               setShowSearch(true);
               handleSearchPlans();
             }}
-            style={{
-              padding: '8px 18px',
-              backgroundColor: '#0d6efd',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              fontWeight: 600,
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-            }}
+            className="btn btn-primary"
           >
             Find & Link Survey Plan
           </button>
@@ -216,21 +193,13 @@ export const SurveyPlanTab: React.FC<SurveyPlanTabProps> = ({ parcel, onUpdated 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearchPlans()}
-              style={{ flex: 1, padding: '6px 10px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '0.85rem' }}
+              className="form-input"
+              style={{ flex: 1 }}
             />
             <button
               type="button"
               onClick={handleSearchPlans}
-              style={{
-                padding: '6px 14px',
-                backgroundColor: '#0d6efd',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '0.85rem',
-              }}
+              className="btn btn-primary btn-sm"
             >
               Search
             </button>
@@ -265,16 +234,7 @@ export const SurveyPlanTab: React.FC<SurveyPlanTabProps> = ({ parcel, onUpdated 
                     type="button"
                     disabled={linking}
                     onClick={() => handleLinkPlan(sp.id)}
-                    style={{
-                      padding: '4px 12px',
-                      backgroundColor: '#198754',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
+                    className="btn btn-secondary btn-sm"
                   >
                     {linking ? 'Linking…' : 'Link'}
                   </button>

@@ -32,23 +32,25 @@ export function ParcelField(props: {
     children: ReactNode;
 }) {
     const { id, label, required, hint, error, className, children } = props;
+    // We will render 'form-group' and allow className to inject grid classes if needed.
     return (
-        <div className={className}>
+        <div className={`form-group ${className || ''}`.trim()}>
             <label className="form-label" htmlFor={id}>
                 {label}
                 {required ? (
-                    <span className="text-danger ms-1" aria-hidden="true">
+                    <span className="form-required" aria-hidden="true">
                         *
                     </span>
                 ) : null}
             </label>
             {children}
             {error ? (
-                <div className="invalid-feedback d-block" id={`${id}-error`} role="alert">
+                <div className="form-error" id={`${id}-error`} role="alert">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     {error}
                 </div>
             ) : hint ? (
-                <div className="form-text" id={`${id}-hint`}>
+                <div className="form-hint" id={`${id}-hint`}>
                     {hint}
                 </div>
             ) : null}

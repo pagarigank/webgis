@@ -1,4 +1,5 @@
 import apiClient from '../../lib/apiClient';
+import { getMeasurementSrid } from '../../lib/crs';
 
 export interface MeasureDistanceResult {
     length_m: number;
@@ -16,11 +17,16 @@ export interface MeasureAreaResult {
 export type MeasureResult = MeasureDistanceResult | MeasureAreaResult;
 
 export const spatialApi = {
+    // `srid` is the CRS the measurement is *computed in*, not the CRS the input
+    // geometry is expressed in: the API always reads input geometry as WGS84
+    // and reprojects to this CRS server-side. Defaulting to the user's working
+    // CRS keeps the numbers on screen consistent with the CRS shown in the
+    // readout, and defaults to PRS92 rather than a hardcoded UTM zone.
     measure: async (type: 'distance' | 'area', geometry: GeoJSON.GeometryObject, srid?: number): Promise<MeasureResult> => {
         return await apiClient.post('/spatial/measure', {
             type,
             geometry,
-            srid: srid ?? 32651,
+            srid: srid ?? getMeasurementSrid(),
         });
     },
 
@@ -38,7 +44,7 @@ export const spatialApi = {
             lng: lng.toString(),
             lat: lat.toString(),
             layer_id: layerId.toString(),
-            srid: (srid ?? 32651).toString(),
+            srid: (srid ?? getMeasurementSrid()).toString(),
         });
         if (featureId) params.set('feature_id', featureId);
         return await apiClient.get(`/spatial/identify?${params}`);
@@ -58,7 +64,7 @@ export const spatialApi = {
         const params = new URLSearchParams({
             lng: lng.toString(),
             lat: lat.toString(),
-            srid: (srid ?? 32651).toString(),
+            srid: (srid ?? getMeasurementSrid()).toString(),
         });
         return await apiClient.get(`/spatial/identify-nearby?${params}`);
     },

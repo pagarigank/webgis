@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useBasemapToggle } from '../../map/basemap';
+import { ANGELES_CITY_CENTER, DEFAULT_MAP_ZOOM } from '../../../lib/crs';
 import { ringOf } from './SplitTab';
 import type { Parcel } from '../types';
 
@@ -30,8 +31,9 @@ export function SplitLineMap({
         const map = new maplibregl.Map({
             container: containerRef.current,
             style: 'https://demotiles.maplibre.org/style.json',
-            center: [121, 14.5],
-            zoom: 5,
+            // Fallback view until the parcel outline is rendered and fitted.
+            center: ANGELES_CITY_CENTER,
+            zoom: DEFAULT_MAP_ZOOM,
         });
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
 

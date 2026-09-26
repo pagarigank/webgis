@@ -25,3 +25,13 @@ backend/.phpunit.cache/
 # Browser-automation session artifacts (Playwright MCP snapshots, ad-hoc screenshots)
 .playwright-mcp/
 layer-designer-fixed.png
+
+# Task scratch / test artefacts — do not commit
+*.pdf
+title/
+update_seeder.php
+backend/bin/insert_test_parcel.php
+frontend/src/auth/devAutoLogin.ts
+frontend/src/lib/crs.working.test.ts
+bllm.pdf
+bllm2.pdf

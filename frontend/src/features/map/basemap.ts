@@ -9,11 +9,11 @@ import * as maplibregl from 'maplibre-gl';
 export type BasemapKind = 'roads' | 'satellite';
 
 const STREET_TILES =
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+    'https://mt1.google.com/vt/lyrs=m&scale=2&x={x}&y={y}&z={z}';
 const SATELLITE_TILES =
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    'https://mt1.google.com/vt/lyrs=s&scale=2&x={x}&y={y}&z={z}';
 const LABELS_TILES =
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
+    'https://mt1.google.com/vt/lyrs=h&scale=2&x={x}&y={y}&z={z}';
 
 const STREET_SOURCE_ID = 'webgis-basemap-streets';
 const STREET_LAYER_ID = 'webgis-basemap-streets-layer';
@@ -51,6 +51,7 @@ export function useBasemapToggle(map: maplibregl.Map | null, initial: BasemapKin
                     type: 'raster',
                     tiles: [tiles],
                     tileSize: 256,
+                    maxzoom: 22,
                 });
             }
             if (!map.getLayer(layerId)) {

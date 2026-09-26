@@ -1,4 +1,5 @@
 import apiClient from '../../lib/apiClient';
+import { getMeasurementSrid } from '../../lib/crs';
 
 export type SpatialOperation = 'bbox' | 'intersects' | 'within' | 'contains' | 'nearest' | 'within_distance' | 'buffer';
 
@@ -29,7 +30,7 @@ export const spatialQueryApi = {
             operation,
             layer_id: layerId,
             geometry,
-            srid: options?.srid ?? 32651,
+            srid: options?.srid ?? getMeasurementSrid(),
             limit: options?.limit ?? 100,
             offset: options?.offset ?? 0,
             distance_m: options?.distance_m,
@@ -54,7 +55,7 @@ export const spatialQueryApi = {
             south: south.toString(),
             east: east.toString(),
             north: north.toString(),
-            srid: (options?.srid ?? 32651).toString(),
+            srid: (options?.srid ?? getMeasurementSrid()).toString(),
             limit: (options?.limit ?? 100).toString(),
             offset: (options?.offset ?? 0).toString(),
         });

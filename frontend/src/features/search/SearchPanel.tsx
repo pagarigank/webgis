@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useMapContext } from '../../features/map/MapContext';
 import { spatialQueryApi, type SpatialOperation, type SpatialQueryResult } from './spatialQueryApi';
+import { getMeasurementSrid } from '../../lib/crs';
 import { DrawManager } from '../../features/map/DrawManager';
 import * as maplibregl from 'maplibre-gl';
 
@@ -70,7 +71,8 @@ export const SearchPanel: React.FC = () => {
 
         try {
             let geometry: GeoJSON.GeometryObject | number[];
-            const opts: any = { srid: 32651, limit: 100, offset: 0 };
+            // Target CRS for any distance/buffer work: the user's working CRS.
+            const opts: any = { srid: getMeasurementSrid(), limit: 100, offset: 0 };
 
             switch (operation) {
                 case 'bbox': {

@@ -202,7 +202,7 @@ export function SplitTab({ parcel }: SplitTabProps) {
             <div className="row g-4">
                 <div className="col-lg-5">
                     <div className="mb-3">
-                        <label className="form-label small fw-semibold" htmlFor="split-method">
+                        <label className="form-label" htmlFor="split-method">
                             Method
                         </label>
                         <select
@@ -222,14 +222,14 @@ export function SplitTab({ parcel }: SplitTabProps) {
 
                     {form.method === 'MAP_SPLIT_LINE' && (
                         <>
-                            <label className="form-label small fw-semibold" htmlFor="split-offset">
+                            <label className="form-label" htmlFor="split-offset">
                                 Midline offset (°, snapped to the bbox midline at 0)
                             </label>
                             <input
                                 id="split-offset"
                                 type="number"
                                 step="0.0001"
-                                className="form-control form-control-sm"
+                                className="form-input"
                                 data-testid="split-offset"
                                 value={form.midlineOffsetDeg}
                                 onChange={(e) => set('midlineOffsetDeg', Number(e.target.value))}
@@ -243,58 +243,58 @@ export function SplitTab({ parcel }: SplitTabProps) {
                     {form.method === 'TECHNICAL_DESCRIPTION' && (
                         <div className="row g-2 mb-3">
                             <div className="col-6">
-                                <label className="form-label small" htmlFor="split-td-a">
+                                <label className="form-label" htmlFor="split-td-a">
                                     Child 1 TD id
                                 </label>
-                                <input id="split-td-a" data-testid="split-td-a" className="form-control form-control-sm" value={form.tdA} onChange={(e) => set('tdA', e.target.value)} />
+                                <input id="split-td-a" data-testid="split-td-a" className="form-input" value={form.tdA} onChange={(e) => set('tdA', e.target.value)} />
                             </div>
                             <div className="col-6">
-                                <label className="form-label small" htmlFor="split-td-b">
+                                <label className="form-label" htmlFor="split-td-b">
                                     Child 2 TD id
                                 </label>
-                                <input id="split-td-b" data-testid="split-td-b" className="form-control form-control-sm" value={form.tdB} onChange={(e) => set('tdB', e.target.value)} />
+                                <input id="split-td-b" data-testid="split-td-b" className="form-input" value={form.tdB} onChange={(e) => set('tdB', e.target.value)} />
                             </div>
                         </div>
                     )}
 
                     {GEOMETRY_CHILD_METHODS.has(form.method) && (
                         <div className="mb-3">
-                            <label className="form-label small" htmlFor="split-geom-a">
+                            <label className="form-label" htmlFor="split-geom-a">
                                 Child 1 geometry (GeoJSON)
                             </label>
-                            <textarea id="split-geom-a" data-testid="split-geom-a" className="form-control form-control-sm font-monospace" rows={4} value={form.lotA} onChange={(e) => set('lotA', e.target.value)} />
-                            <label className="form-label small mt-2" htmlFor="split-geom-b">
+                            <textarea id="split-geom-a" data-testid="split-geom-a" className="form-textarea font-monospace" rows={4} value={form.lotA} onChange={(e) => set('lotA', e.target.value)} />
+                            <label className="form-label mt-2" htmlFor="split-geom-b">
                                 Child 2 geometry (GeoJSON)
                             </label>
-                            <textarea id="split-geom-b" data-testid="split-geom-b" className="form-control form-control-sm font-monospace" rows={4} value={form.tdB} onChange={(e) => set('tdB', e.target.value)} />
+                            <textarea id="split-geom-b" data-testid="split-geom-b" className="form-textarea font-monospace" rows={4} value={form.tdB} onChange={(e) => set('tdB', e.target.value)} />
                         </div>
                     )}
 
                     {form.method !== 'SURVEY_GEOMETRY' && form.method !== 'IMPORTED_GEOMETRY' && (
                         <div className="row g-2 mb-3">
                             <div className="col-6">
-                                <label className="form-label small" htmlFor="split-lot-a">
+                                <label className="form-label" htmlFor="split-lot-a">
                                     Child 1 lot number
                                 </label>
-                                <input id="split-lot-a" data-testid="split-lot-a" className="form-control form-control-sm" value={form.lotA} onChange={(e) => set('lotA', e.target.value)} />
+                                <input id="split-lot-a" data-testid="split-lot-a" className="form-input" value={form.lotA} onChange={(e) => set('lotA', e.target.value)} />
                             </div>
                             <div className="col-6">
-                                <label className="form-label small" htmlFor="split-lot-b">
+                                <label className="form-label" htmlFor="split-lot-b">
                                     Child 2 lot number
                                 </label>
-                                <input id="split-lot-b" data-testid="split-lot-b" className="form-control form-control-sm" value={form.lotB} onChange={(e) => set('lotB', e.target.value)} />
+                                <input id="split-lot-b" data-testid="split-lot-b" className="form-input" value={form.lotB} onChange={(e) => set('lotB', e.target.value)} />
                             </div>
                         </div>
                     )}
 
                     <div className="mb-3">
-                        <label className="form-label small fw-semibold" htmlFor="split-reason">
+                        <label className="form-label" htmlFor="split-reason">
                             Reason (required)
                         </label>
                         <input
                             id="split-reason"
                             data-testid="split-reason"
-                            className="form-control form-control-sm"
+                            className="form-input"
                             value={form.reason}
                             onChange={(e) => set('reason', e.target.value)}
                             placeholder="e.g. Subdivision per plan Psd-000001"
@@ -304,7 +304,7 @@ export function SplitTab({ parcel }: SplitTabProps) {
 
                     <button
                         type="button"
-                        className="btn btn-outline-primary btn-sm"
+                        className="btn btn-secondary btn-sm"
                         data-testid="split-preview"
                         // A split requires a reason (FR-137), and the API rejects
                         // the dry run without it. Gate Preview on the same

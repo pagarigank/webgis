@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\GIS\Domain;
 
+use App\Core\Crs\DefaultProjectedCrs;
 use App\Core\Error\ApiError;
 use PDO;
 
@@ -10,9 +11,16 @@ use PDO;
  * Spatial measurement helpers (TASK-062).
  *
  * Distance and area are computed in a projected CRS for meaningful metre
- * values.  The default CRS is EPSG:32651 (UTM 51N, covers Metro Manila).
- * Callers pass WGS84 geometry; this service transforms to the target CRS
- * and computes.
+ * values. The default target CRS is EPSG:3123 (PRS92 / Philippines zone III,
+ * the app's core PCS - see DefaultProjectedCrs); callers may pass any projected
+ * SRID explicitly.
+ *
+ * Input geometry is always WGS84 (EPSG:4326), as stored and as transmitted by
+ * the client. The `srid` argument is the CRS the measurement is *computed in*,
+ * never the CRS the input is expressed in: this service transforms the input to
+ * the target CRS and measures there. Because the result is a planar measurement
+ * in that CRS, a geographic target (e.g. EPSG:4326) would return degrees under
+ * a metre label, so callers should always pass a projected SRID.
  */
 class SpatialMeasure
 {
@@ -29,7 +37,7 @@ class SpatialMeasure
     public function length(array $geometry, ?int $srid = null): array
     {
         $this->requireLine($geometry);
-        $srid = $srid ?? 32651;
+        $srid = $srid ?? DefaultProjectedCrs::SRID;
 
         $gj = json_encode($geometry);
         if ($gj === false) {
@@ -58,7 +66,7 @@ class SpatialMeasure
     public function area(array $geometry, ?int $srid = null): array
     {
         $this->requirePolygon($geometry);
-        $srid = $srid ?? 32651;
+        $srid = $srid ?? DefaultProjectedCrs::SRID;
 
         $gj = json_encode($geometry);
         if ($gj === false) {
@@ -87,7 +95,7 @@ class SpatialMeasure
     public function identify(
         float $lng,
         float $lat,
-        int $srid = 32651,
+        int $srid = DefaultProjectedCrs::SRID,
     ): array {
         // Build a 1-metre buffer point in the target CRS so we can snap.
         $pointWkt = sprintf('POINT(%F %F)', $lng, $lat);

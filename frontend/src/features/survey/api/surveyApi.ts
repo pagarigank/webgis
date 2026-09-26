@@ -1,4 +1,4 @@
-import apiClient from '../../../lib/apiClient';
+import apiClient, { unwrapEntity, unwrapList } from '../../../lib/apiClient';
 
 export interface CourseBearing {
   quadrant: string | null;
@@ -126,10 +126,8 @@ export interface StagedParseResult {
 
 export const surveyApi = {
   async listByParcel(parcelId: string): Promise<TechnicalDescription[]> {
-    const res = await apiClient.get<{ success: boolean; data: TechnicalDescription[] }>(
-      `/parcels/${parcelId}/technical-descriptions`
-    );
-    return res.data.data;
+    const res = await apiClient.get(`/parcels/${parcelId}/technical-descriptions`);
+    return unwrapList<TechnicalDescription>(res);
   },
 
   async createForParcel(parcelId: string, payload: {
@@ -141,19 +139,25 @@ export const surveyApi = {
     survey_plan_id?: number | null;
     is_current?: boolean;
   }): Promise<TechnicalDescription> {
-    const res = await apiClient.post<{ success: boolean; data: TechnicalDescription }>(
+    const res = await apiClient.post(
       `/parcels/${parcelId}/technical-descriptions`,
       payload
     );
-    return res.data.data;
+    return unwrapEntity<TechnicalDescription>(res)!;
   },
 
   async getById(id: number): Promise<{ data: TechnicalDescription; etag?: string }> {
-    const res = await apiClient.get<{ success: boolean; data: TechnicalDescription }>(
-      `/technical-descriptions/${id}`
-    );
-    const etag = res.headers['etag'] as string | undefined;
-    return { data: res.data.data, etag };
+    const res = await apiClient.get(`/technical-descriptions/${id}`);
+    // The response interceptor returns the unwrapped body, not the Axios
+    // response, so response headers are not reachable from here — reading
+    // `res.headers` threw on every call. The server sends `ETag: "<version>"`
+    // and also includes `version` in the body, so derive the tag from the
+    // payload and keep the If-Match optimistic-concurrency flow working.
+    const entity = unwrapEntity<TechnicalDescription>(res);
+    if (!entity) throw new Error(`Technical description ${id} was not returned by the server`);
+    const version = (entity as { version?: number | string }).version;
+    const etag = version === undefined || version === null ? undefined : `"${version}"`;
+    return { data: entity, etag };
   },
 
   async update(id: number, payload: Partial<TechnicalDescription>, ifMatch?: string): Promise<TechnicalDescription> {
@@ -161,12 +165,12 @@ export const surveyApi = {
     if (ifMatch) {
       headers['If-Match'] = ifMatch;
     }
-    const res = await apiClient.put<{ success: boolean; data: TechnicalDescription }>(
+    const res = await apiClient.put(
       `/technical-descriptions/${id}`,
       payload,
       { headers }
     );
-    return res.data.data;
+    return unwrapEntity<TechnicalDescription>(res)!;
   },
 
   async addCourse(tdId: number, course: {
@@ -182,11 +186,11 @@ export const surveyApi = {
     unit?: string;
     remarks?: string;
   }): Promise<TechnicalDescription> {
-    const res = await apiClient.post<{ success: boolean; data: TechnicalDescription }>(
+    const res = await apiClient.post(
       `/technical-descriptions/${tdId}/courses`,
       course
     );
-    return res.data.data;
+    return unwrapEntity<TechnicalDescription>(res)!;
   },
 
   async updateCourse(tdId: number, courseId: number, course: {
@@ -201,34 +205,33 @@ export const surveyApi = {
     unit?: string;
     remarks?: string;
   }): Promise<TechnicalDescription> {
-    const res = await apiClient.put<{ success: boolean; data: TechnicalDescription }>(
+    const res = await apiClient.put(
       `/technical-descriptions/${tdId}/courses/${courseId}`,
       course
     );
-    return res.data.data;
+    return unwrapEntity<TechnicalDescription>(res)!;
   },
 
   async deleteCourse(tdId: number, courseId: number): Promise<TechnicalDescription> {
-    const res = await apiClient.delete<{ success: boolean; data: TechnicalDescription }>(
+    const res = await apiClient.delete(
       `/technical-descriptions/${tdId}/courses/${courseId}`
     );
-    return res.data.data;
+    return unwrapEntity<TechnicalDescription>(res)!;
   },
 
   async reorderCourses(tdId: number, courseIds: number[]): Promise<TechnicalDescription> {
-    const res = await apiClient.put<{ success: boolean; data: TechnicalDescription }>(
+    const res = await apiClient.put(
       `/technical-descriptions/${tdId}/courses/order`,
       { course_ids: courseIds }
     );
-    return res.data.data;
+    return unwrapEntity<TechnicalDescription>(res)!;
   },
 
   async validateCourses(tdId: number): Promise<CourseValidationResult> {
-    const res = await apiClient.post<{ success: boolean; data: CourseValidationResult }>(
-      `/technical-descriptions/${tdId}/validate`,
-      {}
-    );
-    return res.data.data;
+    const res = await apiClient.post(`/technical-descriptions/${tdId}/validate`, {});
+    const result = unwrapEntity<CourseValidationResult>(res);
+    if (!result) throw new Error('Course validation returned no result');
+    return result;
   },
 
   async parseText(payload: {
@@ -236,26 +239,41 @@ export const surveyApi = {
     source_type?: string;
     distance_unit_hint?: string;
   }): Promise<StagedParseResult> {
-    const res = await apiClient.post<{ success: boolean; data: StagedParseResult }>(
-      `/survey/parse`,
-      payload
-    );
-    return res.data.data;
+    const res = await apiClient.post(`/survey/parse`, payload);
+    const result = unwrapEntity<StagedParseResult>(res);
+    if (!result) throw new Error('Survey text parsing returned no result');
+    return result;
   },
 
   async confirm(tdId: number): Promise<TechnicalDescription> {
-    const res = await apiClient.post<{ success: boolean; data: TechnicalDescription }>(
+    const res = await apiClient.post(
       `/technical-descriptions/${tdId}/confirm`,
       {}
     );
-    return res.data.data;
+    return unwrapEntity<TechnicalDescription>(res)!;
   },
 
   async ocrAssist(tdId: number, text: string): Promise<TechnicalDescription> {
-    const res = await apiClient.post<{ success: boolean; data: TechnicalDescription }>(
+    const res = await apiClient.post(
       `/technical-descriptions/${tdId}/ocr`,
       { text }
     );
-    return res.data.data;
+    return unwrapEntity<TechnicalDescription>(res)!;
+  },
+
+  async linkTiePoint(tdId: number, tpId: number, controlPointId: number): Promise<TechnicalDescription> {
+    const res = await apiClient.put(
+      `/technical-descriptions/${tdId}/tie-points/${tpId}/link`,
+      { control_point_id: controlPointId }
+    );
+    return unwrapEntity<TechnicalDescription>(res)!;
+  },
+
+  async createTiePoint(tdId: number, controlPointId: number): Promise<TechnicalDescription> {
+    const res = await apiClient.post(
+      `/technical-descriptions/${tdId}/tie-points`,
+      { control_point_id: controlPointId }
+    );
+    return unwrapEntity<TechnicalDescription>(res)!;
   },
 };

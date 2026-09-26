@@ -543,30 +543,30 @@ export const TechnicalDescriptionTab: React.FC<TechnicalDescriptionTabProps> = (
             </h3>
             <form onSubmit={handleAddCourseSubmit} className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">From Point Label</label>
+                <div className="form-group">
+                  <label className="form-label">From Point Label</label>
                   <input
                     type="text"
                     value={newFrom}
                     onChange={(e) => setNewFrom(e.target.value)}
                     placeholder="e.g. 1"
-                    className="border rounded px-2.5 py-1.5 w-full text-xs"
+                    className="form-input"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">To Point Label</label>
+                <div className="form-group">
+                  <label className="form-label">To Point Label</label>
                   <input
                     type="text"
                     value={newTo}
                     onChange={(e) => setNewTo(e.target.value)}
                     placeholder="e.g. 2"
-                    className="border rounded px-2.5 py-1.5 w-full text-xs"
+                    className="form-input"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Bearing</label>
+              <div className="form-group">
+                <label className="form-label">Bearing</label>
                 <BearingInput
                   value={newBearing}
                   onChange={(val) => setNewBearing(val)}
@@ -574,23 +574,23 @@ export const TechnicalDescriptionTab: React.FC<TechnicalDescriptionTabProps> = (
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Distance</label>
+                <div className="form-group">
+                  <label className="form-label">Distance</label>
                   <input
                     type="number"
                     step="0.01"
                     value={newDistance}
                     onChange={(e) => setNewDistance(e.target.value)}
-                    className="border rounded px-2.5 py-1.5 w-full text-xs text-right font-mono"
+                    className="form-input text-right font-mono"
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
+                <div className="form-group">
+                  <label className="form-label">Unit</label>
                   <select
                     value={newUnit}
                     onChange={(e) => setNewUnit(e.target.value)}
-                    className="border rounded px-2.5 py-1.5 w-full text-xs bg-white"
+                    className="form-select"
                   >
                     <option value="m">m (Meters)</option>
                     <option value="ft">ft (Feet)</option>
@@ -644,7 +644,7 @@ export const TechnicalDescriptionTab: React.FC<TechnicalDescriptionTabProps> = (
             )}
 
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-gray-700">
+              <label className="form-label text-xs">
                 Paste Technical Description Text:
               </label>
               <textarea
@@ -652,7 +652,7 @@ export const TechnicalDescriptionTab: React.FC<TechnicalDescriptionTabProps> = (
                 value={pastedText}
                 onChange={(e) => setPastedText(e.target.value)}
                 placeholder="e.g. Beginning at a point marked 1 on plan, being S. 45 deg. 12' E., 120.50 m. from BLLM No. 1; thence N. 25 deg. 30' E., 45.20 m. to point 2; thence S. 64 deg. 30' E., 30.00 m. to point 3..."
-                className="w-full border rounded-lg p-3 text-xs font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="form-textarea font-mono text-xs"
               />
               <div className="flex justify-end">
                 <button

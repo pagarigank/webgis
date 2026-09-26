@@ -635,6 +635,120 @@ class TechnicalDescriptionController
         }
     }
 
+    public function linkTiePoint(Request $request, Response $response, array $args): Response
+    {
+        $uid = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+
+        $tdId = (int) ($args['id'] ?? 0);
+        $tpId = (int) ($args['tp_id'] ?? 0);
+        $this->requireTd($tdId);
+
+        $body = JsonBodyParser::parse($request);
+        $controlPointId = isset($body['control_point_id']) ? (int) $body['control_point_id'] : null;
+
+        if (!$controlPointId) {
+            throw new ApiError('VALIDATION_FAILED', 'control_point_id is required.', 422);
+        }
+
+        // Verify the control point exists
+        $cpStmt = $this->pdo->prepare('SELECT id, easting, northing, native_crs_id, status FROM app.survey_control_points WHERE id = :id');
+        $cpStmt->execute([':id' => $controlPointId]);
+        $cp = $cpStmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$cp) {
+            throw new ApiError('NOT_FOUND', 'Control point not found.', 404);
+        }
+
+        // Verify the tie point belongs to this TD
+        $tpStmt = $this->pdo->prepare('SELECT id FROM app.tie_points WHERE id = :tp_id AND technical_description_id = :td_id');
+        $tpStmt->execute([':tp_id' => $tpId, ':td_id' => $tdId]);
+        if (!$tpStmt->fetchColumn()) {
+            throw new ApiError('NOT_FOUND', 'Tie point not found on this technical description.', 404);
+        }
+
+        // Update the tie point with the control point's data
+        $updateStmt = $this->pdo->prepare(
+            'UPDATE app.tie_points SET '
+            . 'control_point_id = :cp_id, '
+            . 'as_used_easting = :e, '
+            . 'as_used_northing = :n, '
+            . 'as_used_crs_id = :crs, '
+            . 'as_used_status = :st, '
+            . 'adhoc_name = NULL '
+            . 'WHERE id = :tp_id'
+        );
+        $updateStmt->execute([
+            ':cp_id' => $cp['id'],
+            ':e' => $cp['easting'] ?? 0,
+            ':n' => $cp['northing'] ?? 0,
+            ':crs' => $cp['native_crs_id'] ?? 1, // Fallback to 1 (default CRS) if null
+            ':st' => $cp['status'],
+            ':tp_id' => $tpId,
+        ]);
+
+        $this->audit->writeFromSession('UPDATE', 'app.tie_points', (string) $tpId, null,
+            ['control_point_id' => $cp['id']], null, 'Linked control point to tie point');
+
+        return $this->get($request, $response, $args);
+    }
+
+    public function createTiePoint(Request $request, Response $response, array $args): Response
+    {
+        $uid = $this->resolveUser($request);
+        $this->setUserInSession($uid);
+
+        $tdId = (int) ($args['id'] ?? 0);
+        $this->requireTd($tdId);
+
+        $body = JsonBodyParser::parse($request);
+        $controlPointId = isset($body['control_point_id']) ? (int) $body['control_point_id'] : null;
+
+        if (!$controlPointId) {
+            throw new ApiError('VALIDATION_FAILED', 'control_point_id is required.', 422);
+        }
+
+        $cpStmt = $this->pdo->prepare('SELECT id, point_name, easting, northing, native_crs_id, status FROM app.survey_control_points WHERE id = :id');
+        $cpStmt->execute([':id' => $controlPointId]);
+        $cp = $cpStmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$cp) {
+            throw new ApiError('NOT_FOUND', 'Control point not found.', 404);
+        }
+
+        // Determine sequence number
+        $seqStmt = $this->pdo->prepare('SELECT COALESCE(MAX(sequence), 0) + 1 FROM app.tie_points WHERE technical_description_id = :td_id');
+        $seqStmt->execute([':td_id' => $tdId]);
+        $seq = (int) $seqStmt->fetchColumn();
+
+        $insertStmt = $this->pdo->prepare(
+            'INSERT INTO app.tie_points ('
+            . 'technical_description_id, control_point_id, as_used_easting, as_used_northing, '
+            . 'as_used_crs_id, as_used_status, sequence, role, created_by'
+            . ') VALUES ('
+            . ':td_id, :cp_id, :e, :n, :crs, :st, :seq, :role, :uid'
+            . ') RETURNING id'
+        );
+        $insertStmt->execute([
+            ':td_id' => $tdId,
+            ':cp_id' => $cp['id'],
+            ':e' => $cp['easting'] ?? 0,
+            ':n' => $cp['northing'] ?? 0,
+            ':crs' => $cp['native_crs_id'] ?? 1,
+            ':st' => $cp['status'],
+            ':seq' => $seq,
+            ':role' => 'TIE',
+            ':uid' => $uid,
+        ]);
+        $tpId = $insertStmt->fetchColumn();
+
+        $this->audit->writeFromSession('INSERT', 'app.tie_points', (string) $tpId, null,
+            ['control_point_id' => $cp['id']], null, 'Created and linked tie point');
+
+        return $this->get($request, $response, $args);
+    }
+
+
     /**
      * POST /technical-descriptions/{id}/ocr
      * OCR assist staging (TASK-086).

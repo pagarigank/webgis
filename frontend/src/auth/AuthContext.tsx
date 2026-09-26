@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../lib/apiClient';
@@ -84,6 +84,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  // ── Dev-only auto-login (see devAutoLogin.ts; inert in production) ────────
+  // Reached once the initial GET /me settles as unauthenticated. Guarded by a
+  // ref so a failed attempt cannot spin: on failure the ref stays latched and
+  // the app falls through to the real /login screen, which is the correct
+  // failure mode when the seeded account is missing or the password changed.
+  const autoLoginAttemptedRef = useRef(false);
+
   const logoutMutation = useMutation({
     mutationFn: async () => {
       try {
@@ -95,8 +102,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSettled: () => {
       tokenStore.clear();
       queryClient.removeQueries({ queryKey: ['me'] });
+      // With dev auto-login on, letting the ref latch would strand the user
+      // on /login after an explicit logout. Clearing it means logout bounces
+      // straight back into the app, which is the point of the scaffold.
+      autoLoginAttemptedRef.current = false;
     },
   });
+
+  useEffect(() => {
+    // Literal guard first, on purpose: this makes the branch below statically
+    // unreachable in a production build, which is what keeps the credential
+    // module out of the bundle. Do not hoist it into a variable or a helper.
+    if (!import.meta.env.DEV) return;
+    if (status !== 'unauthenticated') return;
+    if (autoLoginAttemptedRef.current) return;
+    autoLoginAttemptedRef.current = true;
+
+    void (async () => {
+      const { DEV_AUTO_LOGIN, devAutoLoginPermitted } = await import('./devAutoLogin');
+      if (!devAutoLoginPermitted()) return;
+      try {
+        await loginMutation.mutateAsync({
+          username: DEV_AUTO_LOGIN.username,
+          password: DEV_AUTO_LOGIN.password,
+        });
+      } catch (error) {
+        // Surfaced rather than swallowed: a silent no-op here would look like
+        // the scaffold is broken with no way to tell why.
+        console.warn(
+          `[dev] auto-login as "${DEV_AUTO_LOGIN.username}" failed; falling back to the login screen:`,
+          error,
+        );
+      }
+    })();
+  }, [status]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
