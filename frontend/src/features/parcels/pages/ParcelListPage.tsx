@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useBasemapToggle } from '../../map/basemap';
+import { ANGELES_CITY_CENTER, DEFAULT_MAP_ZOOM } from '../../../lib/crs';
 import { parcelApi } from '../api/parcelApi';
 import type { Parcel, ParcelListParams } from '../types';
+import { QuickCreateParcelModal } from '../components/QuickCreateParcelModal';
+
+export interface ParcelMapRef {
+    fitToParcel: (parcel: Parcel) => void;
+}
 
 const STATUS_OPTIONS = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'RETURNED', 'VERIFIED', 'APPROVED', 'PUBLISHED', 'ARCHIVED', 'SUPERSEDED'];
 const PAGE_SIZE = 10;
@@ -16,12 +22,15 @@ const PAGE_SIZE = 10;
  * with "Only in map view" enabled narrows results to the visible bbox.
  */
 export function ParcelListPage() {
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState('');
     const [includeHistorical, setIncludeHistorical] = useState(false);
     const [restrictToMap, setRestrictToMap] = useState(false);
     const [bbox, setBbox] = useState<string | null>(null);
     const [offset, setOffset] = useState(0);
+    const mapRef = useRef<ParcelMapRef>(null);
 
     const params: ParcelListParams = useMemo(() => ({
         limit: PAGE_SIZE,
@@ -58,37 +67,43 @@ export function ParcelListPage() {
     };
 
     return (
-        <div className="container-fluid py-4">
-            <div className="d-flex justify-content-between align-items-center mb-4">
-                <h2 className="mb-0">Parcels</h2>
-                <div className="d-flex gap-3 align-items-center">
-                    <div className="text-muted small">
+        <div>
+            {/* ── Page header ── */}
+            <div className="page-header">
+                <div>
+                    <h2 className="page-title" style={{ margin: 0 }}>Parcels</h2>
+                    <p className="page-subtitle" style={{ marginTop: '0.25rem' }}>
                         {total} result{total === 1 ? '' : 's'}
                         {restrictToMap && bbox ? ' · limited to map view' : ''}
-                    </div>
-                    <Link to="/parcels/new" className="btn btn-primary btn-sm" data-testid="parcel-create-btn">
-                        + New parcel
-                    </Link>
+                    </p>
                 </div>
+                <button
+                    className="btn btn-primary btn-sm"
+                    data-testid="parcel-create-btn"
+                    onClick={() => setShowCreateModal(true)}
+                >
+                    + New parcel
+                </button>
             </div>
 
-            <div className="card shadow-sm mb-3">
+            {/* ── Filters ── */}
+            <div className="card" style={{ marginBottom: '1.25rem' }}>
                 <div className="card-body">
-                    <div className="row g-2 align-items-end">
-                        <div className="col-md-4">
-                            <label className="form-label small text-muted mb-1" htmlFor="parcel-q">Search</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '0.75rem', alignItems: 'end' }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" htmlFor="parcel-q">Search</label>
                             <input
                                 id="parcel-q"
                                 type="text"
-                                className="form-control"
+                                className="form-input"
                                 placeholder="Lot, block, plan, TCT, TD, code, location, barangay…"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 data-testid="parcel-search"
                             />
                         </div>
-                        <div className="col-md-2">
-                            <label className="form-label small text-muted mb-1" htmlFor="parcel-status">Status</label>
+                        <div className="form-group" style={{ margin: 0, minWidth: 160 }}>
+                            <label className="form-label" htmlFor="parcel-status">Status</label>
                             <select
                                 id="parcel-status"
                                 className="form-select"
@@ -98,76 +113,78 @@ export function ParcelListPage() {
                             >
                                 <option value="">All statuses</option>
                                 {STATUS_OPTIONS.map((s) => (
-                                    <option key={s} value={s}>{s}</option>
+                                    <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
                                 ))}
                             </select>
                         </div>
-                        <div className="col-md-3 d-flex flex-column">
-                            <span className="small text-muted mb-1">&nbsp;</span>
-                            <div className="d-flex gap-3">
-                                <div className="form-check">
-                                    <input
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        id="parcel-include-historical"
-                                        checked={includeHistorical}
-                                        onChange={(e) => setIncludeHistorical(e.target.checked)}
-                                        data-testid="parcel-include-historical"
-                                    />
-                                    <label className="form-check-label small" htmlFor="parcel-include-historical">
-                                        Include historical
-                                    </label>
-                                </div>
-                                <div className="form-check">
-                                    <input
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        id="parcel-restrict-map"
-                                        checked={restrictToMap}
-                                        onChange={(e) => setRestrictToMap(e.target.checked)}
-                                        data-testid="parcel-restrict-map"
-                                    />
-                                    <label className="form-check-label small" htmlFor="parcel-restrict-map">
-                                        Only in map view
-                                    </label>
-                                </div>
-                            </div>
+                        <div style={{ paddingBottom: '0.125rem' }}>
+                            <label className="form-check" style={{ marginBottom: '0.375rem' }}>
+                                <input
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    id="parcel-include-historical"
+                                    checked={includeHistorical}
+                                    onChange={(e) => setIncludeHistorical(e.target.checked)}
+                                    data-testid="parcel-include-historical"
+                                />
+                                <span className="form-check-label">Include historical</span>
+                            </label>
+                            <label className="form-check">
+                                <input
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    id="parcel-restrict-map"
+                                    checked={restrictToMap}
+                                    onChange={(e) => setRestrictToMap(e.target.checked)}
+                                    data-testid="parcel-restrict-map"
+                                />
+                                <span className="form-check-label">Only in map view</span>
+                            </label>
                         </div>
-                        <div className="col-md-3 text-md-end">
-                            <button className="btn btn-primary" onClick={applyFilters} data-testid="parcel-search-btn">Apply</button>
-                            <button className="btn btn-outline-secondary ms-2" onClick={resetFilters}>Reset</button>
+                        <div className="flex gap-2" style={{ paddingBottom: '0.125rem' }}>
+                            <button className="btn btn-primary btn-sm" onClick={applyFilters} data-testid="parcel-search-btn">Apply</button>
+                            <button className="btn btn-ghost btn-sm" onClick={resetFilters}>Reset</button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="row g-3">
-                <div className="col-lg-8">
-                    <div className="card shadow-sm">
-                        <ParcelTable
-                            data={data?.data}
-                            isLoading={isLoading || isFetching}
-                            error={error}
-                            currentPage={page}
-                            pages={pages}
-                            onPrev={offset > 0 ? () => setOffset(Math.max(0, offset - PAGE_SIZE)) : undefined}
-                            onNext={offset + PAGE_SIZE < total ? () => setOffset(offset + PAGE_SIZE) : undefined}
-                        />
-                    </div>
+            {/* ── Results + map preview ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.25rem', alignItems: 'start' }}>
+                <div className="card">
+                    <ParcelTable
+                        data={data?.data}
+                        isLoading={isLoading || isFetching}
+                        error={error}
+                        currentPage={page}
+                        pages={pages}
+                        onPrev={offset > 0 ? () => setOffset(Math.max(0, offset - PAGE_SIZE)) : undefined}
+                        onNext={offset + PAGE_SIZE < total ? () => setOffset(offset + PAGE_SIZE) : undefined}
+                        onZoomTo={(p) => mapRef.current?.fitToParcel(p)}
+                    />
                 </div>
-                <div className="col-lg-4">
-                    <div className="card shadow-sm">
-                        <div className="card-header d-flex justify-content-between align-items-center">
-                            <span className="fw-semibold">Map Preview</span>
-                            <span className="badge bg-secondary">EPSG:4326</span>
-                        </div>
-                        <ParcelMap
-                            parcels={data?.data ?? []}
-                            onViewportChange={setBbox}
-                        />
+                <div className="card" style={{ position: 'sticky', top: 'calc(var(--header-height) + 1rem)' }}>
+                    <div className="card-header">
+                        <span>Map Preview</span>
+                        <span className="badge badge-gray">EPSG:4326</span>
                     </div>
+                    <ParcelMap
+                        ref={mapRef}
+                        parcels={data?.data ?? []}
+                        onViewportChange={setBbox}
+                    />
                 </div>
             </div>
+
+            {showCreateModal && (
+                <QuickCreateParcelModal
+                    onClose={() => {
+                        setShowCreateModal(false);
+                        // Refresh the parcel list after a successful create
+                        queryClient.invalidateQueries({ queryKey: ['parcels'] });
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -180,18 +197,19 @@ function ParcelTable(props: {
     pages: number;
     onPrev?: () => void;
     onNext?: () => void;
+    onZoomTo?: (p: Parcel) => void;
 }) {
-    const { data, isLoading, error, currentPage, pages, onPrev, onNext } = props;
+    const { data, isLoading, error, currentPage, pages, onPrev, onNext, onZoomTo } = props;
 
     return (
-        <div className="table-responsive">
-            <table className="table table-hover mb-0 align-middle">
-                <thead className="table-light">
+        <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+                <thead>
                     <tr>
                         <th>Code</th>
                         <th>Lot / Block</th>
-                        <th>Title</th>
-                        <th>TD</th>
+                        <th>Title Ref</th>
+                        <th>TD No.</th>
                         <th>Barangay</th>
                         <th>Survey Plan</th>
                         <th>Status</th>
@@ -200,49 +218,71 @@ function ParcelTable(props: {
                 <tbody>
                     {error ? (
                         <tr>
-                            <td colSpan={7} className="text-center py-4 text-danger">Error loading parcels.</td>
+                            <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--brand-danger)' }}>
+                                Error loading parcels.
+                            </td>
                         </tr>
                     ) : isLoading && !data ? (
                         <tr>
-                            <td colSpan={7} className="text-center py-4 text-muted">Loading parcels…</td>
+                            <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                Loading parcels…
+                            </td>
                         </tr>
                     ) : !data || data.length === 0 ? (
                         <tr>
-                            <td colSpan={7} className="text-center py-4 text-muted">No parcels found.</td>
+                            <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                No parcels found.
+                            </td>
                         </tr>
                     ) : (
                         data.map((p) => (
                             <tr key={p.id} data-testid="parcel-row">
                                 <td>
-                                    <Link
-                                        to={`/parcels/${p.id}/information`}
-                                        className="text-decoration-none"
-                                        data-testid={`parcel-open-${p.parcel_code}`}
-                                    >
-                                        <code>{p.parcel_code}</code>
-                                        <span className="visually-hidden"> Open editor</span>
-                                    </Link>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Link
+                                            to={`/parcels/${p.id}/information`}
+                                            style={{ textDecoration: 'none', color: 'var(--blue-600)', fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', fontWeight: 500 }}
+                                            data-testid={`parcel-open-${p.parcel_code}`}
+                                        >
+                                            {p.parcel_code}
+                                            <span className="sr-only"> Open editor</span>
+                                        </Link>
+                                        {p.geometry && (
+                                            <button
+                                                className="btn btn-ghost btn-sm"
+                                                style={{ padding: '0.125rem 0.25rem', height: 'auto', fontSize: '0.75rem' }}
+                                                onClick={() => onZoomTo?.(p)}
+                                                title="Zoom to parcel on map"
+                                            >
+                                                🔍
+                                            </button>
+                                        )}
+                                    </div>
                                 </td>
-                                <td>
+                                <td className="font-mono text-sm">
                                     {p.lot_number ?? '—'}
-                                    {p.block_number ? <span className="text-muted small"> / {p.block_number}</span> : null}
+                                    {p.block_number ? <span className="text-muted"> / {p.block_number}</span> : null}
                                 </td>
-                                <td>{p.title_number_ref ?? '—'}</td>
-                                <td>{p.tax_declaration_no ?? '—'}</td>
-                                <td>{p.psgc_barangay_name ?? p.psgc_barangay ?? '—'}</td>
-                                <td>{p.survey_plan_number ?? '—'}</td>
-                                <td><span className="badge bg-secondary">{p.status}</span></td>
+                                <td className="text-sm">{p.title_number_ref ?? '—'}</td>
+                                <td className="text-sm">{p.tax_declaration_no ?? '—'}</td>
+                                <td className="text-sm">{p.psgc_barangay_name ?? p.psgc_barangay ?? '—'}</td>
+                                <td className="text-sm font-mono">{p.survey_plan_number ?? '—'}</td>
+                                <td>
+                                    <span className={`status-badge status-${p.status}`}>
+                                        {p.status.replace(/_/g, ' ')}
+                                    </span>
+                                </td>
                             </tr>
                         ))
                     )}
                 </tbody>
             </table>
             {!error && data && data.length > 0 && (
-                <div className="d-flex justify-content-between align-items-center p-2 border-top">
-                    <span className="small text-muted">Page {currentPage} of {pages}</span>
-                    <div>
-                        <button className="btn btn-sm btn-outline-secondary" disabled={!onPrev} onClick={onPrev}>Prev</button>
-                        <button className="btn btn-sm btn-outline-secondary ms-2" disabled={!onNext} onClick={onNext}>Next</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.625rem 1rem', borderTop: '1px solid var(--border-color)' }}>
+                    <span className="text-sm text-muted">Page {currentPage} of {pages}</span>
+                    <div className="flex gap-2">
+                        <button className="btn btn-ghost btn-sm" disabled={!onPrev} onClick={onPrev}>← Prev</button>
+                        <button className="btn btn-ghost btn-sm" disabled={!onNext} onClick={onNext}>Next →</button>
                     </div>
                 </div>
             )}
@@ -250,15 +290,41 @@ function ParcelTable(props: {
     );
 }
 
-function ParcelMap(props: {
+
+import { forwardRef, useImperativeHandle } from 'react';
+
+const ParcelMap = forwardRef<ParcelMapRef, {
     parcels: Parcel[];
     onViewportChange: (bbox: string | null) => void;
-}) {
+}>((props, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const [mapReady, setMapReady] = useState(false);
     const { parcels, onViewportChange } = props;
     useBasemapToggle(mapRef.current, 'satellite');
+
+    useImperativeHandle(ref, () => ({
+        fitToParcel: (parcel: Parcel) => {
+            const map = mapRef.current;
+            if (!map || !parcel.geometry) return;
+            const bounds = new maplibregl.LngLatBounds();
+            const coords = parcel.geometry.type === 'Polygon'
+                ? parcel.geometry.coordinates[0]
+                : parcel.geometry.type === 'MultiPolygon'
+                    ? parcel.geometry.coordinates[0][0]
+                    : parcel.geometry.type === 'LineString'
+                        ? parcel.geometry.coordinates
+                        : null;
+            if (coords) {
+                for (const coord of coords) {
+                    bounds.extend(coord as [number, number]);
+                }
+                if (!bounds.isEmpty()) {
+                    map.fitBounds(bounds, { padding: 32, maxZoom: 18 });
+                }
+            }
+        }
+    }));
 
     // Initialize the map once (mirrors MapView / MapContext init pattern).
     useEffect(() => {
@@ -266,8 +332,8 @@ function ParcelMap(props: {
         const map = new maplibregl.Map({
             container: containerRef.current,
             style: 'https://demotiles.maplibre.org/style.json',
-            center: [121, 14.5],
-            zoom: 5,
+            center: ANGELES_CITY_CENTER,
+            zoom: DEFAULT_MAP_ZOOM,
         });
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         map.on('load', () => {
@@ -295,7 +361,7 @@ function ParcelMap(props: {
     // Reflect result geometries as GeoJSON on the source.
     useEffect(() => {
         const map = mapRef.current;
-        if (!map) return;
+        if (!map || !mapReady) return;
         if (!map.getSource('parcels')) return;
         const features = parcels
             .filter((p) => p.geometry)
@@ -304,7 +370,7 @@ function ParcelMap(props: {
             type: 'FeatureCollection',
             features,
         } as GeoJSON.FeatureCollection);
-    }, [parcels]);
+    }, [parcels, mapReady]);
 
     return <div ref={containerRef} style={{ height: '460px' }} data-testid="parcel-map" data-map-ready={mapReady ? 'true' : 'false'} />;
-}
+});
