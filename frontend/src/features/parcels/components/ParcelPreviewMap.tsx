@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useBasemapToggle } from '../../map/basemap';
+import { ANGELES_CITY_CENTER, DEFAULT_MAP_ZOOM } from '../../../lib/crs';
 import type { Parcel } from '../types';
 
 /**
@@ -20,14 +21,15 @@ export function ParcelPreviewMap({ parcel }: { parcel: Parcel }) {
         const map = new maplibregl.Map({
             container: containerRef.current,
             style: 'https://demotiles.maplibre.org/style.json',
-            center: [121, 14.5],
-            zoom: 5,
+            // Fallback view until the parcel geometry loads and fits the bounds.
+            center: ANGELES_CITY_CENTER,
+            zoom: DEFAULT_MAP_ZOOM,
         });
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         map.on('load', () => {
             map.addSource('parcel', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-            map.addLayer({ id: 'parcel-fill-layer', type: 'fill', source: 'parcel', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.35 } });
-            map.addLayer({ id: 'parcel-outline-layer', type: 'line', source: 'parcel', paint: { 'line-color': '#1e40af', 'line-width': 2 } });
+            map.addLayer({ id: 'parcel-fill-layer', type: 'fill', source: 'parcel', paint: { 'fill-color': '#ef4444', 'fill-opacity': 0.25 } });
+            map.addLayer({ id: 'parcel-outline-layer', type: 'line', source: 'parcel', paint: { 'line-color': '#b91c1c', 'line-width': 2 } });
             setMapReady(true);
         });
         mapRef.current = map;
