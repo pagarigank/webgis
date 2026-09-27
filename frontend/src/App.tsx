@@ -21,6 +21,7 @@ import { ControlPointEditorPage } from './features/control-points/pages/ControlP
 import { NotificationBell } from './features/notifications/components/NotificationBell';
 import { ReviewerInboxPage } from './features/parcels/pages/ReviewerInboxPage';
 import { ParcelSelectionProvider } from './features/parcels/ParcelSelectionContext';
+import { ImportWizardPage } from './features/import-export/pages/ImportWizardPage';
 
 /* ─── Icon helpers ─────────────────────────────────────────────────── */
 const SvgIcon: React.FC<{ children: React.ReactNode; size?: number }> = ({
@@ -400,6 +401,14 @@ function App() {
             element={
               <RequirePermission permission="audit.view">
                 <AuditLogView />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/imports"
+            element={
+              <RequirePermission permission="import.execute">
+                <ImportWizardPage />
               </RequirePermission>
             }
           />

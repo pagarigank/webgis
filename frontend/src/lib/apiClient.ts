@@ -83,6 +83,16 @@ const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
+  // Hand multipart bodies back to the browser.
+  //
+  // The instance default is `Content-Type: application/json`, and axios only
+  // derives `multipart/form-data; boundary=...` when the header is absent. Left
+  // in place it overwrites the boundary, PHP sees an empty $_FILES, and uploads
+  // fail with `A multipart "file" part is required` instead of uploading.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
+
   const token = tokenStore.getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -103,6 +113,14 @@ apiClient.interceptors.response.use(
     const csrf = response.headers['x-csrf-token'];
     if (typeof csrf === 'string') {
       tokenStore.setCsrfToken(csrf);
+    }
+
+    // Binary payloads (the import error report CSV, any future file download)
+    // carry no envelope. Unwrapping would hand back the body itself and leave
+    // the caller with no `response.data`, so pass the response through intact.
+    const responseType = response.config?.responseType;
+    if (responseType === 'blob' || responseType === 'arraybuffer') {
+      return response as never;
     }
 
     const body = response.data as ApiEnvelope;

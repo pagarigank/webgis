@@ -156,6 +156,38 @@ return function (App $app) {
               ->add($parcelAuthed('parcel.update'))->add(AuthenticateMiddleware::class);
 
 
+        // ---- Import jobs (Phase 16, TASK-122; api.md §10) ----
+        $group->post('/imports', \App\ImportExport\Http\ImportController::class . ':create')
+              ->add($authed('import.execute'))->add(AuthenticateMiddleware::class);
+        $group->get('/imports/{id:[0-9]+}', \App\ImportExport\Http\ImportController::class . ':get')
+              ->add($authed('import.execute'))->add(AuthenticateMiddleware::class);
+        $group->put('/imports/{id:[0-9]+}/mapping', \App\ImportExport\Http\ImportController::class . ':setMapping')
+              ->add($authed('import.execute'))->add(AuthenticateMiddleware::class);
+        $group->post('/imports/{id:[0-9]+}/validate', \App\ImportExport\Http\ImportController::class . ':validate')
+              ->add($authed('import.execute'))->add(AuthenticateMiddleware::class);
+        $group->get('/imports/{id:[0-9]+}/preview', \App\ImportExport\Http\ImportController::class . ':preview')
+              ->add($authed('import.execute'))->add(AuthenticateMiddleware::class);
+        $group->get('/imports/{id:[0-9]+}/errors', \App\ImportExport\Http\ImportController::class . ':errors')
+              ->add($authed('import.execute'))->add(AuthenticateMiddleware::class);
+        $group->post('/imports/{id:[0-9]+}/commit', \App\ImportExport\Http\ImportController::class . ':commit')
+              ->add($authed('import.execute'))->add(AuthenticateMiddleware::class);
+        $group->delete('/imports/{id:[0-9]+}', \App\ImportExport\Http\ImportController::class . ':cancel')
+              ->add($authed('import.execute'))->add(AuthenticateMiddleware::class);
+
+        // ---- Exports (TASK-127) ----
+        // These carry `export.execute`, which very few roles hold. The per-layer
+        // can_view capability is checked inside ExportController, because holding
+        // export.execute must not be a way to read a layer the caller cannot
+        // otherwise see. The older features.geojson / features.csv routes above
+        // deliberately stay on plain authentication: they predate this
+        // permission and are relied upon by existing clients.
+        $group->get('/exports/formats', \App\ImportExport\Http\ExportController::class . ':formats')
+              ->add($authed('export.execute'))->add(AuthenticateMiddleware::class);
+        $group->get('/exports', \App\ImportExport\Http\ExportController::class . ':history')
+              ->add($authed('export.execute'))->add(AuthenticateMiddleware::class);
+        $group->post('/layers/{layer_id:[0-9]+}/exports', \App\ImportExport\Http\ExportController::class . ':create')
+              ->add($authed('export.execute'))->add(AuthenticateMiddleware::class);
+
         // ---- Workflow engine (Phase 13, TASK-100) ----
         // Permissions are enforced per-transition inside WorkflowEngine from
         // the workflow_transitions table; the route middleware only requires
@@ -305,6 +337,12 @@ return function (App $app) {
         $group->get('/control-points', $cp . ':list')
             ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);
         $group->post('/control-points', $cp . ':create')
+            ->add($cpAuthed('control_point.create'))->add(AuthenticateMiddleware::class);
+        // ---- Control point bulk import (TASK-126) ----
+        // Kept beside POST /control-points because it shares its permission:
+        // importing is a create. /control-points/import cannot be shadowed by
+        // /control-points/{id:[0-9]+} because that id pattern is numeric.
+        $group->post('/control-points/import', \App\Survey\Http\ControlPointImportController::class . ':import')
             ->add($cpAuthed('control_point.create'))->add(AuthenticateMiddleware::class);
         $group->get('/control-points/nearest', $cp . ':nearest')
             ->add($cpAuthed('control_point.view'))->add(AuthenticateMiddleware::class);

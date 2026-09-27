@@ -160,4 +160,46 @@ class CoordinateTransformationService
             'transformation_log_id' => $logId,
         ];
     }
+
+    /**
+     * Record a documented `AFFINE_LOCAL` transformation (origin, scale,
+     * rotation) without applying it. TASK-125 uses this for a local/assumed CAD
+     * grid: the transformation must be written to `app.coordinate_transformations`
+     * **before** any imported geometry is accepted (FR-252, architecture.md §17.2).
+     *
+     * The CRS is used as both the source and target of the record because a local
+     * CAD grid has no registry entry of its own — the record documents how the
+     * local coordinates were mapped into the declared CRS.
+     *
+     * @param array{origin_x?:float|int,origin_y?:float|int,scale?:float|int,rotation_deg?:float|int,accuracy_m?:float|int|null,units?:string} $parameters
+     */
+    public function recordAffineLocal(
+        int $crsId,
+        array $parameters,
+        ?int $performedBy = null,
+        ?string $notes = null,
+        string $entityType = 'import_job',
+        string $entityId = '',
+    ): int {
+        $crs = $this->resolveCrs($crsId);
+
+        $ins = $this->pdo->prepare(
+            'INSERT INTO app.coordinate_transformations '
+            . '(entity_type, entity_id, source_crs_id, target_crs_id, method, parameters, parameter_source, accuracy_m, performed_by, notes) '
+            . "VALUES (:etype, :eid, :scrs, :tcrs, 'AFFINE_LOCAL', :params::jsonb, :psource, :acc, :pby, :notes) RETURNING id"
+        );
+        $ins->execute([
+            ':etype'   => $entityType,
+            ':eid'     => $entityId,
+            ':scrs'    => $crs['id'],
+            ':tcrs'    => $crs['id'],
+            ':params'  => json_encode($parameters, JSON_THROW_ON_ERROR),
+            ':psource' => 'User-declared local CAD grid',
+            ':acc'     => $parameters['accuracy_m'] ?? null,
+            ':pby'     => $performedBy,
+            ':notes'   => $notes,
+        ]);
+
+        return (int) $ins->fetchColumn();
+    }
 }

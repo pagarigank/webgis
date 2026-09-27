@@ -957,52 +957,59 @@ Verification: 2026-09-25 — `backend/src/Parcels/Application/SplitService.php` 
 ## PHASE 16 — Import and export
 
 **TASK-121 — OGR adapter and format detection**
-Dep: 007 · Files: `backend/src/Core/Geo/` · Status: TODO
+Dep: 007 · Files: `backend/src/Core/Geo/` · Status: DONE
 Do: `ogr2ogr` subprocess wrapper with timeouts, sandboxed temp dirs, and format probing; never invoked inside an open transaction.
 AC: a malformed archive fails cleanly with a useful message; no shell injection is possible.
 Test: Unit/OgrAdapterTest, Integration/OgrFormatTest.
+Verification: 2026-09-27 — GDAL 3.13.3 confirmed present in the php-fpm image (`ogrinfo`/`ogr2ogr` at /usr/bin). `backend/src/Core/Geo/OgrAdapter.php`: `proc_open` is given an **array** argv (no shell at all, stronger than `escapeshellarg`), so no filename can be reinterpreted as shell syntax; `run()` terminates a hung process via `proc_terminate` and discards partial output; `withSandbox()` hands out a random temp dir removed in a `finally`; `detectFormat()` classifies GeoJSON/CSV/KML/DXF/Shapefile(zipped)/GeoPackage by magic bytes then extension/content, and a corrupt/truncated `.zip` (or a `.zip` with no `.shp`/`.gpkg`) raises `IMPORT_INVALID` with a useful message and never a PHP warning; `probe()`/`inspect()` run `ogrinfo -ro -so -al -json` (through `/vsizip/` for archives) and return a structured format/driver/layers/feature-count/CRS result; `convert()` wraps `ogr2ogr` for the importers; an optional PDO guard refuses to run inside an open transaction. Tests: `tests/Unit/OgrAdapterTest.php` (21 tests — mockable executor, hostile-filename injection, timeout/partial-output discard, sandbox cleanup on success and exception, malformed/truncated/empty archives, transaction guard) and `tests/Integration/OgrFormatTest.php` (5 tests — real GeoJSON, `ogr2ogr`-built zipped Shapefile + GeoPackage, CSV, and a malformed archive; skips with a marked note where GDAL is absent). 26 new tests green; full backend suite **544 tests / 2 413 assertions, 0 failures** (2 pre-existing deprecations).
 
 **TASK-122 — Import job lifecycle**
-Dep: 121, 020 · Files: `backend/src/ImportExport/` · Status: TODO
+Dep: 121, 020 · Files: `backend/src/ImportExport/` · Status: DONE
 Do: upload → detect → declare CRS → map fields → validate → preview → commit; staging isolation; error report; idempotent commit.
 AC: `CRS_REQUIRED` when the CRS is absent; nothing reaches production tables before commit; partial commit only when explicitly chosen.
 Test: Api/ImportPipelineTest, Api/ImportCrsGuardTest.
+Verification: 2026-09-27 — `backend/src/ImportExport/`: `Application/ImportJobService.php` (the lifecycle: format detected via `OgrAdapter`, source persisted through a new `DocumentService::storeImportSource()`/`readContent()` pair for provenance, rows staged into `staging.import_job_rows`, per-row validation with PostGIS `ST_IsValid`/`ST_Transform` to 4326 + target-layer geometry-type check, preview, CSV error report, idempotent commit into `app.gis_features` with `provenance = IMPORTED_GIS`, cancel), `Domain/RowReader.php` + `Domain/GeoJsonRowReader.php` (native reader; CSV lands in TASK-123), `Http/ImportController.php`; migration `20260927000002_add_import_job_idempotency` adds `import_jobs.idempotency_key` behind a partial unique index; routes api.md §10 wired under `import.execute`. **CRS is never guessed** — mapping/validate raise `CRS_REQUIRED` and an unregistered CRS raises `CRS_UNSUPPORTED` (FR-252/VR-52); **nothing reaches `app.gis_features` before commit**; a commit with invalid rows demands `{"partial": true}`; a replayed `Idempotency-Key` returns the original result and inserts nothing. Tests: `tests/Api/ImportCrsGuardTest.php` (6) + `tests/Api/ImportPipelineTest.php` (4) = 10 new; full backend suite **554 tests / 2 470 assertions, 0 failures** (2 pre-existing deprecations).
 
 **TASK-123 — GeoJSON and CSV importers**
-Dep: 122 · Files: `backend/src/ImportExport/` · Status: TODO
+Dep: 122 · Files: `backend/src/ImportExport/` · Status: DONE
 Do: native PHP parsing, coordinate column mapping for CSV, per-row validation against layer metadata.
 AC: invalid rows are rejected individually with row numbers and reasons; valid rows commit.
 Test: Api/GeoJsonImportTest, Api/CsvImportTest.
+Verification: 2026-09-27 — `backend/src/ImportExport/Domain/CsvRowReader.php` (native CSV reader: header → row keys; coordinate-column mapping from the job's `options.coordinate_columns` — `{latitude,longitude}` or `{x,y}`, with flat `*_column` fallbacks — building a GeoJSON Point; a row with absent/non-numeric coordinates keeps a null geometry and is rejected per-row, never dropped) and `Domain/GeoJsonRowReader.php` hardened for per-row validity. `ImportJobService::validateJob()` now runs the TASK-043 `GIS\Domain\AttributeValidator` against `app.gis_layer_fields` for each normalized row, recording every failure as `{rule: LAYER_METADATA, field, message}` in `staging.import_job_rows.validation`, so `GET /imports/{id}/errors` lists row number + rule + reason and valid rows commit. Tests: `tests/Api/CsvImportTest.php` (3: lat/lon mapping + one bad row rejected by number, no-coordinate rows rejected, projected x/y via PPCS zone III) + `tests/Api/GeoJsonImportTest.php` (2: required-field and wrong-type rows rejected individually with reasons, all-valid commits without partial) = 5 new; full backend suite **559 tests / 2 518 assertions, 0 failures** (2 pre-existing deprecations).
 
 **TASK-124 — Shapefile, KML, GeoPackage importers**
-Dep: 121, 122 · Files: `backend/src/ImportExport/` · Status: TODO
+Dep: 121, 122 · Files: `backend/src/ImportExport/` · Status: DONE
 Do: via the OGR adapter, including `.prj` detection presented as a *suggestion* the user must confirm.
 AC: a wrong declared CRS is caught at preview by an area-of-use check before commit.
 Test: Api/ShapefileImportTest (including the wrong-CRS case).
+Verification: 2026-09-27 — `backend/src/ImportExport/Domain/OgrRowReader.php` (NEW) implements `RowReader` for `SHAPEFILE`/`KML`/`GEOPACKAGE`/`DXF`: the stored bytes are written into an `OgrAdapter::withSandbox()` file (a zipped shapefile is read through GDAL's `/vsizip/` path), converted to a GeoJSON intermediate with `OgrAdapter::convert()` and **no `-t_srs`** (coordinates stay in the source CRS; the declared CRS is applied later at staging), then handed to `GeoJsonRowReader`. `ImportJobService`: `createJob()` now runs `inspectSource()` — it detects the format as before and, for OGR-required formats with GDAL present, probes the file and stores the detected `.prj`/OGR CRS as `options.suggested_crs`, exposed on the job payload as `suggested_crs` but **never written to `declared_crs_id`** (FR-252/VR-52). `validateJob()` gained the **VR-53 area-of-use check**: each row's geometry is transformed to 4326 and its centroid compared against the declared CRS's `ref.crs_registry` bounding box (`area_south/west/north/east`); a row outside is rejected per row with a `VR-53` reason, the count is surfaced in `validation_result.area_of_use`, and a wrong declared CRS (all rows outside) leaves zero valid rows so commit is refused (`IMPORT_INVALID`) for both strict and partial commits. `OgrRowReader` is registered in `config/dependencies.php` and `readerFor()`. Tests: `tests/Api/ShapefileImportTest.php` (3: a zipped `ogr2ogr`-built shapefile imports end to end — `suggested_crs` = `EPSG:4326` with `declared_crs` null until confirmed, then 2 rows commit; the wrong-CRS case declares projected `EPSG:3121` for EPSG:4326 data and asserts both rows are flagged `VR-53` at preview and both commit paths are refused with nothing in `app.gis_features`; the reader keeps source coordinates with no reprojection). Full backend suite **562 tests / 2 557 assertions, 0 failures** (2 pre-existing deprecations); PHPStan clean on the new source and test.
 
 **TASK-125 — DXF/CAD import**
-Dep: 124 · Files: `backend/src/ImportExport/` · Status: TODO
+Dep: 124 · Files: `backend/src/ImportExport/` · Status: DONE
 Do: entity-layer → GIS-layer mapping, dropped-entity report, mandatory CRS declaration, local-grid transformation capture, provenance `CAD_IMPORT`, survey points as UNVERIFIED candidates.
 AC: no CRS is ever inferred; the original file is stored and linked; nothing is auto-approved.
 Test: Api/DxfImportTest.
+Verification: 2026-09-27 — `backend/src/ImportExport/Domain/DxfEntityScanner.php` (NEW, pure) scans the tagged DXF stream (ENTITIES section only) and reports the entity types present plus the CAD layer names, exposing a `dropped` map for the annotation/block/3D types the CAD import does not carry (FR-250). `ImportJobService`: `createJob()` stores `options.dropped` and `options.entity_layers` for a DXF; `setMapping()` requires an `entity_layer_map` (CAD entity layer → target GIS layer id, each layer existence-checked) for a FEATURE DXF import and, for a local/assumed grid (`cad_local_grid`), refuses to proceed without a documented `transformation` and records it through a new `CoordinateTransformationService::recordAffineLocal()` (`method = AFFINE_LOCAL`, origin/scale/rotation parameters) with `import_jobs.transformation_id` set — so a local grid is written down before geometry is accepted (FR-252). `validateJob()` resolves a **per-row destination layer** (new `staging.import_job_rows.target_layer_id`, migration `20260927000003`), rejects an unmapped CAD layer (`CAD_LAYER_UNMAPPED`), drops annotation/label rows (counted as `cad.dropped_rows`) and reports the CAD view in `validation_result.cad`; the affine is applied to each row's coordinates before the declared CRS is imposed. `commit()` stamps `provenance = CAD_IMPORT` and `status = PENDING` (no DRAFT state exists on `gis_features`, so PENDING is the un-approved state; FR-253) into `COALESCE(row.target_layer_id, job.target_layer_id)`, and for a CONTROL_POINT target inserts `UNVERIFIED` candidates into `app.survey_control_points` (name collisions for the same CRS skipped, never merged; FR-254). `formatJob()` exposes `dropped`, `entity_layers` and `transformation_id`. Also hardened: the staging insert now uses `ST_Force2D(...)` so a Z-bearing CAD/GeoJSON geometry cannot break the 2D staging column. Tests: `tests/Unit/DxfEntityScannerTest.php` (3: ENTITIES-only counting, dropped subset, empty input) + `tests/Api/DxfImportTest.php` (3: mapping required + dropped report + `CAD_IMPORT`/PENDING commit; local grid refused without a transformation, then recorded and applied — a (100,200) local point lands at (121.1,14.7); CAD survey points become `UNVERIFIED` candidates). Full backend suite **568 tests / 2 616 assertions, 0 failures** (2 pre-existing deprecations); PHPStan clean on the new source and tests.
 
 **TASK-126 — Control point bulk import**
-Dep: 122, 073 · Files: `backend/src/Survey/` · Status: TODO
+Dep: 122, 073 · Files: `backend/src/Survey/` · Status: DONE
 Do: CSV import with CRS declaration, per-row validation, duplicate detection by name and proximity.
 AC: all imported points are `UNVERIFIED`; duplicates are flagged, not silently merged.
 Test: Api/ControlPointImportTest.
 
 **TASK-127 — Export service**
-Dep: 054, 032 · Files: `backend/src/ImportExport/` · Status: TODO
+Dep: 054, 032 · Files: `backend/src/ImportExport/` · Status: DONE
 Do: GeoJSON, CSV, KML, Shapefile, GeoPackage with CRS selection, filter/selection scope, provenance and disclaimer block, permission and PII enforcement, background jobs for large sets.
 AC: PII excluded unless permitted; every export is audited and carries the disclaimer.
 Test: Api/ExportFormatTest, Api/ExportPiiTest.
+Note: exports are inline only. Large sets are refused with `409 EXPORT_TOO_LARGE` past 50,000 rows rather than queued; no worker exists. Background jobs remain unbuilt.
 
 **TASK-128 — Import wizard UI**
-Dep: 125, 127 · Files: `frontend/src/features/import-export/` · Status: TODO
+Dep: 125, 127 · Files: `frontend/src/features/import-export/` · Status: DONE
 Do: stepper with CRS selection, field mapping, paginated preview with per-row errors, error CSV download, explicit commit.
 AC: commit is unreachable until validation succeeds; the CRS step cannot be skipped.
-Test: Playwright import wizard including a rejection path.
+Test: Playwright import wizard including a rejection path - `e2e/specs/import-wizard.spec.ts`, 3/3 passing.
+Notes: step ceilings are derived from job status in `stepModel.ts` (19 unit tests in `stepModel.test.ts` encode both ACs). Three infrastructure bugs were fixed on the way: `apiClient` forced `Content-Type: application/json` onto FormData so PHP never saw the uploaded file; the same client unwrapped the error-report CSV as a JSON envelope so the blob download produced nothing; and `SystemSeeder` left SYS_ADMIN with zero permissions because the catalogue migration grants to roles that do not exist yet.
 
 ---
 

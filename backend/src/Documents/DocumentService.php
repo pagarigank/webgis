@@ -39,6 +39,14 @@ final class DocumentService
 
     public const DEFAULT_MAX_BYTES = 26214400; // 25 MB (FR-156)
 
+    /**
+     * GIS exchange formats accepted as import sources (FR-156/FR-175). These
+     * are stored through the document store for provenance (FR-179) but are
+     * not offered as plain document uploads, so they have their own list
+     * rather than widening the document whitelist above.
+     */
+    public const GIS_EXCHANGE = ['geojson', 'json', 'csv', 'zip', 'kml', 'gpkg', 'shp', 'dxf', 'gpx'];
+
     /** Narrowed from App\Core\Config\Config to keep the domain testable. */
     public function __construct(
         private readonly PDO $pdo,
@@ -200,6 +208,111 @@ final class DocumentService
             ':eid'   => (string) $meta['entity_id'],
             ':role'  => $role,
         ]);
+    }
+
+    // ------------------------------------------------------------------
+    // Import sources (TASK-122)
+    // ------------------------------------------------------------------
+
+    /**
+     * Persist an uploaded GIS exchange file as the immutable source of an
+     * import job, reusing the content-addressed store and the documents row
+     * (so `import_jobs.source_document_id` and later
+     * `gis_features.source_document_id` can point at it — FR-179).
+     *
+     * @return array<string,mixed> the document row (without storage_key)
+     */
+    public function storeImportSource(string $originalName, string $content, int $userId): array
+    {
+        $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        if ($originalName === '' || $ext === '') {
+            throw new ApiError('VALIDATION_FAILED', 'The import file needs a filename with an extension.', 422, [
+                'fields' => [['field' => 'file', 'rule' => 'REQUIRED']],
+            ]);
+        }
+        if (!\in_array($ext, self::GIS_EXCHANGE, true)) {
+            throw new ApiError('VALIDATION_FAILED', "Import files of type .$ext are not supported.", 422, [
+                'fields' => [['field' => 'file', 'rule' => 'EXTENSION']],
+            ]);
+        }
+        if ($content === '') {
+            throw new ApiError('VALIDATION_FAILED', 'The uploaded import file is empty.', 422, [
+                'fields' => [['field' => 'file', 'rule' => 'EMPTY']],
+            ]);
+        }
+        if (\strlen($content) > $this->maxBytes) {
+            throw new ApiError('VALIDATION_FAILED', sprintf('Import file exceeds the %s MB size cap.', (string) round($this->maxBytes / 1048576)), 422, [
+                'fields' => [['field' => 'file', 'rule' => 'SIZE']],
+            ]);
+        }
+
+        $sha256 = hash('sha256', $content);
+        $existing = $this->findBySha256($sha256);
+        if ($existing !== null) {
+            return $existing + ['de_duplicated' => true];
+        }
+
+        $storageKey = bin2hex(random_bytes(16));
+        $target = $this->pathFor($storageKey);
+        if (!is_dir($this->storageDir) && !mkdir($this->storageDir, 0770, true) && !is_dir($this->storageDir)) {
+            throw new ApiError('INTERNAL_ERROR', 'Document storage directory is not writable.', 500);
+        }
+        if (file_put_contents($target, $content) === false) {
+            throw new ApiError('INTERNAL_ERROR', 'Failed to persist the import source blob.', 500);
+        }
+
+        $docId = $this->newUuid();
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO app.documents
+                (id, storage_key, original_filename, doc_type, mime_type, byte_size, sha256,
+                 access_level, description, uploaded_by)
+             VALUES (:id, :key, :name, :type, :mime, :size, decode(:sha, :hex), :access, :descr, :uid)'
+        );
+        $stmt->execute([
+            ':id'     => $docId,
+            ':key'    => $storageKey,
+            ':name'   => $originalName,
+            ':type'   => $ext,
+            ':mime'   => $this->mimeForExtension($ext),
+            ':size'   => \strlen($content),
+            ':sha'    => $sha256,
+            ':hex'    => 'hex',
+            ':access' => 'INTERNAL',
+            ':descr'  => 'Import source file',
+            ':uid'    => $userId,
+        ]);
+
+        return $this->get($docId) + ['de_duplicated' => false];
+    }
+
+    /** Read a stored import source back as bytes (never a filesystem path). */
+    public function readContent(string $documentId): string
+    {
+        $doc = $this->get($documentId);
+        $path = $this->pathFor((string) $doc['storage_key']);
+        if (!is_file($path)) {
+            throw new ApiError('INTERNAL_ERROR', 'The import source blob is missing from storage.', 500);
+        }
+        $content = file_get_contents($path);
+        if ($content === false) {
+            throw new ApiError('INTERNAL_ERROR', 'The import source blob could not be read.', 500);
+        }
+        return $content;
+    }
+
+    private function mimeForExtension(string $ext): string
+    {
+        return match ($ext) {
+            'geojson', 'json' => 'application/geo+json',
+            'csv'             => 'text/csv',
+            'zip'             => 'application/zip',
+            'kml'             => 'application/vnd.google-earth.kml+xml',
+            'gpkg'            => 'application/geopackage+sqlite3',
+            'shp'             => 'application/x-esri-shape',
+            'dxf'             => 'image/vnd.dxf',
+            'gpx'             => 'application/gpx+xml',
+            default           => 'application/octet-stream',
+        };
     }
 
     // ------------------------------------------------------------------

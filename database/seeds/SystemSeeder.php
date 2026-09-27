@@ -25,6 +25,21 @@ class SystemSeeder extends AbstractSeed
                 requires_mfa = EXCLUDED.requires_mfa
         ");
 
+        // 1b. Grant SYS_ADMIN every permission in the catalogue.
+        //
+        // The catalogue migration (20260920000015) also does this, but it runs
+        // before any role exists, so on a fresh `migrate` + `seed` its grant
+        // matches zero rows and SYS_ADMIN ends up with no permissions at all.
+        // Repeating the grant here makes the outcome independent of whether
+        // the roles were seeded before or after the migration.
+        $this->execute("
+            INSERT INTO app.role_permissions (role_id, permission_id)
+            SELECT r.id, p.id
+            FROM app.roles r CROSS JOIN app.permissions p
+            WHERE r.code = 'SYS_ADMIN'
+            ON CONFLICT (role_id, permission_id) DO NOTHING
+        ");
+
         // 2. Basemap Provider (OSM)
         $this->execute("
             INSERT INTO app.basemap_providers (

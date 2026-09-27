@@ -24,6 +24,11 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
+# Pre-create the document storage path with www-data ownership. A named volume
+# mounted here inherits the image's ownership and contents on first use; without
+# this the volume is created root-owned and the non-root runtime cannot write.
+RUN mkdir -p /var/www/html/storage/documents
+
 # Run as non-root (www-data)
 RUN chown -R www-data:www-data /var/www/html
 USER www-data

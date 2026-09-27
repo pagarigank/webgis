@@ -133,12 +133,40 @@ class ExportScopeTest extends TestCase
         $this->assertStringContainsString('text/csv', $res->getHeaderLine('Content-Type'));
 
         $csvContent = (string) $res->getBody();
-        $lines = array_filter(explode("\n", trim($csvContent)));
-        // Header line + 1 data line
-        $this->assertCount(2, $lines);
-        $this->assertStringContainsString('id,status,psgc_barangay,provenance,version,created_at,updated_at,lot_label,owner_tin', $lines[0]);
-        $this->assertStringContainsString($this->featureIds[1], $lines[1]);
-        $this->assertStringContainsString('Lot Cebu', $lines[1]);
+        $lines = array_values(array_filter(explode("\n", trim($csvContent))));
+
+        // TASK-127: the export now carries a provenance block, so the header is
+        // no longer line 0. Locate lines by content rather than by position, so
+        // the provenance block can grow without breaking this test again.
+        $headerIndex = null;
+        foreach ($lines as $i => $line) {
+            if (str_starts_with($line, 'id,status,psgc_barangay,')) {
+                $headerIndex = $i;
+                break;
+            }
+        }
+        $this->assertNotNull($headerIndex, 'CSV header row not found');
+
+        $dataLines = array_slice($lines, $headerIndex + 1);
+        $this->assertCount(1, $dataLines, 'bbox should select exactly one feature');
+
+        $this->assertStringContainsString(
+            'id,status,psgc_barangay,provenance,version,created_at,updated_at,lot_label,owner_tin',
+            $lines[$headerIndex],
+        );
+        $this->assertStringContainsString($this->featureIds[1], $dataLines[0]);
+        $this->assertStringContainsString('Lot Cebu', $dataLines[0]);
+
+        // Every export carries the disclaimer (TASK-127 AC), in leading comment
+        // lines so a spreadsheet still opens on the header row.
+        $this->assertStringContainsString('not a certified title document', $csvContent);
+        $commentLines = array_values(array_filter($lines, static fn ($l) => str_starts_with($l, '# ')));
+        $this->assertNotEmpty($commentLines, 'expected provenance comment lines');
+        $this->assertSame(
+            $commentLines,
+            array_slice($lines, 0, count($commentLines)),
+            'provenance comments must all precede the header row',
+        );
     }
 
     public function testPiiRedactionForUnprivilegedUser(): void

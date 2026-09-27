@@ -10,7 +10,16 @@
     beStrictAboutTestsThatDoNotTestAnything="false">
     <testsuites>
         <testsuite name="webgis-backend">
-            <directory suffix="Test.php">tests</directory>
+            <!--
+                List every test subdirectory explicitly. A single recursive
+                "<directory suffix=\"Test.php\">tests</directory>" entry silently
+                collects only a fraction of tests/Api (45 of 48 classes were
+                skipped), so the suite reported green while never running them.
+            -->
+            <directory suffix="Test.php">tests/Api</directory>
+            <directory suffix="Test.php">tests/Integration</directory>
+            <directory suffix="Test.php">tests/Spatial</directory>
+            <directory suffix="Test.php">tests/Unit</directory>
         </testsuite>
     </testsuites>
     <source>

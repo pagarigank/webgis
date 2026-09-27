@@ -121,11 +121,18 @@ export function psql(sql: string): string {
  * assertions do not depend on ambient DB drift (e.g. admin-hid layers).
  * - sample layers must be visible in the hamburger (is_hidden = false)
  * - every role needs can_view so bbox GeoJSON loads (permission middleware)
+ *
+ * The DRAW layer is (re)created here rather than assumed, because phase6-draw
+ * addresses it by the literal id 418 (`E2E_LAYER_ID ?? '418'`). Seeding it by id
+ * keeps that spec working on a database that was rebuilt from migrations alone.
+ * Layers are addressed by code everywhere else: a bare `l.id = 4` silently
+ * matched nothing once the sample layer's id changed, which is what let a wiped
+ * database look healthy until the draw specs failed.
  */
 export function seedMapLayers(): void {
     // NOTE: keep this ALL on ONE line. execSync on win32 (cmd.exe) mangles
     // multi-line arguments to `psql -c "..."`, silently dropping statements.
-    psql(`UPDATE app.gis_layers SET is_hidden = false WHERE code IN ('SAMPLE_PARCEL_POLYGON','E2E_LINE_LAYER','E2E_DRAW_TEST'); INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve) SELECT l.id, r.id, true, true, true, true, true FROM app.gis_layers l CROSS JOIN app.roles r WHERE l.code IN ('SAMPLE_PARCEL_POLYGON','E2E_LINE_LAYER','E2E_DRAW_TEST') AND r.code IN ('SYS_ADMIN','app_rw','app_ro','DATA_ENCODER','GIS_SPECIALIST','SURVEYOR') ON CONFLICT (layer_id, role_id) DO UPDATE SET can_view = true; INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve) SELECT 4, r.id, true, r.code = 'SYS_ADMIN', r.code = 'SYS_ADMIN', r.code = 'SYS_ADMIN', r.code = 'SYS_ADMIN' FROM app.roles r WHERE r.code IN ('SYS_ADMIN','app_rw','app_ro','DATA_ENCODER','GIS_SPECIALIST','SURVEYOR') ON CONFLICT (layer_id, role_id) DO UPDATE SET can_view = true;`);
+    psql(`INSERT INTO app.gis_layers (id, code, name, geometry_type, description, status) VALUES (418, 'E2E_DRAW_TEST', 'E2E Draw Test Layer', 'POLYGON', 'Layer for TASK-058 draw specs', 'ACTIVE') ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, name = EXCLUDED.name, geometry_type = 'POLYGON', status = 'ACTIVE'; INSERT INTO app.gis_layers (code, name, geometry_type, description, status) VALUES ('E2E_LINE_LAYER', 'E2E Line Test Layer', 'LINESTRING', 'Line-capable layer for TASK-059b', 'ACTIVE') ON CONFLICT (code) DO UPDATE SET geometry_type = 'LINESTRING', status = 'ACTIVE'; UPDATE app.gis_layers SET is_hidden = false WHERE code IN ('SAMPLE_PARCEL_POLYGON','E2E_LINE_LAYER','E2E_DRAW_TEST'); INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve) SELECT l.id, r.id, true, true, true, true, true FROM app.gis_layers l CROSS JOIN app.roles r WHERE l.code IN ('SAMPLE_PARCEL_POLYGON','E2E_LINE_LAYER','E2E_DRAW_TEST') AND r.code IN ('SYS_ADMIN','app_rw','app_ro','DATA_ENCODER','GIS_SPECIALIST','SURVEYOR') ON CONFLICT (layer_id, role_id) DO UPDATE SET can_view = true, can_create = true, can_update = true, can_delete = true, can_approve = true;`);
 }
 
 export const test = base.extend<{ resetAuthRateLimit: void }>({

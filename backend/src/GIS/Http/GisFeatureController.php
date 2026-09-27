@@ -6,6 +6,8 @@ namespace App\GIS\Http;
 use App\Core\Error\ApiError;
 use App\Core\Http\Response\Envelope;
 use App\Audit\AuditWriter;
+use App\ImportExport\Application\ExportService;
+use App\ImportExport\Domain\ExportScope;
 use App\RBAC\FeatureScopeResolver;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -15,11 +17,13 @@ class GisFeatureController
 {
     private PDO $pdo;
     private AuditWriter $audit;
+    private ExportService $exports;
 
-    public function __construct(PDO $pdo, AuditWriter $audit)
+    public function __construct(PDO $pdo, AuditWriter $audit, ExportService $exports)
     {
         $this->pdo = $pdo;
         $this->audit = $audit;
+        $this->exports = $exports;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -197,186 +201,75 @@ class GisFeatureController
     /**
      * GET /layers/{layer_id}/features.geojson
      * Full GeoJSON FeatureCollection (bbox-filtered optional).
+     *
+     * TASK-127: the export itself now lives in ExportService, which every export
+     * format shares. This handler keeps only what is specific to the legacy
+     * contract: it stays on plain authentication (see the note in routes.php),
+     * and it delegates the scope, the PII decision and the serialisation.
      */
     public function geojson(Request $request, Response $response, array $args): Response
     {
-        $lid   = $this->resolveLayerId($request, $args);
-        $info  = $this->resolveUser($request, $lid);
+        $lid  = $this->resolveLayerId($request, $args);
+        $info = $this->resolveUser($request, $lid);
         $this->setUserInSession($info['uid']);
 
-        $q      = $request->getQueryParams();
-        $bbox   = $this->parseBbox($q['bbox'] ?? null);
-        $status = $q['status'] ?? null;
+        $q = $request->getQueryParams();
 
-        $where  = ['f.layer_id = :lid', 'f.deleted_at IS NULL'];
-        $params = [':lid' => $lid];
-
-        if ($status !== null && in_array($status, ['ACTIVE', 'PENDING', 'REJECTED', 'ARCHIVED'], true)) {
-            $where[] = 'f.status = :status';
-            $params[':status'] = $status;
-        }
-
-        if ($bbox !== null) {
-            $where[] = 'f.geom && ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)';
-            $params[':minx'] = $bbox[0];
-            $params[':miny'] = $bbox[1];
-            $params[':maxx'] = $bbox[2];
-            $params[':maxy'] = $bbox[3];
-        }
-
-        $whereSql = 'WHERE ' . implode(' AND ', $where);
-
-        $sql = "SELECT f.id, f.status, f.psgc_barangay, f.provenance, f.attributes, ST_AsGeoJSON(f.geom)::json AS geometry FROM app.gis_features f {$whereSql}";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $canViewPii = $this->canViewPii($info['uid']);
-        $piiFields  = $canViewPii ? [] : $this->getLayerPiiFields($lid);
-
-        $features = array_map(function ($r) use ($piiFields) {
-            $r = $this->decodePayloadFields($r);
-            if (!empty($piiFields) && isset($r['attributes']) && is_array($r['attributes'])) {
-                $r['attributes'] = $this->redactPiiAttributes($r['attributes'], $piiFields);
-            }
-            return [
-                'type'       => 'Feature',
-                'id'         => $r['id'],
-                'geometry'   => $r['geometry'],
-                'properties' => $this->stripGeometry($r),
-            ];
-        }, $rows);
-
-        $payload = ['type' => 'FeatureCollection', 'features' => $features];
-
-        // Audit the export (TASK-067)
-        $this->audit->writeFromSession(
-            'EXPORT',
-            'app.gis_features',
-            (string) $lid,
+        $result = $this->exports->export(
+            $info['uid'],
+            ExportScope::fromArray([
+                'layer_id' => $lid,
+                'bbox'     => $q['bbox'] ?? null,
+                'status'   => $q['status'] ?? null,
+            ]),
+            'GEOJSON',
             null,
-            ['format' => 'geojson', 'count' => count($rows), 'bbox' => $bbox],
             $request->getAttribute('request_id'),
-            'Layer features exported as GeoJSON'
         );
 
-        $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write($result->body);
+
         return $response
-            ->withHeader('Content-Type', 'application/geo+json')
-            ->withHeader('Content-Disposition', 'attachment; filename="layer_' . $lid . '_features.geojson"')
+            ->withHeader('Content-Type', $result->contentType)
+            ->withHeader('Content-Disposition', sprintf('attachment; filename="%s"', $result->filename))
             ->withStatus(200);
     }
 
     /**
      * GET /layers/{layer_id}/features.csv (TASK-067)
+     *
+     * TASK-127: delegates to ExportService, as geojson() does. The legacy sort
+     * and direction parameters are carried through, and geometry stays off, so
+     * the endpoint remains the attribute table existing clients expect.
      */
     public function csv(Request $request, Response $response, array $args): Response
     {
-        $lid   = $this->resolveLayerId($request, $args);
-        $info  = $this->resolveUser($request, $lid);
+        $lid  = $this->resolveLayerId($request, $args);
+        $info = $this->resolveUser($request, $lid);
         $this->setUserInSession($info['uid']);
 
-        $q      = $request->getQueryParams();
-        $bbox   = $this->parseBbox($q['bbox'] ?? null);
-        $status = $q['status'] ?? null;
-        $sort   = $q['sort'] ?? 'created_at';
-        $dir    = strtoupper($q['dir'] ?? 'DESC') === 'DESC' ? 'DESC' : 'ASC';
+        $q = $request->getQueryParams();
 
-        $allowedSort = ['id', 'created_at', 'updated_at', 'status', 'psgc_barangay', 'provenance'];
-        $sortCol     = in_array($sort, $allowedSort, true) ? $sort : 'created_at';
-
-        $where  = ['f.layer_id = :lid', 'f.deleted_at IS NULL'];
-        $params = [':lid' => $lid];
-
-        if ($status !== null && in_array($status, ['ACTIVE', 'PENDING', 'REJECTED', 'ARCHIVED'], true)) {
-            $where[] = 'f.status = :status';
-            $params[':status'] = $status;
-        }
-
-        if ($bbox !== null) {
-            $where[] = 'f.geom && ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)';
-            $params[':minx'] = $bbox[0];
-            $params[':miny'] = $bbox[1];
-            $params[':maxx'] = $bbox[2];
-            $params[':maxy'] = $bbox[3];
-        }
-
-        $whereSql = 'WHERE ' . implode(' AND ', $where);
-
-        $sql = "SELECT f.id, f.status, f.psgc_barangay, f.provenance, f.version, f.created_at, f.updated_at, f.attributes, ST_AsGeoJSON(f.geom) AS geometry FROM app.gis_features f {$whereSql} ORDER BY f.{$sortCol} {$dir}";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Fetch layer fields
-        $fieldsStmt = $this->pdo->prepare("
-            SELECT field_name, is_pii
-            FROM app.gis_layer_fields
-            WHERE layer_id = :lid AND deleted_at IS NULL
-            ORDER BY sort_order ASC, id ASC
-        ");
-        $fieldsStmt->execute([':lid' => $lid]);
-        $layerFields = $fieldsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        $fieldNames = array_column($layerFields, 'field_name');
-
-        $canViewPii = $this->canViewPii($info['uid']);
-        $piiFields = [];
-        if (!$canViewPii) {
-            foreach ($layerFields as $lf) {
-                if (!empty($lf['is_pii'])) {
-                    $piiFields[] = $lf['field_name'];
-                }
-            }
-        }
-
-        // Build CSV
-        $fp = fopen('php://temp', 'r+');
-        $headers = array_merge(['id', 'status', 'psgc_barangay', 'provenance', 'version', 'created_at', 'updated_at'], $fieldNames);
-        fputcsv($fp, $headers);
-
-        foreach ($rows as $row) {
-            $attrs = json_decode($row['attributes'] ?? '{}', true) ?: [];
-            if (!empty($piiFields)) {
-                $attrs = $this->redactPiiAttributes($attrs, $piiFields);
-            }
-            $line = [
-                $row['id'],
-                $row['status'],
-                $row['psgc_barangay'] ?? '',
-                $row['provenance'] ?? '',
-                $row['version'],
-                $row['created_at'],
-                $row['updated_at'],
-            ];
-            foreach ($fieldNames as $fn) {
-                $val = $attrs[$fn] ?? '';
-                if (is_array($val)) {
-                    $val = json_encode($val);
-                }
-                $line[] = (string) $val;
-            }
-            fputcsv($fp, $line);
-        }
-
-        rewind($fp);
-        $csvContent = stream_get_contents($fp);
-        fclose($fp);
-
-        // Audit the export (TASK-067)
-        $this->audit->writeFromSession(
-            'EXPORT',
-            'app.gis_features',
-            (string) $lid,
-            null,
-            ['format' => 'csv', 'count' => count($rows), 'bbox' => $bbox],
+        $result = $this->exports->export(
+            $info['uid'],
+            ExportScope::fromArray([
+                'layer_id'         => $lid,
+                'bbox'             => $q['bbox'] ?? null,
+                'status'           => $q['status'] ?? null,
+                'sort'             => $q['sort'] ?? 'created_at',
+                'dir'              => $q['dir'] ?? 'DESC',
+                'include_geometry' => $q['include_geometry'] ?? false,
+            ]),
+            'CSV',
+            $q['crs'] ?? null,
             $request->getAttribute('request_id'),
-            'Layer features exported as CSV'
         );
 
-        $response->getBody()->write((string) $csvContent);
+        $response->getBody()->write($result->body);
+
         return $response
-            ->withHeader('Content-Type', 'text/csv; charset=UTF-8')
-            ->withHeader('Content-Disposition', 'attachment; filename="layer_' . $lid . '_features.csv"')
+            ->withHeader('Content-Type', $result->contentType)
+            ->withHeader('Content-Disposition', sprintf('attachment; filename="%s"', $result->filename))
             ->withStatus(200);
     }
 
@@ -1009,45 +902,5 @@ class GisFeatureController
             }
         }
         return true;
-    }
-
-    // ── TASK-067 helpers ──────────────────────────────────────────────────────
-
-    private function canViewPii(int $userId): bool
-    {
-        $stmt = $this->pdo->prepare("
-            SELECT 1
-            FROM app.permissions p
-            JOIN app.role_permissions rp ON p.id = rp.permission_id
-            JOIN app.user_roles ur ON rp.role_id = ur.role_id
-            WHERE ur.user_id = :uid AND p.code IN ('user.view.pii', 'organization.view.pii', 'title.view_owner', 'party.view')
-            LIMIT 1
-        ");
-        $stmt->execute([':uid' => $userId]);
-        return (bool) $stmt->fetchColumn();
-    }
-
-    private function getLayerPiiFields(int $layerId): array
-    {
-        $stmt = $this->pdo->prepare("
-            SELECT field_name
-            FROM app.gis_layer_fields
-            WHERE layer_id = :lid AND deleted_at IS NULL AND is_pii = true
-        ");
-        $stmt->execute([':lid' => $layerId]);
-        return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
-    }
-
-    private function redactPiiAttributes(array $attributes, array $piiFields): array
-    {
-        if (empty($piiFields)) {
-            return $attributes;
-        }
-        foreach ($piiFields as $field) {
-            if (array_key_exists($field, $attributes) && $attributes[$field] !== null) {
-                $attributes[$field] = '[REDACTED]';
-            }
-        }
-        return $attributes;
     }
 }
