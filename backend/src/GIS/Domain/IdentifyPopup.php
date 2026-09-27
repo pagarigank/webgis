@@ -42,6 +42,7 @@ class IdentifyPopup
 SELECT
     f.id,
     f.status,
+    f.version,
     f.psgc_barangay,
     f.attributes,
     l.name AS layer_name,
@@ -82,6 +83,7 @@ SQL;
             'feature'    => [
                 'id'            => $row['id'],
                 'status'        => $row['status'],
+                'version'       => (int) $row['version'],
                 'psgc_barangay' => $row['psgc_barangay'],
                 'attributes'    => json_decode($row['attributes'], true) ?? [],
             ],

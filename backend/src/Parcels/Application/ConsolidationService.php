@@ -410,6 +410,14 @@ class ConsolidationService
     /** @param array<string,mixed> $parent */
     private function supersedeParent(array $parent, int $operationId, string $reason, string $requestId): void
     {
+        // Version rows are append-only per (parcel_id, version). This pre-state
+        // row carries the parent's CURRENT version, so it collides whenever any
+        // earlier write (PATCH, workflow transition, …) already recorded that
+        // same version number — as happens for every parcel created through the
+        // API, whose v1 baseline row is written at create time (TASK-069).
+        // Dedupe instead of failing the whole operation: the existing row
+        // already holds this exact state. (SplitService::supersedeParent
+        // carries the same guard.)
         $stmt = $this->pdo->prepare('
             INSERT INTO audit.parcel_versions (
                 parcel_id, version, snapshot, status, geometry_source,
@@ -417,6 +425,7 @@ class ConsolidationService
             ) SELECT id, version, row_to_json(p), status, geometry_source,
                    :summary, :reason, NULLIF(current_setting(\'app.user_id\', true), \'\')::bigint, :rid
               FROM app.parcels p WHERE p.id = :id
+            ON CONFLICT (parcel_id, version) DO NOTHING
         ');
         $stmt->execute([
             ':id' => $parent['id'],

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, FormProvider } from 'react-hook-form';
 import { Modal } from '../../../components/dialogs/Modal';
 import { FieldRenderer } from '../../../components/forms/FieldRenderer';
 import type { LayerField } from '../types';
@@ -41,9 +41,11 @@ export function FeatureEditor({
     setError,
 }: FeatureEditorProps) {
     const title = mode === 'create' ? 'Create Feature' : `Edit Feature #${feature?.id}`;
-    const { control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({
+    const [isSaving, setIsSaving] = useState(false);
+    const methods = useForm({
         defaultValues: feature ? { ...feature.attributes } : {},
     });
+    const { handleSubmit, reset, watch } = methods;
 
     // Watch all field values and sync to form
     const allValues = watch();
@@ -55,8 +57,9 @@ export function FeatureEditor({
     }, [open, feature, reset]);
 
     const onSubmit = async (data: Record<string, unknown>) => {
-        if (!feature || mode === 'create' && !layerId) return;
+        if (!feature || (mode === 'create' && !layerId)) return;
         setError(null);
+        setIsSaving(true);
 
         try {
             if (mode === 'create') {
@@ -81,6 +84,8 @@ export function FeatureEditor({
         } catch (err: any) {
             const msg = err?.response?.data?.message ?? err?.message ?? 'Save failed';
             setError(msg);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -111,45 +116,36 @@ export function FeatureEditor({
                 </div>
             )}
 
-            <form onSubmit={handleSubmit(onSubmit)}>
-                {fields.map((field) => (
-                    <Controller
-                        key={field.field_name}
-                        name={field.field_name}
-                        control={control}
-                        defaultValue={field.default_value ?? ''}
-                        render={({ field: fieldProps, fieldState }) => (
-                            <FieldRenderer
-                                field={field}
-                                canViewPII={canViewPII}
-                                value={getFieldValue(field.field_name)}
-                                onChange={(v) => fieldProps.onChange(v)}
-                                onBlur={fieldProps.onBlur}
-                                error={fieldState.error}
-                                disabled={saving}
-                            />
-                        )}
-                    />
-                ))}
+            <FormProvider {...methods}>
+                <form onSubmit={handleSubmit(onSubmit)}>
+                    {fields.map((field) => (
+                        <FieldRenderer
+                            key={field.field_name}
+                            field={field}
+                            canViewPII={canViewPII}
+                            disabled={saving || isSaving}
+                        />
+                    ))}
 
                 <div className="d-flex justify-content-end gap-2 mt-3">
                     <button
                         type="button"
                         className="btn btn-secondary"
                         onClick={handleClose}
-                        disabled={saving}
+                        disabled={saving || isSaving}
                     >
                         Cancel
                     </button>
                     <button
                         type="submit"
                         className="btn btn-primary"
-                        disabled={saving}
+                        disabled={saving || isSaving}
                     >
-                        {saving ? 'Saving...' : mode === 'create' ? 'Create' : 'Save Changes'}
+                        {(saving || isSaving) ? 'Saving...' : mode === 'create' ? 'Create' : 'Save Changes'}
                     </button>
                 </div>
-            </form>
+                </form>
+            </FormProvider>
         </Modal>
     );
 }

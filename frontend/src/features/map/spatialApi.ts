@@ -34,6 +34,7 @@ export const spatialApi = {
         feature: {
             id: string;
             status: string;
+            version: number;
             psgc_barangay?: string;
             attributes: Record<string, unknown>;
         } | null;

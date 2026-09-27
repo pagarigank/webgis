@@ -404,9 +404,9 @@ class GisFeatureController
 
         $geom   = $body['geometry'];
         $attrs  = $body['attributes'] ?? [];
-        $psgc   = $body['psgc_barangay'] ?? null;
-        $prov   = $body['provenance'] ?? 'MANUAL_DRAWING';
-        $status = $body['status'] ?? 'ACTIVE';
+        $psgc   = !empty($body['psgc_barangay']) ? (string)$body['psgc_barangay'] : null;
+        $prov   = !empty($body['provenance']) ? (string)$body['provenance'] : 'MANUAL_DRAWING';
+        $status = !empty($body['status']) ? (string)$body['status'] : 'ACTIVE';
         $orgId  = $body['org_id'] ?? null;
 
         $geomJson = json_encode($geom);
@@ -533,7 +533,7 @@ class GisFeatureController
         }
         if (array_key_exists('psgc_barangay', $body)) {
             $sets[] = 'psgc_barangay = :psgc';
-            $params[':psgc'] = $body['psgc_barangay'];
+            $params[':psgc'] = !empty($body['psgc_barangay']) ? (string)$body['psgc_barangay'] : null;
         }
         if (array_key_exists('provenance', $body)) {
             $sets[] = 'provenance = :prov';

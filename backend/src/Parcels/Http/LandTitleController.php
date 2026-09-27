@@ -83,7 +83,11 @@ final class LandTitleController
             throw new ApiError('VALIDATION_FAILED', 'title_number is required.', 422);
         }
 
-        $this->pdo->beginTransaction();
+        // The ambient transaction opened by AuthenticateMiddleware is already
+        // active here — join it instead of nesting (PDO transactions cannot
+        // nest; an inner beginTransaction() aborts every call with "There is
+        // already an active transaction"). The middleware owns commit and
+        // rollback: on any throw below it rolls the whole request back.
         try {
             // Insert land_title
             $ins = $this->pdo->prepare(
@@ -117,10 +121,8 @@ final class LandTitleController
                  ON CONFLICT DO NOTHING'
             );
             $link->execute([':pid' => $parcelId, ':tid' => $titleId, ':rel' => $relationship]);
-
-            $this->pdo->commit();
         } catch (\Throwable $e) {
-            $this->pdo->rollBack();
+            // No rollback here — the middleware owns the transaction.
             // Duplicate title_number + registry_office
             if (str_contains($e->getMessage(), 'land_titles_title_number_registry_office')) {
                 throw new ApiError('CONFLICT', 'A title with this number already exists in the registry office.', 409);
@@ -242,7 +244,7 @@ final class LandTitleController
             throw new ApiError('VALIDATION_FAILED', 'full_name is required.', 422);
         }
 
-        $this->pdo->beginTransaction();
+        // Join the ambient transaction (see createForParcel) — never nest.
         try {
             // Upsert the party (plain-text for now; encryption can be layered later)
             $ins = $this->pdo->prepare(
@@ -265,9 +267,8 @@ final class LandTitleController
                 ':sd'   => $shareDen, ':ef' => $effectFrom,
             ]);
             $tpId = (int) $link->fetchColumn();
-            $this->pdo->commit();
         } catch (\Throwable $e) {
-            $this->pdo->rollBack();
+            // No rollback here — the middleware owns the transaction.
             throw $e;
         }
 

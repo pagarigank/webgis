@@ -10,6 +10,7 @@ interface IdentifyPopupProps {
     layerName: string | null;
     distance_m: number | null;
     onClose: () => void;
+    onEdit?: () => void;
 }
 
 export const IdentifyPopup: React.FC<IdentifyPopupProps> = ({
@@ -17,6 +18,7 @@ export const IdentifyPopup: React.FC<IdentifyPopupProps> = ({
     layerName,
     distance_m,
     onClose,
+    onEdit,
 }) => {
     if (!feature) {
         return (
@@ -68,21 +70,40 @@ export const IdentifyPopup: React.FC<IdentifyPopupProps> = ({
                 }}
             >
                 <strong style={{ fontSize: 14 }}>{layerName}</strong>
-                <button
-                    onClick={onClose}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        fontSize: 18,
-                        cursor: 'pointer',
-                        color: '#6b7280',
-                        padding: '0 4px',
-                        lineHeight: 1,
-                    }}
-                    aria-label="Close"
-                >
-                    ×
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {onEdit && (
+                        <button
+                            onClick={onEdit}
+                            style={{
+                                background: '#3b82f6',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                color: '#fff',
+                                padding: '2px 8px',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Edit
+                        </button>
+                    )}
+                    <button
+                        onClick={onClose}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            fontSize: 18,
+                            cursor: 'pointer',
+                            color: '#6b7280',
+                            padding: '0 4px',
+                            lineHeight: 1,
+                        }}
+                        aria-label="Close"
+                    >
+                        ×
+                    </button>
+                </div>
             </div>
 
             {distance_m != null && (
@@ -92,18 +113,12 @@ export const IdentifyPopup: React.FC<IdentifyPopupProps> = ({
             )}
 
             <dl style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '4px 8px' }}>
-                <dt style={{ fontWeight: 500, color: '#6b7280' }}>Status</dt>
-                <dd style={{ textTransform: 'capitalize' }}>{feature.status}</dd>
-
                 {feature.psgc_barangay && (
                     <>
                         <dt style={{ fontWeight: 500, color: '#6b7280' }}>Barangay</dt>
                         <dd>{feature.psgc_barangay}</dd>
                     </>
                 )}
-
-                <dt style={{ fontWeight: 500, color: '#6b7280' }}>ID</dt>
-                <dd style={{ fontFamily: 'monospace', fontSize: 12 }}>{feature.id}</dd>
             </dl>
 
             {Object.keys(feature.attributes).length > 0 && (

@@ -29,8 +29,13 @@ use Phinx\Migration\AbstractMigration;
  * (point_name, native_crs_id) pair has more than one live row, so no existing
  * data can violate the new index. Live-row uniqueness - the actual intent - is
  * unchanged.
+ *
+ * NOTE: the class name must match the CamelCase form of this file's name
+ * (FreeDeletedControlPointNames) or Phinx refuses to load the migration at
+ * all — an earlier descriptive-but-mismatched name broke `phinx migrate`
+ * for every later migration.
  */
-final class MakeControlPointNameUniqueIgnoreDeleted extends AbstractMigration
+final class FreeDeletedControlPointNames extends AbstractMigration
 {
     public function up(): void
     {

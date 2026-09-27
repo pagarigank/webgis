@@ -1,4 +1,4 @@
-import apiClient from '../../../lib/apiClient';
+import apiClient, { unwrapList } from '../../../lib/apiClient';
 import type { Layer } from '../types';
 
 export interface Feature {
@@ -48,6 +48,15 @@ export const layerApi = {
 
     delete: async (id: number): Promise<void> => {
         await apiClient.delete(`/layers/${id}`);
+    },
+
+    getPermissions: async (id: number): Promise<any[]> => {
+        const res = await apiClient.get(`/layers/${id}/permissions`);
+        return unwrapList(res);
+    },
+
+    savePermissions: async (id: number, permissions: any[]): Promise<void> => {
+        await apiClient.put(`/layers/${id}/permissions`, { permissions });
     },
 
     // ── Features (TASK-053/054) ──────────────────────────────────────────

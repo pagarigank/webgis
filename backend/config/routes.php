@@ -57,6 +57,11 @@ return function (App $app) {
         $group->delete('/layers/{id:[0-9]+}', \App\GIS\Http\GisLayerController::class . ':delete')
             ->add($layerAuthed('gis.layer.delete'))->add(AuthenticateMiddleware::class);
 
+        $group->get('/layers/{id:[0-9]+}/permissions', \App\GIS\Http\GisLayerController::class . ':getPermissions')
+            ->add(AuthenticateMiddleware::class);
+        $group->put('/layers/{id:[0-9]+}/permissions', \App\GIS\Http\GisLayerController::class . ':savePermissions')
+            ->add($layerAuthed('gis.layer.update'))->add(AuthenticateMiddleware::class);
+
         // ---- GIS Layer Fields ----
         $group->get('/layers/{layer_id:[0-9]+}/fields', \App\GIS\Http\GisLayerFieldController::class . ':list')
             ->add(AuthenticateMiddleware::class);
@@ -257,6 +262,8 @@ return function (App $app) {
             ->add($authed('user.manage'))->add(AuthenticateMiddleware::class);
 
         // ---- Roles & permissions (role.manage) ----
+        $group->get('/roles/lookup', \App\RBAC\Http\RoleAdminController::class . ':lookup')
+            ->add(AuthenticateMiddleware::class);
         $group->get('/roles', \App\RBAC\Http\RoleAdminController::class . ':list')
             ->add($authed('role.manage'))->add(AuthenticateMiddleware::class);
         $group->post('/roles', \App\RBAC\Http\RoleAdminController::class . ':create')

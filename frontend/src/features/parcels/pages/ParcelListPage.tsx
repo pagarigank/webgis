@@ -320,7 +320,7 @@ const ParcelMap = forwardRef<ParcelMapRef, {
                     bounds.extend(coord as [number, number]);
                 }
                 if (!bounds.isEmpty()) {
-                    map.fitBounds(bounds, { padding: 32, maxZoom: 18 });
+                    map.fitBounds(bounds, { padding: 32, maxZoom: 22 });
                 }
             }
         }

@@ -5,6 +5,9 @@ import { spatialApi } from './spatialApi';
 import { ANGELES_CITY_CENTER, DEFAULT_MAP_ZOOM, crsDisplayName, getMeasurementSrid, getWorkingSrid, subscribeWorkingSrid } from '../../lib/crs';
 import type { ActiveLayer } from './Managers';
 import { IdentifyPopup } from './IdentifyPopup';
+import { FeatureEditor } from '../layers/components/FeatureEditor';
+import { layerApi } from '../layers/api/layerApi';
+import apiClient, { unwrapList } from '../../lib/apiClient';
 import * as maplibregl from 'maplibre-gl';
 import type { MeasureDistanceResult, MeasureAreaResult } from './spatialApi';
 
@@ -186,6 +189,11 @@ export const IdentifyTool: React.FC = () => {
     const [layerId, setLayerId] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [displayLayers, setDisplayLayers] = useState<ActiveLayer[]>([]);
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [editorFeature, setEditorFeature] = useState<any>(null);
+    const [editorFields, setEditorFields] = useState<any[]>([]);
+    const [editorSaving, setEditorSaving] = useState(false);
+    const [editorError, setEditorError] = useState<string | null>(null);
     const touchedRef = useRef(false);
 
     useEffect(() => {
@@ -240,6 +248,24 @@ export const IdentifyTool: React.FC = () => {
     }, [map, layerId, handleIdentify]);
 
     const closePopup = useCallback(() => setPopup(null), []);
+
+    const handleEdit = useCallback(async () => {
+        if (!popup || !layerId) return;
+        setLoading(true);
+        try {
+            const lid = parseInt(layerId, 10);
+            const fieldsRes = await apiClient.get(`/layers/${lid}/fields`);
+            const fields = Array.isArray(fieldsRes) ? fieldsRes : (fieldsRes as any)?.data ?? [];
+            setEditorFields(fields);
+            setEditorFeature(popup.feature);
+            setEditorOpen(true);
+            setPopup(null);
+        } catch (err) {
+            console.error('Failed to load layer fields for editing', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [popup, layerId]);
 
     if (!map) return null;
 
@@ -316,6 +342,25 @@ export const IdentifyTool: React.FC = () => {
                     layerName={popup.layerName}
                     distance_m={popup.distance_m}
                     onClose={closePopup}
+                    onEdit={handleEdit}
+                />
+            )}
+            {editorOpen && editorFeature && (
+                <FeatureEditor
+                    open={editorOpen}
+                    onClose={() => setEditorOpen(false)}
+                    onSave={() => {
+                        setEditorOpen(false);
+                        // Optional: refresh identify if needed
+                    }}
+                    mode="edit"
+                    feature={editorFeature}
+                    layerId={parseInt(layerId, 10)}
+                    fields={editorFields}
+                    canViewPII={true} // Identify tool assumes user can view PII if they can identify
+                    saving={editorSaving}
+                    error={editorError}
+                    setError={setEditorError}
                 />
             )}
             {!layerId && displayLayers.filter((l) => l.visible).length === 0 && (

@@ -35,3 +35,7 @@ frontend/src/auth/devAutoLogin.ts
 frontend/src/lib/crs.working.test.ts
 bllm.pdf
 bllm2.pdf
+
+# Docker Compose log dumps (scratch diagnostics)
+logs*.txt
+

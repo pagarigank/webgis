@@ -41,6 +41,13 @@ class FixtureSeeder extends AbstractSeed
         // injects SYS_ADMIN); the role code must reference a role created by
         // SystemSeeder, otherwise user_roles silently inserts nothing and the user
         // ends up with no permissions at all.
+        //
+        // The Argon2id hash must live in a SINGLE-QUOTED PHP string: inside a
+        // double-quoted string PHP interpolates every $... segment of the
+        // serialized hash ($argon2id, $v, $m, salt, hash) as variables, which
+        // stored a corrupted hash and made every sample login fail with 401.
+        // All sample users share the password "Str0ng!Pass123" (dev/demo only).
+        $demoHash = '$argon2id$v=19$m=65536,t=4,p=1$VmdvTHVvNVNSdk1kelFUQw$dHu/6nsELrXxOOo0gTYif1PoQJpSS8SUrRIDeiVTcec';
         $users = [
             ['sample_app_admin',         'SYS_ADMIN'],
             ['sample_lra_encoder',       'DATA_ENCODER'],
@@ -55,8 +62,10 @@ class FixtureSeeder extends AbstractSeed
             $uid = 900 + $idx;
             $this->execute("
                 INSERT INTO app.users (id, username, email, password_hash, full_name, org_id)
-                VALUES ($uid, '$username', '$username@sample.local', '$argon2id$v=19$m=65536,t=4,p=1$VTVYYWM1WXlYNWdKUXRKaA$AAnD6mkoKuE6hAKEqvmPP4q8/2dQgoTDYiYmIFtMgLs', 'Sample $roleCode', 999)
-                ON CONFLICT DO NOTHING;
+                VALUES ($uid, '$username', '$username@sample.local', '$demoHash', 'Sample $roleCode', 999)
+                ON CONFLICT (id) DO UPDATE
+                    SET password_hash = EXCLUDED.password_hash,
+                        status = 'ACTIVE';
             ");
 
             $this->execute("
@@ -161,6 +170,13 @@ class FixtureSeeder extends AbstractSeed
             VALUES ('SAMPLE_PARCEL_POLYGON', 'Sample Parcel Polygon', 'POLYGON', 'Sample Parcel Layer for Fixtures', 'ACTIVE')
             ON CONFLICT (code) DO NOTHING;
         ");
+        // Idempotence: the audit trigger audit.fn_write_feature_version() fires
+        // for every INSERT ATTEMPT on app.gis_features — including ones that
+        // ON CONFLICT (id) DO NOTHING then discards — and its own INSERT into
+        // audit.gis_feature_versions violates (feature_id, version) on a re-run,
+        // aborting the whole seeder and silently dropping all fixture data.
+        // Guard with NOT EXISTS so the INSERT (and thus the trigger) never fires
+        // when the feature is already present.
         $this->execute("
             INSERT INTO app.gis_features (id, layer_id, geom, psgc_barangay, org_id, attributes)
             SELECT
@@ -172,7 +188,9 @@ class FixtureSeeder extends AbstractSeed
                 '{\"fixture\": true}'
             FROM app.gis_layers l
             WHERE l.code = 'SAMPLE_PARCEL_POLYGON'
-            ON CONFLICT (id) DO NOTHING;
+              AND NOT EXISTS (
+                  SELECT 1 FROM app.gis_features f WHERE f.id = '77777777-7777-7777-7777-000000000001'
+              );
         ");
 
         // 9. Layer permissions for the fixture layer.

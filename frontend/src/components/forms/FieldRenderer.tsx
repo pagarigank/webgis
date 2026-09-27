@@ -4,9 +4,10 @@ import type { LayerField } from '../../features/layers/types';
 interface FieldRendererProps {
     field: LayerField;
     canViewPII?: boolean;
+    disabled?: boolean;
 }
 
-export function FieldRenderer({ field, canViewPII = false }: FieldRendererProps) {
+export function FieldRenderer({ field, canViewPII = false, disabled = false }: FieldRendererProps) {
     const { control } = useFormContext();
 
     if (field.is_pii && !canViewPII) {
@@ -24,7 +25,7 @@ export function FieldRenderer({ field, canViewPII = false }: FieldRendererProps)
             onChange,
             onBlur,
             ref,
-            disabled: !field.editable,
+            disabled: disabled || field.editable === false || field.editable === 'f' || field.editable === 'false' || field.editable === 0,
             placeholder: field.field_label
         };
 
@@ -58,7 +59,7 @@ export function FieldRenderer({ field, canViewPII = false }: FieldRendererProps)
                             onChange={e => onChange(e.target.checked)}
                             onBlur={onBlur}
                             ref={ref}
-                            disabled={!field.editable}
+                            disabled={disabled || field.editable === false || field.editable === 'f' || field.editable === 'false' || field.editable === 0}
                         />
                     </div>
                 );

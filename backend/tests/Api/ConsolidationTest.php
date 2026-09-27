@@ -218,6 +218,54 @@ class ConsolidationTest extends TestCase
         $this->assertSame('VERSION_CONFLICT', json_decode((string) $stale->getBody(), true)['error']['code']);
     }
 
+    /**
+     * Regression (2026-09-27 audit): parents created through the real API carry
+     * a version-1 baseline row in audit.parcel_versions (TASK-069). The
+     * consolidation's pre-state row for such a parent re-uses its CURRENT
+     * version number, which used to violate the append-only (parcel_id,
+     * version) uniqueness and fail the whole operation with a 500.
+     * SplitService already deduped via ON CONFLICT; the service now does too.
+     */
+    public function testCommitSucceedsWhenParentsAlreadyHaveVersionRows(): void
+    {
+        $a = $this->createParent('CONSOL_API_A_06', self::A);
+        $b = $this->createParent('CONSOL_API_B_06', self::B);
+
+        // Simulate API-created parents: a version-1 baseline row exists, exactly
+        // as ParcelController::create writes it (TASK-069).
+        foreach ([$a, $b] as $pid) {
+            $stmt = $this->pdo->prepare("
+                INSERT INTO audit.parcel_versions (parcel_id, version, snapshot, status, geometry_source, change_summary, change_reason, changed_by)
+                SELECT id, version, row_to_json(p), status, geometry_source, 'Parcel created', 'seed', created_by
+                  FROM app.parcels p WHERE p.id = :id
+            ");
+            $stmt->execute([':id' => $pid]);
+        }
+
+        $versions = $this->versions([$a, $b]);
+        $res = $this->handle($this->req('POST', '/api/v1/parcels/consolidate', [
+            'parent_parcel_ids' => [$a, $b],
+            'parent_versions' => $versions,
+            'reason' => 'Consolidation of parcels that carry version history',
+        ]));
+        $this->assertSame(201, $res->getStatusCode(), (string) $res->getBody());
+        $data = json_decode((string) $res->getBody(), true)['data'];
+        $newId = (string) $data['result']['parcel_id'];
+        $this->createdIds[] = $newId;
+
+        // The new parcel still gets its own v1 baseline row.
+        $newRow = $this->pdo->query("SELECT version FROM audit.parcel_versions WHERE parcel_id = '{$newId}'")->fetchAll(\PDO::FETCH_COLUMN);
+        $this->assertSame([1], array_map('intval', $newRow));
+
+        foreach ([$a, $b] as $pid) {
+            $row = $this->pdo->query("SELECT version FROM app.parcels WHERE id = '{$pid}'")->fetch(\PDO::FETCH_ASSOC);
+            $this->assertSame($versions[$pid] + 1, (int) $row['version'], 'parent must still be superseded (version bumped)');
+            $rows = $this->pdo->query("SELECT version FROM audit.parcel_versions WHERE parcel_id = '{$pid}'")->fetchAll(\PDO::FETCH_COLUMN);
+            // Baseline row remains; no duplicate version rows were created.
+            $this->assertSame([1], array_map('intval', $rows));
+        }
+    }
+
     public function testUnknownParentIs404AndSingleParentIsRejected(): void
     {
         $fake = '00000000-0000-4000-8000-000000000002';

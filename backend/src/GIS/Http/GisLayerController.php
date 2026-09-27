@@ -66,6 +66,13 @@ class GisLayerController
         $stmt->execute([$code, $name, $geometryType, $description, $groupPath, $srid, $source, $renderMode, $isHidden ? 1 : 0]);
         $id = $stmt->fetchColumn();
 
+        // Grant full permissions to SYS_ADMIN
+        $this->pdo->prepare("
+            INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve)
+            SELECT ?, id, true, true, true, true, true
+            FROM app.roles WHERE code = 'SYS_ADMIN'
+        ")->execute([$id]);
+
         return Envelope::success($response, ['id' => $id], 201);
     }
     
@@ -136,4 +143,48 @@ class GisLayerController
         $this->pdo->prepare("UPDATE app.gis_layers SET deleted_at = CURRENT_TIMESTAMP, version = version + 1 WHERE id = ?")->execute([$id]);
         return Envelope::success($response, ['id' => $id]);
     }
+
+    public function getPermissions(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        
+        $stmt = $this->pdo->prepare("SELECT * FROM app.layer_permissions WHERE layer_id = ?");
+        $stmt->execute([$id]);
+        $permissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        return Envelope::success($response, $permissions);
+    }
+
+    public function savePermissions(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $data = (array) $request->getParsedBody();
+        $permissions = $data['permissions'] ?? [];
+        
+        try {
+            $this->pdo->prepare("DELETE FROM app.layer_permissions WHERE layer_id = ?")->execute([$id]);
+            
+            $stmt = $this->pdo->prepare("
+                INSERT INTO app.layer_permissions (layer_id, role_id, can_view, can_create, can_update, can_delete, can_approve)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ");
+            
+            foreach ($permissions as $p) {
+                $stmt->execute([
+                    $id,
+                    $p['role_id'],
+                    !empty($p['can_view']) ? 'true' : 'false',
+                    !empty($p['can_create']) ? 'true' : 'false',
+                    !empty($p['can_update']) ? 'true' : 'false',
+                    !empty($p['can_delete']) ? 'true' : 'false',
+                    !empty($p['can_approve']) ? 'true' : 'false',
+                ]);
+            }
+        } catch (\Exception $e) {
+            throw new ApiError('INTERNAL_ERROR', 'Failed to save permissions: ' . $e->getMessage(), 500);
+        }
+        
+        return Envelope::success($response, ['status' => 'success']);
+    }
 }
+

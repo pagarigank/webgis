@@ -6,7 +6,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useMapContext } from './MapContext';
 import type { DrawMode } from './MapContext';
 import { layerApi } from '../layers/api/layerApi';
+import apiClient, { unwrapList } from '../../lib/apiClient';
 import type { ActiveLayer } from './Managers';
+import { FeatureEditor } from '../layers/components/FeatureEditor';
 
 const LAYER_ID_STORAGE_KEY = 'webgis.draw.layer_id';
 
@@ -28,6 +30,11 @@ export function DrawTools() {
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
     const [undoRedoTick, setUndoRedoTick] = useState(0);
+
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [editorFeature, setEditorFeature] = useState<any>(null);
+    const [editorLayerData, setEditorLayerData] = useState<any>(null);
+    const [editorError, setEditorError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!layerManager) return;
@@ -98,30 +105,56 @@ export function DrawTools() {
             setMessage({ kind: 'err', text: 'Draw manager not ready.' });
             return;
         }
+        
+        const feature = drawManager.getFirstFeature();
+        if (!feature) {
+            setMessage({ kind: 'err', text: 'Nothing drawn to save.' });
+            return;
+        }
+
         setSaving(true);
         setMessage(null);
         try {
-            const saved = await drawManager.saveNew(lid);
-            if (saved) {
-                setMessage({ kind: 'ok', text: `Saved feature ${saved.id ?? ''} to layer ${lid}.` });
-                setUndoRedoTick((t) => t + 1);
-                // TASK-067: persist visually — reload the target layer's GeoJSON
-                // source so the saved feature shows on the map as part of the layer.
-                const b = ctx.map?.getBounds();
-                if (b) {
-                    const bbox: [number, number, number, number] = [
-                        b.getWest(), b.getSouth(), b.getEast(), b.getNorth(),
-                    ];
-                    ctx.loadLayerFeatures(lid, String(lid), bbox).catch(() => undefined);
-                }
-            } else {
-                // onError already surfaced the validation/network reason.
-                setMessage({ kind: 'err', text: 'Save rejected — see error details.' });
-            }
+            const [layerData, fieldsRes] = await Promise.all([
+                layerApi.getById(lid),
+                apiClient.get(`/layers/${lid}/fields`).then(unwrapList)
+            ]);
+            
+            // Attach fields to the layer data so the modal can access them
+            const layerWithFields = {
+                ...layerData,
+                fields: fieldsRes ?? []
+            };
+            
+            setEditorLayerData(layerWithFields);
+            setEditorFeature({
+                geometry: feature.geometry,
+                attributes: {},
+                psgc_barangay: '',
+                provenance: 'MANUAL_DRAWING',
+                status: 'ACTIVE',
+                version: 1
+            });
+            setEditorOpen(true);
+        } catch (e) {
+            setMessage({ kind: 'err', text: 'Failed to load layer fields.' });
         } finally {
             setSaving(false);
         }
     }, [layerId, drawManager]);
+
+    // Auto-trigger handleSave when drawing is completed (mode changes to simple_select)
+    const prevModeRef = React.useRef(drawMode);
+    useEffect(() => {
+        if (
+            prevModeRef.current !== 'simple_select' && 
+            drawMode === 'simple_select' && 
+            drawManager?.getFirstFeature()
+        ) {
+            handleSave();
+        }
+        prevModeRef.current = drawMode;
+    }, [drawMode, drawManager, handleSave]);
 
     const canUndo = ctx.canUndo();
     const canRedo = ctx.canRedo();
@@ -253,6 +286,42 @@ export function DrawTools() {
                 >
                     {message.text}
                 </div>
+            )}
+            
+            {editorOpen && editorFeature && editorLayerData && (
+                <FeatureEditor
+                    open={editorOpen}
+                    onClose={() => {
+                        setEditorOpen(false);
+                        drawManager?.clearDraw();
+                    }}
+                    onSave={() => {
+                        setMessage({ kind: 'ok', text: `Saved feature to layer ${layerId}.` });
+                        drawManager?.clearDraw();
+                        setUndoRedoTick((t) => t + 1);
+                        const b = ctx.map?.getBounds();
+                        if (b) {
+                            const bbox: [number, number, number, number] = [
+                                b.getWest(), b.getSouth(), b.getEast(), b.getNorth(),
+                            ];
+                            ctx.loadLayerFeatures(parseInt(layerId, 10), layerId, bbox).catch(() => undefined);
+                        }
+                    }}
+                    mode="create"
+                    feature={editorFeature}
+                    layerId={parseInt(layerId, 10)}
+                    fields={(editorLayerData.fields || []).map((f: any) => ({
+                        field_name: f.field_name,
+                        field_label: f.field_label || f.name || f.field_name,
+                        field_type: f.field_type || f.type || 'text',
+                        config: f.config || {},
+                        required: f.required || false
+                    }))}
+                    canViewPII={true}
+                    saving={false}
+                    error={editorError}
+                    setError={setEditorError}
+                />
             )}
         </div>
     );

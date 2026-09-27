@@ -28,6 +28,18 @@ final class RoleAdminController
         }
     }
 
+    public function lookup(Request $request, Response $response): Response
+    {
+        try {
+            // Re-use list but without pagination limits just for lookup
+            // Or ideally use a dedicated lookup method. For now, fetch a large page.
+            $result = $this->roles->list(1, 1000, null);
+            return Envelope::success($response, $result['data']);
+        } catch (ApiError $e) {
+            return Envelope::error($response, $e->getErrorCode(), $e->getMessage(), $e->getDetails(), $e->getApiStatus());
+        }
+    }
+
     public function create(Request $request, Response $response): Response
     {
         try {

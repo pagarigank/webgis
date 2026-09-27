@@ -64,11 +64,15 @@ class NearestPointTest extends TestCase
         // then the three points in a known layout:
         //   CP075_A  BLLM            ~2 m from the query point
         //   CP075_B  CONTROL_POINT   ~11 m, inside barangay 9999990001
-        //   CP075_C  BLLM            far (Bulacan)
+        //   CP075_C  BLLM            far (Australian outback)
+        // Coordinates live far from the Angeles/Pampanga demo cluster
+        // (120.50-120.64 E, 15.11-15.19 N) seeded by BllmAngelesSeeder; the
+        // KNN assertions count the rows the query returns, so any real point
+        // inside the search radius would break them.
         $this->seedPsgc(self::PSGC);
-        $this->seedPoint('CP075_A', 'BLLM', 121.000000, 14.600000, null);
-        $this->seedPoint('CP075_B', 'CONTROL_POINT', 121.000120, 14.600000, self::PSGC);
-        $this->seedPoint('CP075_C', 'BLLM', 121.200000, 15.200000, null);
+        $this->seedPoint('CP075_A', 'BLLM', 122.000000, 13.600000, null);
+        $this->seedPoint('CP075_B', 'CONTROL_POINT', 122.000400, 13.600000, self::PSGC);
+        $this->seedPoint('CP075_C', 'BLLM', 122.200000, 14.200000, null);
     }
 
     protected function tearDown(): void
@@ -171,16 +175,21 @@ class NearestPointTest extends TestCase
 
     public function testNearestReturnsClosestFirstWithDistance(): void
     {
-        $result = $this->nearest($this->admin, '?lat=14.600000&lon=121.000020');
+        $result = $this->nearest($this->admin, '?lat=13.600000&lon=122.000020');
         $this->assertSame(200, $result['status']);
 
         $rows = $result['body']['data']['data'];
-        $this->assertCount(3, $rows); // GLOBAL scope sees all three
+        // The DB is shared (demo seeders add their own points), so exact total
+        // counts cannot be asserted — but the three fixtures are by far the
+        // closest, so the first three rows must be exactly A, B, C.
+        $this->assertGreaterThanOrEqual(3, count($rows));
 
-        // Distance ascending: A is ~2 m away, B ~11 m, C far in Bulacan.
-        $this->assertSame('CP075_A', $rows[0]['point_name']);
+        // Distance ascending: A is ~2 m away, B ~44 m, C far.
+        $this->assertSame('CP075_A', $rows[0]['point_name'], sprintf('rows: %s', implode(',', array_column($rows, 'point_name'))));
         $this->assertSame('CP075_B', $rows[1]['point_name']);
         $this->assertSame('CP075_C', $rows[2]['point_name']);
+
+        $this->assertGreaterThan($rows[0]['distance_m'], $rows[1]['distance_m'], 'B must be strictly farther than A');
 
         foreach ($rows as $i => $row) {
             $this->assertArrayHasKey('distance_m', $row);
@@ -191,55 +200,58 @@ class NearestPointTest extends TestCase
             // type field carries the Point marker.
             $this->assertSame('Point', $row['geom']['type']);
             if ($i > 0) {
-                $this->assertGreaterThan($rows[$i - 1]['distance_m'], $row['distance_m']);
+                // Fixture distances are distinct, but demo seed data can carry
+                // genuine distance ties — require strict ascent only among the
+                // three fixtures, non-decreasing beyond them.
+                $assert = $i <= 2 ? 'assertGreaterThan' : 'assertGreaterThanOrEqual';
+                $this->{$assert}($rows[$i - 1]['distance_m'], $row['distance_m']);
             }
         }
 
-        $this->assertSame(3, $result['body']['data']['total']);
         $this->assertSame(10, $result['body']['data']['limit']);
     }
 
     public function testNearestHonorsLimitAndTypeFilter(): void
     {
-        $limited = $this->nearest($this->admin, '?lat=14.600000&lon=121.000020&limit=1');
+        $limited = $this->nearest($this->admin, '?lat=13.600000&lon=122.000020&limit=1');
         $rows     = $limited['body']['data']['data'];
         $this->assertCount(1, $rows);
         $this->assertSame('CP075_A', $rows[0]['point_name']);
         $this->assertSame(1, $limited['body']['data']['limit']);
 
-        $typed = $this->nearest($this->admin, '?lat=14.600000&lon=121.000020&type=BLLM');
+        $typed = $this->nearest($this->admin, '?lat=13.600000&lon=122.000020&type=BLLM');
         $names = array_column($typed['body']['data']['data'], 'point_name');
-        $this->assertSame(['CP075_A', 'CP075_C'], $names); // CP075_B is CONTROL_POINT
+        $this->assertSame(['CP075_A', 'CP075_C'], array_slice($names, 0, 2), sprintf('typed BLLM rows: %s', implode(',', $names))); // CP075_B is CONTROL_POINT
 
-        $clamped = $this->nearest($this->admin, '?lat=14.600000&lon=121.000020&limit=1000');
-        $this->assertCount(3, $clamped['body']['data']['data']); // only 3 exist
+        $clamped = $this->nearest($this->admin, '?lat=13.600000&lon=122.000020&limit=1000');
+        $this->assertGreaterThanOrEqual(3, count($clamped['body']['data']['data']));
         $this->assertSame(100, $clamped['body']['data']['limit']);
     }
 
     public function testNearestValidatesCoordinatesAndType(): void
     {
-        $missing = $this->nearest($this->admin, '?lon=121.0');
+        $missing = $this->nearest($this->admin, '?lon=122.0');
         $this->assertSame(400, $missing['status']);
         $this->assertSame('VALIDATION_FAILED', $missing['body']['error']['code']);
 
-        $outOfRange = $this->nearest($this->admin, '?lat=91.0&lon=121.0');
+        $outOfRange = $this->nearest($this->admin, '?lat=91.0&lon=122.0');
         $this->assertSame(400, $outOfRange['status']);
         $this->assertSame('VALIDATION_FAILED', $outOfRange['body']['error']['code']);
 
-        $badType = $this->nearest($this->admin, '?lat=14.6&lon=121.0&type=NOT_A_TYPE');
+        $badType = $this->nearest($this->admin, '?lat=13.6&lon=122.0&type=NOT_A_TYPE');
         $this->assertSame(400, $badType['status']);
         $this->assertSame('VALIDATION_FAILED', $badType['body']['error']['code']);
     }
 
     public function testNearestRequiresViewPermission(): void
     {
-        $result = $this->nearest($this->noPerm, '?lat=14.600000&lon=121.000020');
+        $result = $this->nearest($this->noPerm, '?lat=13.600000&lon=122.000020');
         $this->assertSame(403, $result['status']);
     }
 
     public function testNearestRespectsScopeUserWithoutAnyScopeSeesNothing(): void
     {
-        $result = $this->nearest($this->scopedOut, '?lat=14.600000&lon=121.000020');
+        $result = $this->nearest($this->scopedOut, '?lat=13.600000&lon=122.000020');
 
         $this->assertSame(200, $result['status']);
         $this->assertSame([], $result['body']['data']['data']);
@@ -248,7 +260,7 @@ class NearestPointTest extends TestCase
 
     public function testNearestBarangayScopedUserSeesOnlyMatchingPoints(): void
     {
-        $result = $this->nearest($this->brgyScoped, '?lat=14.600000&lon=121.000100');
+        $result = $this->nearest($this->brgyScoped, '?lat=13.600000&lon=122.000100');
 
         $this->assertSame(200, $result['status']);
         $names = array_column($result['body']['data']['data'], 'point_name');
@@ -270,8 +282,8 @@ class NearestPointTest extends TestCase
     {
         // Mass-seed a dense grid around the query point so KNN becomes cheaper
         // than a seq scan + sort. Coordinates stay far from the seeded A/B/C.
-        $lon0 = 121.000000;
-        $lat0 = 14.600000;
+        $lon0 = 122.000000;
+        $lat0 = 13.600000;
         $this->pdo->exec(
             "INSERT INTO app.survey_control_points "
             . '(point_name, point_type, latitude, longitude, coordinate_origin, status, geom) '
@@ -286,7 +298,7 @@ class NearestPointTest extends TestCase
         // Must not run under the data-facing RLS function results, because a
         // fn_user_can_see that filters to zero rows has no bearing on whether
         // the GIST index can serve the ordered query. EXPLAIN never executes.
-        $ref = 'ST_SetSRID(ST_MakePoint(121.00000200, 14.60000000), 4326)';
+        $ref = 'ST_SetSRID(ST_MakePoint(122.00000200, 13.60000000), 4326)';
         $sql = 'SELECT cp.id, cp.point_name, cp.geom, '
              . 'ROUND((ST_Distance(cp.geom::geography, ' . $ref . '::geography))::numeric, 2) AS distance_m '
              . 'FROM app.survey_control_points cp '
